@@ -3,6 +3,8 @@ import { eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { Badge } from '@/components/Badge';
 import { CampaignActions } from '@/components/CampaignActions';
+import { RenderProgress } from '@/components/RenderProgress';
+import { ladeKampagnenStatus } from '@/lib/render-queue';
 import { LeadsTable, type LeadRow } from '@/components/LeadsTable';
 import { getDb, schema } from '@/lib/db';
 import { getEnv } from '@/lib/env';
@@ -48,6 +50,7 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
         </div>
         <CampaignActions campaignId={kampagne.id} leadCount={leads.length} />
       </div>
+      <RenderProgress campaignId={kampagne.id} initial={ladeKampagnenStatus(kampagne.id)!} />
       <LeadsTable leads={rows} baseUrl={getEnv().APP_URL} />
     </div>
   );
