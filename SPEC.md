@@ -11,7 +11,7 @@ Sie ergänzt `BRIEFING.md` (fachliche Anforderungen). Bei Widerspruch gilt SPEC.
   Begrüßung überall: `Guten Tag {Vorname} {Nachname}` bzw. `Guten Tag` wenn kein Name.
 - **Termin-Link Standard:** `https://calendly.com/sebastian-spuhler/30min` (Vorbelegung bei neuer Kampagne,
   zusätzlich `DEFAULT_CTA_URL` in `.env`).
-- **Gmail:** Google-Workspace-Konto `@prozessia.de` (OAuth-Zustimmungsbildschirm „Intern“).
+- **Gmail:** Google-Workspace-Konto, Absender `Amin.douioui@prozessia.de` (OAuth-Zustimmungsbildschirm „Intern“). In `.env.example` als Beispielwert für `SENDER_EMAIL` eintragen.
 - Deployment (Hetzner, Proxy) wird am Ende geklärt → Docker/Compose + Beispiel-Configs für nginx **und** Caddy liefern.
 
 ## Stack (fix)
@@ -249,11 +249,20 @@ Medien-URLs immer relativ `/media/...` auf der Seite; in Mails absolut `${APP_UR
 - `remotion/schema.ts`: `outreachPropsSchema = z.object({ firma: z.string(), anrede: z.string().default(''),
   vorname: z.string().default(''), nachname: z.string().default(''), logoUrl: z.string().url().optional(),
   websiteScreenshotUrl: z.string().url().optional() })`.
-- `OutreachVideo`: 1280×720, 30 fps, 600 Frames. Platzhalter: animierter Hintergrund, „Guten Tag {Name}“,
-  Firmenname groß, ein paar animierte Textabschnitte, Schluss „15-Minuten-Termin buchen“. Nur Remotion-Bordmittel,
-  keine externen Assets/Fonts aus dem Netz.
-- `OutreachThumbnail`: Still 1280×720 (`<Still>`), Firmenname groß, gut sichtbarer runder Play-Button in der Mitte,
-  kleiner Text „Ihr persönliches Video“. Wirkt wie Video-Frame.
+- **Vorhandenes Video des Auftraggebers:** `remotion/public/teaser.mp4` (Prozessia „Beschaffungsagent“-Teaser,
+  1920×1080, 30 fps, 58,7 s, mit Ton). Markenstil: weißer Hintergrund, Text `#0a0a0a`, Akzent-Lila `#7b3aec`,
+  moderne Grotesk (Inter – lokal per `@fontsource/inter` einbinden, kein Netz-Request), Logo-Schriftzug
+  „Prozessia.“ mit Unterzeile „AI AGENCY“, Pill-Button lila mit weißer Schrift.
+- `OutreachVideo`: 1280×720, 30 fps. Aufbau: **personalisiertes Intro (~5 s = 150 Frames)** im Markenstil
+  (sanft animiert: „Guten Tag {Vorname} {Nachname},“ bzw. „Guten Tag,“ → darunter groß „ein Video für {Firma}“,
+  Firmenname in Lila; kleiner „Prozessia.“-Schriftzug unten rechts), danach **Teaser** via
+  `<OffthreadVideo src={staticFile('teaser.mp4')} />` in einer `<Series>`/`<Sequence>` (mit Ton, skaliert auf 720p,
+  kurzer Crossfade/Fade zwischen Intro und Teaser). `durationInFrames` = 150 + Teaser-Frames; per
+  `calculateMetadata` + `parseMedia`/`getVideoMetadata` ermitteln oder fix 150 + 1761. Das Teaser-Video ist
+  austauschbar (Datei ersetzen). Der Worker übergibt `publicDir: 'remotion/public'` an `bundle()`.
+- `OutreachThumbnail`: Still 1280×720 (`<Still>`) im gleichen Markenstil: weißer Hintergrund, „Ein Video für“ +
+  Firmenname groß (lila), gut sichtbarer runder Play-Button (lila Kreis, weißes Dreieck, dezenter Schatten) mittig
+  bzw. rechts, kleiner Text „Ihr persönliches Video · ca. 1 Minute“, „Prozessia.“-Schriftzug. Wirkt wie Video-Frame.
 - npm-Skripte: `remotion:studio`.
 
 ### Gmail-Versand (Phase 4)

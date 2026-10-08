@@ -18,7 +18,7 @@ export function getDb(): Db {
   const dataDir = path.resolve(getEnv().DATA_DIR);
   fs.mkdirSync(path.join(dataDir, 'media'), { recursive: true });
 
-  const sqlite = new Database(path.join(dataDir, 'videooutreach.db'));
+  const sqlite = new Database(path.join(dataDir, 'app.db'));
   sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('busy_timeout = 5000');
   sqlite.pragma('foreign_keys = ON');
