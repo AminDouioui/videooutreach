@@ -3,6 +3,8 @@ import { eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { Badge } from '@/components/Badge';
 import { CampaignActions } from '@/components/CampaignActions';
+import { RenderProgress } from '@/components/RenderProgress';
+import { ladeKampagnenStatus } from '@/lib/render-queue';
 import { LeadsTable, type LeadRow } from '@/components/LeadsTable';
 import { SendControls } from '@/components/SendControls';
 import { getDb, schema } from '@/lib/db';
@@ -57,6 +59,7 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
         </div>
         <CampaignActions campaignId={kampagne.id} leadCount={leads.length} />
       </div>
+      <RenderProgress campaignId={kampagne.id} initial={ladeKampagnenStatus(kampagne.id)!} />
       <div className="mb-4 space-y-3">
         <div className="flex gap-4 text-sm">
           <Link href={`/kampagnen/${kampagne.id}/vorlage`} className="font-medium text-indigo-600 hover:underline">

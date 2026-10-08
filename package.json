@@ -7,14 +7,19 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p remotion/tsconfig.json",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "worker": "tsx --env-file-if-exists=.env worker/index.ts",
-    "remotion:studio": "echo \"Remotion-Studio folgt in Phase 2\"",
+    "remotion:studio": "remotion studio remotion/index.ts",
     "fixtures": "tsx scripts/make-fixtures.ts"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@remotion/bundler": "4.0.534",
+    "@remotion/cli": "4.0.534",
+    "@remotion/media-utils": "4.0.534",
+    "@remotion/renderer": "4.0.534",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.4",
     "exceljs": "^4.4.0",
@@ -23,6 +28,7 @@
     "papaparse": "^5.7.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "remotion": "4.0.534",
     "zod": "^4.6.5"
   },
   "devDependencies": {
