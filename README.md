@@ -20,7 +20,7 @@ Secrets erzeugen:
 openssl rand -hex 32      # für SESSION_SECRET und ENCRYPTION_KEY (je ein eigener Wert)
 ```
 
-Die SQLite-Datenbank (`DATA_DIR/videooutreach.db`) und das Medienverzeichnis (`DATA_DIR/media`) werden beim ersten Zugriff automatisch angelegt; Migrationen aus `db/migrations` werden automatisch angewendet.
+Die SQLite-Datenbank (`DATA_DIR/app.db`) und das Medienverzeichnis (`DATA_DIR/media`) werden beim ersten Zugriff automatisch angelegt; Migrationen aus `db/migrations` werden automatisch angewendet.
 
 ## Lokale Entwicklung
 
