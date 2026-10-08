@@ -2,6 +2,7 @@ import React from 'react';
 import { Composition, Still } from 'remotion';
 import { getVideoMetadata } from '@remotion/media-utils';
 import { staticFile } from 'remotion';
+import { OutreachIntro } from './OutreachIntro';
 import { OutreachThumbnail } from './OutreachThumbnail';
 import { OutreachVideo } from './OutreachVideo';
 import {
@@ -18,6 +19,16 @@ import {
 
 export const RemotionRoot: React.FC = () => (
   <>
+    <Composition
+      id="OutreachIntro"
+      component={OutreachIntro}
+      width={BREITE}
+      height={HOEHE}
+      fps={FPS}
+      durationInFrames={INTRO_FRAMES}
+      schema={outreachPropsSchema}
+      defaultProps={standardProps}
+    />
     <Composition
       id="OutreachVideo"
       component={OutreachVideo}

@@ -7,7 +7,8 @@ import { getDb, schema } from '../lib/db';
 import { getEnv } from '../lib/env';
 import { mediaDir, thumbnailPath, videoPath } from '../lib/media';
 import { schliesseKampagneAb } from '../lib/render-queue';
-import { outreachPropsSchema, type OutreachProps } from '../remotion/schema';
+import { concatIntroTeaser, ensureTeaserCache, teaserHash } from './assemble';
+import { outreachPropsSchema, TEASER_DATEI, type OutreachProps } from '../remotion/schema';
 
 // Render-Schleife des Workers: Remotion einmal bündeln, dann Leads aus der Warteschlange rendern.
 
@@ -15,6 +16,10 @@ const POLL_MS = 3000;
 const ROOT = process.cwd();
 
 let serveUrl: string | null = null;
+let teaserCache: string | null = null;
+let teaserCacheHash = '';
+let teaserBereit: Promise<string> | null = null;
+const TEASER_QUELLE = path.join(ROOT, 'remotion/public', TEASER_DATEI);
 let browser: HeadlessBrowser | null = null;
 const aktiv = new Map<number, Promise<void>>();
 let laeuft = true;
@@ -38,6 +43,23 @@ export async function bundleRemotion(): Promise<void> {
     publicDir: path.join(ROOT, 'remotion/public'),
   });
   console.log(`[render] Bundle fertig (${((Date.now() - t) / 1000).toFixed(1)} s)`);
+}
+
+/** Teaser-Cache sicherstellen (beim Start und vor jedem Job; neu kodiert, wenn teaser.mp4 ersetzt wurde). */
+export async function pruefeTeaserCache(): Promise<string> {
+  const hash = teaserHash(TEASER_QUELLE);
+  if (teaserCache && hash === teaserCacheHash && fs.existsSync(teaserCache)) return teaserCache;
+  // Parallele Jobs teilen sich eine einzige Kodierung
+  teaserBereit ??= ensureTeaserCache(TEASER_QUELLE)
+    .then((p) => {
+      teaserCache = p;
+      teaserCacheHash = hash;
+      return p;
+    })
+    .finally(() => {
+      teaserBereit = null;
+    });
+  return teaserBereit;
 }
 
 /** Recovery: beim Start hängengebliebene Jobs zurück in die Warteschlange. */
@@ -64,6 +86,7 @@ async function renderLead(leadId: number): Promise<void> {
   if (!lead || !serveUrl) return;
   const start = Date.now();
   const tmpVideo = path.join(mediaDir(), `${lead.slug}.rendering.mp4`);
+  const tmpIntro = path.join(mediaDir(), `${lead.slug}.intro.mp4`);
   const tmpThumb = path.join(mediaDir(), `${lead.slug}.rendering.jpg`);
   try {
     fs.mkdirSync(mediaDir(), { recursive: true });
@@ -76,19 +99,25 @@ async function renderLead(leadId: number): Promise<void> {
     const puppeteerInstance = await holeBrowser();
     const common = { serveUrl, puppeteerInstance, browserExecutable: browserExecutable() };
 
-    const videoComp = await selectComposition({ ...common, id: 'OutreachVideo', inputProps });
+    const teaser = await pruefeTeaserCache();
+
+    // Nur das 5-s-Intro rendern (stumme AAC-Spur, damit Concat mit dem Teaser Stream-Copy-fähig ist)
+    const introComp = await selectComposition({ ...common, id: 'OutreachIntro', inputProps });
     await renderMedia({
       ...common,
-      composition: videoComp,
+      composition: introComp,
       codec: 'h264',
       crf: 28,
       audioCodec: 'aac',
+      enforceAudioTrack: true,
       imageFormat: 'jpeg',
       inputProps,
-      outputLocation: tmpVideo,
+      outputLocation: tmpIntro,
       overwrite: true,
       concurrency: 2,
     });
+    await concatIntroTeaser(tmpIntro, teaser, tmpVideo);
+    fs.rmSync(tmpIntro, { force: true });
 
     const thumbComp = await selectComposition({ ...common, id: 'OutreachThumbnail', inputProps });
     await renderStill({
@@ -118,7 +147,7 @@ async function renderLead(leadId: number): Promise<void> {
     console.log(`[render] ${lead.slug} fertig in ${((Date.now() - start) / 1000).toFixed(1)} s`);
   } catch (e) {
     console.error(`[render] ${lead.slug} fehlgeschlagen:`, e);
-    for (const p of [tmpVideo, tmpThumb]) fs.rmSync(p, { force: true });
+    for (const p of [tmpVideo, tmpIntro, tmpThumb]) fs.rmSync(p, { force: true });
     // Browser nach Fehlern verwerfen, beim nächsten Job wird ein frischer geöffnet
     const kaputt = browser;
     browser = null;

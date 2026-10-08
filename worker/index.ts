@@ -1,6 +1,6 @@
 // Worker: Render- und Versand-Schleife. Start: `npm run worker`
 import { getDb } from '../lib/db';
-import { bundleRemotion, recoverRenderJobs, startRenderLoop } from './render';
+import { bundleRemotion, pruefeTeaserCache, recoverRenderJobs, startRenderLoop } from './render';
 import { startSendLoop } from './send';
 
 const SHUTDOWN_MAX_MS = 30_000;
@@ -9,6 +9,7 @@ async function main() {
   getDb();
   recoverRenderJobs();
   await bundleRemotion();
+  await pruefeTeaserCache();
 
   // Schleifen: jede liefert eine Stop-Funktion, die auf laufende Arbeit wartet
   const stoppers: Array<() => Promise<void>> = [];
