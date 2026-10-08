@@ -1,8 +1,8 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  // Native Module dürfen nicht gebündelt werden (Remotion-Pakete folgen in Phase 2)
-  serverExternalPackages: ['better-sqlite3'],
+  // Native Module und Remotion dürfen nicht gebündelt werden (nur der Worker nutzt Remotion)
+  serverExternalPackages: ['better-sqlite3', 'remotion', '@remotion/bundler', '@remotion/renderer', '@remotion/cli'],
   poweredByHeader: false,
 };
 
