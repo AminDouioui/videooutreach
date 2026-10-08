@@ -33,7 +33,7 @@ worker (tsx worker/index.ts) ──────┴── Remotion-Render, Gmail-
 
 - `app/`, `components/`, `lib/`: Next.js 15 (App Router), SQLite über better-sqlite3 + Drizzle, Migrationen in `db/migrations` (werden beim Start automatisch angewendet; Arbeitsverzeichnis muss das Projektverzeichnis sein).
 - `worker/`: eigener Prozess; bundelt die Remotion-Komposition einmal, rendert Videos (H.264, 720p) und Vorschaubilder, sendet Mails. Hängende Render-Jobs werden beim Start wieder aufgenommen.
-- `remotion/`: Kompositionen `OutreachVideo` und `OutreachThumbnail`, Teaser in `remotion/public/teaser.mp4`.
+- `remotion/`: Kompositionen `OutreachIntro` (personalisiertes Intro, wird pro Lead gerendert), `OutreachThumbnail` (Vorschaubild) und `OutreachVideo` (Intro + Teaser, nur zur Vorschau im Studio). Teaser in `remotion/public/teaser.mp4`.
 - Beide Prozesse teilen sich `DATA_DIR` (Datenbank + `media/`). In Produktion laufen sie als Docker-Dienste `app` und `worker` aus einem Image.
 
 ## Lokale Entwicklung
@@ -110,8 +110,9 @@ Kurzfassung: In der Google Cloud Console ein Projekt anlegen, die Gmail API akti
 
 ## Rendern mit Remotion
 
-- Der Worker bundelt `remotion/` einmal beim Start und rendert danach pro Lead: Intro (5 s, Firmenname) + Teaser, 1280x720, 30 fps, H.264, dazu ein JPG-Vorschaubild mit Play-Button. Ergebnis: `DATA_DIR/media/<slug>.mp4` und `<slug>.jpg`.
-- **Teaser austauschen:** Datei `remotion/public/teaser.mp4` durch das neue Video ersetzen (gleicher Dateiname, 16:9 empfohlen, mit Ton). Die Länge wird automatisch gelesen. Bereits gerenderte Videos bleiben unverändert; im Dashboard „Dieses Video neu rendern“ bzw. „Alle rendern“ verwenden. Im Docker-Betrieb danach `docker compose up -d --build`, da der Teaser im Image liegt.
+- Der Worker bundelt `remotion/` einmal beim Start. Pro Lead rendert Remotion nur das 5-Sekunden-Intro (`OutreachIntro`: „Guten Tag …, ein Video für {Firma}“, endet in Weiß). Der Teaser wird **einmal** passend vorkodiert (`DATA_DIR/cache/teaser-*.mp4`) und per ffmpeg ohne Neukodierung angehängt. Dadurch dauert ein Lead ca. 10 s statt mehrerer Minuten (200 Leads ≈ 35 min mit `RENDER_CONCURRENCY=1`). Ergebnis: `DATA_DIR/media/<slug>.mp4` (1280x720, 30 fps, H.264/AAC, ca. 64 s, ca. 3,5 MB) und `<slug>.jpg` (Vorschaubild mit Play-Button).
+- `DATA_DIR/cache` darf jederzeit gelöscht werden; der Worker baut den Teaser-Cache neu auf (30–70 s).
+- **Teaser austauschen:** Datei `remotion/public/teaser.mp4` durch das neue Video ersetzen (gleicher Dateiname, 16:9 empfohlen, mit Ton). Der Worker erkennt die Änderung und kodiert den Teaser beim nächsten Job automatisch neu. Bereits gerenderte Videos bleiben unverändert; sie müssen pro Lead mit „Video neu rendern“ neu erzeugt werden. Im Docker-Betrieb danach `docker compose up -d --build`, da der Teaser im Image liegt.
 - Komposition ansehen/ändern: `npm run remotion:studio`.
 - Rendern braucht RAM (Chrome): für `RENDER_CONCURRENCY=1` rund 2 bis 3 GB freien Speicher einplanen.
 
