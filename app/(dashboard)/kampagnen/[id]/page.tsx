@@ -6,6 +6,7 @@ import { CampaignActions } from '@/components/CampaignActions';
 import { LeadsTable, type LeadRow } from '@/components/LeadsTable';
 import { getDb, schema } from '@/lib/db';
 import { getEnv } from '@/lib/env';
+import { ladeLeadMetriken } from '@/lib/tracking';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,7 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
   if (!kampagne) notFound();
 
   const leads = db.select().from(schema.leads).where(eq(schema.leads.campaignId, id)).all();
+  const metriken = ladeLeadMetriken(id);
   const rows: LeadRow[] = leads.map((l) => ({
     id: l.id,
     firma: l.firma,
@@ -25,6 +27,12 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
     slug: l.slug,
     renderStatus: l.renderStatus,
     sendStatus: l.sendStatus,
+    sentAt: l.sentAt ? l.sentAt.getTime() : null,
+    aufrufe: metriken.get(l.id)?.aufrufe ?? 0,
+    videostarts: metriken.get(l.id)?.videostarts ?? 0,
+    maxProgress: metriken.get(l.id)?.maxProgress ?? 0,
+    terminKlicks: metriken.get(l.id)?.terminKlicks ?? 0,
+    oeffnungen: metriken.get(l.id)?.oeffnungen ?? 0,
     score: l.score,
   }));
   const gerendert = leads.filter((l) => l.renderStatus === 'fertig').length;
@@ -48,7 +56,7 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
         </div>
         <CampaignActions campaignId={kampagne.id} leadCount={leads.length} />
       </div>
-      <LeadsTable leads={rows} baseUrl={getEnv().APP_URL} />
+      <LeadsTable leads={rows} baseUrl={getEnv().APP_URL} campaignId={kampagne.id} trackingPixel={kampagne.trackingPixel} />
     </div>
   );
 }
