@@ -51,7 +51,7 @@ export default async function VideoSeite({ params }: { params: Promise<{ slug: s
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
         {bereit ? (
           <>
-            <h1 className="text-balance text-3xl font-bold leading-tight tracking-tight sm:text-5xl">
+            <h1 className="text-balance text-3xl font-bold leading-[1.15] tracking-tight sm:text-5xl">
               {begruessung(lead)}, ein Video für <span className="text-[#7b3aec]">{lead.firma}</span>
             </h1>
             <p className="mb-8 mt-4 max-w-2xl text-base text-neutral-600 sm:text-lg">

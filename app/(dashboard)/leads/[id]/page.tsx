@@ -93,7 +93,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           {events.length === 0 ? (
             <p className="text-sm text-slate-500">Noch keine Aktivität.</p>
           ) : (
-            <ol className="space-y-2">
+            <ol className="max-h-[32rem] space-y-2 overflow-y-auto pr-1">
               {events.map((e) => (
                 <li key={e.id} className={`flex items-center gap-3 text-sm ${e.isBot ? 'text-slate-400' : ''}`}>
                   <span className={`h-2 w-2 shrink-0 rounded-full ${e.isBot ? 'bg-slate-300' : e.type === 'cta_click' ? 'bg-green-500' : 'bg-indigo-500'}`} />
