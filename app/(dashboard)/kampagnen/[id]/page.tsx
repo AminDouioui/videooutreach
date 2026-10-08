@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { Badge } from '@/components/Badge';
 import { CampaignActions } from '@/components/CampaignActions';
 import { LeadsTable, type LeadRow } from '@/components/LeadsTable';
+import { SendControls } from '@/components/SendControls';
 import { getDb, schema } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import { ladeLeadMetriken } from '@/lib/tracking';
@@ -55,6 +56,17 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
           </p>
         </div>
         <CampaignActions campaignId={kampagne.id} leadCount={leads.length} />
+      </div>
+      <div className="mb-4 space-y-3">
+        <div className="flex gap-4 text-sm">
+          <Link href={`/kampagnen/${kampagne.id}/vorlage`} className="font-medium text-indigo-600 hover:underline">
+            Vorlage
+          </Link>
+          <Link href={`/kampagnen/${kampagne.id}/einstellungen`} className="font-medium text-indigo-600 hover:underline">
+            Einstellungen
+          </Link>
+        </div>
+        <SendControls campaignId={kampagne.id} readyCount={gerendert} />
       </div>
       <LeadsTable leads={rows} baseUrl={getEnv().APP_URL} campaignId={kampagne.id} trackingPixel={kampagne.trackingPixel} />
     </div>
