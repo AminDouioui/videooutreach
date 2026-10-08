@@ -6,3 +6,6 @@ data/
 out
 *.log
 *.tsbuildinfo
+backups/
+docker-compose.override.yml
+Caddyfile

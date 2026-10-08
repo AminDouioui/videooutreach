@@ -1,0 +1,21 @@
+# Variante: Caddy als eigener Container, wenn auf dem Server noch KEIN Webserver Port 80/443 belegt.
+# (Läuft dort bereits nginx/Apache/Traefik, diese Datei NICHT verwenden.)
+# Verwendung: cp deploy/caddy-compose.override.example.yml docker-compose.override.yml
+#             cp deploy/Caddyfile.docker.example Caddyfile   (Domain anpassen)
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/media:/srv/media:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [app]
+
+volumes:
+  caddy_data:
+  caddy_config:

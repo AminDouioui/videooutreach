@@ -1,0 +1,37 @@
+# Video-Outreach: Web-App + Worker (Rendern & Versand), ein gemeinsames Image.
+# Daten liegen auf dem Host in ./data (Datenbank ./data/app.db, Medien ./data/media).
+# Der Proxy (nginx/Caddy) liest ./data/media direkt – siehe deploy/.
+# Rechte: Container läuft als uid 1000 ->  mkdir -p data && sudo chown -R 1000:1000 data
+x-gemeinsam: &gemeinsam
+  build: .
+  image: videooutreach:latest
+  env_file: .env
+  environment:
+    DATA_DIR: /data          # überschreibt den Wert aus .env
+  volumes:
+    - ./data:/data
+  init: true
+  restart: unless-stopped
+
+services:
+  app:
+    <<: *gemeinsam
+    ports:
+      - "127.0.0.1:3000:3000"   # nur lokal erreichbar, öffentlich über den Reverse Proxy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # mem_limit: 768m           # optional, Richtwert für die App
+
+  worker:
+    <<: *gemeinsam
+    command: ["npx", "tsx", "worker/index.ts"]
+    shm_size: "1gb"             # Chrome braucht ausreichend /dev/shm
+    stop_grace_period: 40s      # Worker beendet laufende Jobs (max. 30 s)
+    # mem_limit: 3g             # optional, Richtwert (Chrome + ffmpeg); bei RENDER_CONCURRENCY=1 reichen ~2-3 GB
+    depends_on:
+      app:
+        condition: service_healthy
