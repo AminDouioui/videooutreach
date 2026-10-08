@@ -12,6 +12,7 @@ const envSchema = z.object({
   IP_HASH_SALT: z.string().min(1, 'IP_HASH_SALT fehlt'),
   DATA_DIR: z.preprocess(leer, z.string().default('./data')),
   RENDER_CONCURRENCY: z.preprocess(leer, z.coerce.number().int().min(1).max(8).default(1)),
+  FFMPEG_PATH: z.preprocess(leer, z.string().default('ffmpeg')),
   REMOTION_BROWSER_EXECUTABLE: opt(z.string()),
   GOOGLE_CLIENT_ID: opt(z.string()),
   GOOGLE_CLIENT_SECRET: opt(z.string()),
