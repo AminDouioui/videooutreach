@@ -1,0 +1,21 @@
+# Caddy direkt auf dem Host (z. B. apt install caddy). In /etc/caddy/Caddyfile ergänzen
+# bzw. per "import" einbinden. Caddy holt und erneuert das TLS-Zertifikat automatisch.
+# DNS: A-Record video.DEINEDOMAIN.de -> Server-IP muss vorher stehen.
+video.DEINEDOMAIN.de {
+	encode zstd gzip
+
+	# Mediendateien direkt von der Platte (Range-Requests und ETag inklusive)
+	handle_path /media/* {
+		root * /srv/videooutreach/data/media   # = ./data/media des Compose-Projekts
+		header Cache-Control "public, max-age=31536000, immutable"
+		header X-Content-Type-Options nosniff
+		file_server
+	}
+
+	handle {
+		request_body {
+			max_size 6MB
+		}
+		reverse_proxy 127.0.0.1:3000
+	}
+}

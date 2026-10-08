@@ -1,0 +1,39 @@
+# Variante: Die bestehende Website läuft hinter Traefik (Docker).
+# Verwendung: cp deploy/traefik-compose.override.example.yml docker-compose.override.yml
+# Anpassen: Netzwerkname ("proxy"), Entrypoints ("websecure"), Resolver ("letsencrypt"), Domain.
+# Die Port-Veröffentlichung auf 127.0.0.1:3000 bleibt harmlos und kann bleiben.
+#
+# Wichtig: Traefik kann /media nicht von der Platte ausliefern. Die Medien kommen daher über
+# einen kleinen nginx-Container (Service "media") mit Range-Support und Cache-Headern;
+# die App liefert /media zwar auch selbst aus, der nginx entlastet sie aber.
+services:
+  app:
+    networks: [default, proxy]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.vo-app.rule=Host(`video.DEINEDOMAIN.de`)
+      - traefik.http.routers.vo-app.entrypoints=websecure
+      - traefik.http.routers.vo-app.tls.certresolver=letsencrypt
+      - traefik.http.routers.vo-app.priority=1
+      - traefik.http.services.vo-app.loadbalancer.server.port=3000
+
+  media:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./data/media:/usr/share/nginx/html/media:ro
+      - ./deploy/media-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [proxy]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.vo-media.rule=Host(`video.DEINEDOMAIN.de`) && PathPrefix(`/media/`)
+      - traefik.http.routers.vo-media.entrypoints=websecure
+      - traefik.http.routers.vo-media.tls.certresolver=letsencrypt
+      - traefik.http.routers.vo-media.priority=10
+      - traefik.http.services.vo-media.loadbalancer.server.port=80
+
+networks:
+  proxy:
+    external: true   # bestehendes Traefik-Netzwerk

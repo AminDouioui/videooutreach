@@ -1,0 +1,54 @@
+# nginx-Site für video.DEINEDOMAIN.de
+# Installation:
+#   sudo cp deploy/nginx/video.conf.example /etc/nginx/sites-available/video.conf
+#   (DEINEDOMAIN und den Pfad /srv/videooutreach anpassen)
+#   sudo ln -s /etc/nginx/sites-available/video.conf /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot --nginx -d video.DEINEDOMAIN.de     # ergänzt TLS-Teil und Weiterleitung automatisch
+#
+# Hinweis: Vor certbot nur der Port-80-Block aktiv lassen, den 443-Block erst nach der Zertifikatsausstellung
+# einkommentieren – oder certbot ergänzen lassen. Die bestehende Website bleibt unberührt (eigener server-Block).
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name video.DEINEDOMAIN.de;
+
+    location /.well-known/acme-challenge/ { root /var/www/html; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name video.DEINEDOMAIN.de;
+
+    ssl_certificate     /etc/letsencrypt/live/video.DEINEDOMAIN.de/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/video.DEINEDOMAIN.de/privkey.pem;
+    include             /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
+
+    client_max_body_size 6m;   # Upload bis 5 MB (xlsx/csv)
+
+    # Mediendateien direkt von der Platte (Host-Pfad = ./data/media des Compose-Projekts).
+    # nginx unterstützt Range-Requests für statische Dateien von Haus aus.
+    location /media/ {
+        alias /srv/videooutreach/data/media/;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header Accept-Ranges bytes always;
+        add_header X-Content-Type-Options nosniff always;
+        access_log off;
+        try_files $uri =404;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+}
