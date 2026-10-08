@@ -149,7 +149,6 @@ export function buildEmail(lead: MailLead, campaign: MailCampaign, settings: Mai
 const CRLF = '\r\n';
 
 function istAscii(s: string): boolean {
-  // eslint-disable-next-line no-control-regex
   return /^[\x00-\x7f]*$/.test(s);
 }
 
