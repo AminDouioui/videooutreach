@@ -235,14 +235,14 @@ Für echte Ausfallsicherheit den Ordner `backups/` zusätzlich extern ablegen (z
 ### 10. Updates
 
 ```bash
-cd /srv/videooutreach && git pull && docker compose up -d --build
+bash /srv/videooutreach/deploy/update.sh   # git pull + fertiges Image laden + Neustart
 ```
 
 Migrationen laufen beim Start automatisch. Der Worker beendet laufende Jobs sauber (bis 30 s); unterbrochene Renderjobs nimmt er danach wieder auf.
 
 #### Automatisches Deployment per GitHub Action
 
-Bei jedem Push oder Merge auf `main` prüft `.github/workflows/deploy.yml` den Code (Typecheck, Lint, Tests) und ruft danach per SSH `deploy/update.sh` auf dem VPS auf (git pull, Rebuild, Health-Check). Schlägt eine Prüfung fehl, wird nicht ausgerollt. Manuell auslösen: GitHub → Actions → „Prüfen und Deployen“ → „Run workflow“.
+Bei jedem Push oder Merge auf `main` prüft `.github/workflows/deploy.yml` den Code (Typecheck, Lint, Tests) und baut das Docker-Image auf GitHub-Rechnern, legt es in der GitHub Container Registry (`ghcr.io/amindouioui/videooutreach`) ab und ruft danach per SSH `deploy/update.sh` auf dem VPS auf (git pull, Image laden, Neustart, Health-Check). Der Server baut selbst nichts. Schlägt eine Prüfung fehl, wird nicht ausgerollt. Manuell auslösen: GitHub → Actions → „Prüfen und Deployen“ → „Run workflow“.
 
 Einmalige Einrichtung auf dem Server (als root):
 
