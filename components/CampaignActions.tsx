@@ -68,6 +68,9 @@ export function CampaignActions({ campaignId, campaignName, leadCount, mitVideo 
           {busy === 'failed' ? 'Wird eingereiht …' : 'Fehlgeschlagene erneut rendern'}
         </button>
       )}
+      <Link href={`/kampagnen/${campaignId}/analyse`} className={sekundaer}>
+        Analyse
+      </Link>
       <Link href={`/kampagnen/${campaignId}/vorlage`} className={sekundaer}>
         E-Mail-Flow
       </Link>

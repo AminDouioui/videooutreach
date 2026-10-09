@@ -166,7 +166,7 @@ export const events = sqliteTable(
     isBot: integer('is_bot', { mode: 'boolean' }).notNull().default(false),
     createdAt: ts('created_at').notNull().default(jetzt),
   },
-  (t) => [index('events_lead_idx').on(t.leadId)],
+  (t) => [index('events_lead_idx').on(t.leadId), index('events_type_created_idx').on(t.type, t.createdAt)],
 );
 
 export const settings = sqliteTable('settings', {
