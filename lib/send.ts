@@ -4,6 +4,8 @@ import { getEnv } from './env';
 import { GmailSendError, isGmailConnected, kannAntwortenPruefen, pruefeThread, sendRaw, type GmailSender, type ThreadPruefer } from './gmail';
 import { buildEmail, buildMime, neueMessageId, oneClickUrl, type BuiltEmail, type MailSchritt } from './mail';
 import { getSetting, setSetting } from './settings';
+import { kampagnenExtraSpalten } from './campaigns';
+import { STANDARD_VARIABLEN, verwendeteVariablen } from './vorlage';
 import type { SendState } from './send-plan';
 import { isSuppressed } from './suppression';
 import { startOfDayBerlinMs, todayBerlin } from './time';
@@ -48,14 +50,25 @@ export function senderInfo(): { name: string; email: string } {
   };
 }
 
+/**
+ * Normalisierte Extra-Spalten der Kampagne – nur geladen, wenn die Vorlage Platzhalter außerhalb der
+ * Standardvariablen nutzt (spart die Abfrage bei einfachen Vorlagen).
+ */
+function extraSpaltenFuer(campaign: typeof schema.campaigns.$inferSelect, schritt?: MailSchritt): string[] {
+  const bekannt = new Set<string>(STANDARD_VARIABLEN);
+  const noetig = verwendeteVariablen(`${campaign.emailSubjectTemplate}\n${schritt ? schritt.body : campaign.emailBodyTemplate}`).filter((v) => !bekannt.has(v));
+  return noetig.length ? kampagnenExtraSpalten(campaign.id) : [];
+}
+
 /** Baut die Mail für einen Lead (Vorschau und Versand nutzen dieselbe Funktion). Mit `schritt` ein Follow-up. */
 export function buildLeadEmail(lead: typeof schema.leads.$inferSelect, campaign: typeof schema.campaigns.$inferSelect, schritt?: MailSchritt): BuiltEmail {
   return buildEmail(
     lead,
-    campaign,
+    { ...campaign, extraSpalten: extraSpaltenFuer(campaign, schritt) },
     {
       appUrl: getEnv().APP_URL.replace(/\/$/, ''),
       signature: getSetting('signature') ?? '',
+      senderName: senderInfo().name,
     },
     schritt,
   );
@@ -271,7 +284,7 @@ export async function sendFollowup(leadId: number, opts: SendOptions = {}): Prom
 
   try {
     if (await pruefeAntwort(lead, opts.pruefer, jetzt)) return { ok: false, kind: 'flow_beendet', error: 'Lead hat geantwortet' };
-    const { raw } = buildLeadMimeMitId(lead, kampagne, { schritt, inReplyTo: lead.rfcMessageId ?? undefined });
+    const { raw } = buildLeadMimeMitId(lead, kampagne, { schritt: { ...schritt, nr: lead.followupsSent + 1 }, inReplyTo: lead.rfcMessageId ?? undefined });
     const res = await sender(raw, lead.gmailThreadId);
     db.transaction((tx) => {
       tx.update(schema.leads)

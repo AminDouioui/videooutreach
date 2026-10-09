@@ -1,9 +1,10 @@
 import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { speichereFollowups } from '@/lib/campaigns';
+import { kampagnenExtraSpalten, speichereFollowups } from '@/lib/campaigns';
 import { getDb, schema } from '@/lib/db';
 import { fehler, parseJson } from '@/lib/request';
+import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
 
 export const runtime = 'nodejs';
 
@@ -26,6 +27,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   if (!k) return fehler('Kampagne nicht gefunden', 404);
   const parsed = await parseJson(req, bodySchema);
   if ('response' in parsed) return parsed.response;
+  const bekannt = [...STANDARD_VARIABLEN, ...kampagnenExtraSpalten(id)];
+  const klammern: string[] = [];
+  const unbekannt = new Set<string>();
+  parsed.data.followups.forEach((f, i) => {
+    const p = pruefeVorlage(f.body, bekannt);
+    klammern.push(...p.fehler.map((m) => `Follow-up ${i + 1}: ${m}`));
+    p.unbekannt.forEach((u) => unbekannt.add(u));
+  });
+  if (klammern.length) return fehler(`Vorlage ungültig: ${klammern.join('; ')}`);
   speichereFollowups(id, parsed.data.followups);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, warnungen: [...unbekannt].map((u) => `Unbekannter Platzhalter {{${u}}}`) });
 }

@@ -30,7 +30,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!lead) return fehler('Lead nicht gefunden', 404);
   const kampagne = db.select().from(schema.campaigns).where(eq(schema.campaigns.id, lead.campaignId)).get();
   if (!kampagne) return fehler('Kampagne nicht gefunden', 404);
-  let body: { subject?: unknown; body?: unknown; followupBody?: unknown } = {};
+  let body: { subject?: unknown; body?: unknown; followupBody?: unknown; followupNr?: unknown } = {};
   try {
     body = await req.json();
   } catch {
@@ -43,7 +43,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       emailSubjectTemplate: typeof body.subject === 'string' ? body.subject.slice(0, 500) : kampagne.emailSubjectTemplate,
       emailBodyTemplate: typeof body.body === 'string' ? body.body.slice(0, 20000) : kampagne.emailBodyTemplate,
     },
-    typeof body.followupBody === 'string' ? { body: body.followupBody.slice(0, 20000) } : undefined,
+    typeof body.followupBody === 'string' ? { body: body.followupBody.slice(0, 20000), nr: typeof body.followupNr === 'number' && body.followupNr >= 1 ? Math.floor(body.followupNr) : 1 } : undefined,
   );
   return NextResponse.json(mail);
 }

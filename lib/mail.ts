@@ -1,5 +1,7 @@
 import { randomBytes } from 'crypto';
 import { begruessung } from './name';
+import { loeseSpintax } from './spintax';
+import { extraVariablen, PLATZHALTER_MUSTER, STANDARD_VARIABLEN } from './vorlage';
 
 // Reine Mail-Logik: Platzhalter, HTML/Text-Aufbau und RFC-2822-MIME. Keine DB-, Netz- oder Env-Zugriffe.
 
@@ -10,6 +12,11 @@ export type MailLead = {
   vorname?: string | null;
   nachname?: string | null;
   renderedAt?: Date | null;
+  position?: string | null;
+  website?: string | null;
+  email?: string | null;
+  /** Nicht zugeordnete Import-Spalten (Originalspaltenname → Wert); als {{spaltenname}} nutzbar */
+  extra?: Record<string, string> | null;
 };
 
 export type MailCampaign = {
@@ -18,40 +25,46 @@ export type MailCampaign = {
   trackingPixel: boolean;
   /** false = Text-Kampagne: {{video_link}} und {{vorschaubild}} werden leer ersetzt */
   mitVideo?: boolean;
+  /**
+   * Normalisierte Extra-Spalten der Kampagne. Fehlt eine davon bei einem Lead, wird der Platzhalter
+   * leer (bzw. mit Fallback) ersetzt statt wörtlich stehen zu bleiben.
+   */
+  extraSpalten?: string[];
 };
 
-/** Für Follow-ups: eigener Text, Betreff „Re: …“ der Erstmail */
-export type MailSchritt = { body: string };
+/** Für Follow-ups: eigener Text, Betreff „Re: …“ der Erstmail. `nr` = Nummer des Follow-ups (ab 1, Spintax-Seed). */
+export type MailSchritt = { body: string; nr?: number };
 
 export type MailSettings = {
   /** Basis-URL der App ohne Slash am Ende, z. B. https://video.example.de */
   appUrl: string;
   /** Signatur (mehrzeilig, Klartext) */
   signature: string;
+  /** Absendername für {{absender_name}} */
+  senderName?: string;
 };
 
 export type BuiltEmail = { subject: string; html: string; text: string };
 
-export const PLATZHALTER = [
-  'begruessung',
-  'anrede',
-  'vorname',
-  'nachname',
-  'name',
-  'firma',
-  'video_link',
-  'vorschaubild',
-] as const;
+export const PLATZHALTER = STANDARD_VARIABLEN;
 
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-/** Ersetzt `{{name}}` (Leerzeichen erlaubt, case-insensitiv). Unbekannte Platzhalter bleiben unverändert. */
+/**
+ * Ersetzt `{{name}}` und `{{name|Fallback}}` (Leerzeichen erlaubt, case-insensitiv). Ist der Wert leer,
+ * gilt der Fallback. Unbekannte Platzhalter bleiben unverändert (mit Fallback: Fallback-Text).
+ * Ersetzte Werte werden nicht erneut ausgewertet.
+ */
 export function renderTemplate(tpl: string, vars: Record<string, string>): string {
-  return tpl.replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (voll, key: string) => {
+  return tpl.replace(PLATZHALTER_MUSTER, (voll, key: string, fallback: string | undefined) => {
     const k = key.toLowerCase();
-    return Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : voll;
+    if (Object.prototype.hasOwnProperty.call(vars, k)) {
+      const v = vars[k];
+      return v === '' && fallback !== undefined ? fallback.trim() : v;
+    }
+    return fallback !== undefined ? fallback.trim() : voll;
   });
 }
 
@@ -72,16 +85,25 @@ export function oneClickUrl(appUrl: string, slug: string): string {
   return `${appUrl}/api/unsubscribe/${slug}`;
 }
 
-function leadVars(lead: MailLead, appUrl: string): Record<string, string> {
+function leadVars(lead: MailLead, appUrl: string, settings: MailSettings, extraSpalten: string[] = []): Record<string, string> {
   const vorname = (lead.vorname ?? '').trim();
   const nachname = (lead.nachname ?? '').trim();
+  // Extra-Spalten zuerst, eingebaute Variablen überschreiben sie (keine Kollision möglich)
+  const extra: Record<string, string> = {};
+  for (const k of extraSpalten) extra[k] = '';
+  Object.assign(extra, extraVariablen(lead.extra));
   return {
+    ...extra,
     begruessung: begruessung(lead),
     anrede: (lead.anrede ?? '').trim(),
     vorname,
     nachname,
     name: [vorname, nachname].filter(Boolean).join(' '),
     firma: lead.firma.trim(),
+    position: (lead.position ?? '').trim(),
+    website: (lead.website ?? '').trim(),
+    email: (lead.email ?? '').trim(),
+    absender_name: (settings.senderName ?? '').trim(),
     video_link: videoLink(appUrl, lead.slug),
   };
 }
@@ -109,15 +131,19 @@ export function antwortBetreff(betreff: string): string {
 export function buildEmail(lead: MailLead, campaign: MailCampaign, settings: MailSettings, schritt?: MailSchritt): BuiltEmail {
   const appUrl = settings.appUrl.replace(/\/$/, '');
   const mitVideo = campaign.mitVideo !== false;
-  const vars = leadVars(lead, appUrl);
+  const vars = leadVars(lead, appUrl, settings, campaign.extraSpalten);
   if (!mitVideo) vars.video_link = '';
   const link = vars.video_link;
   const thumb = thumbnailAbsUrl(appUrl, lead);
   const abmelden = unsubscribePageUrl(appUrl, lead.slug);
-  const vorlage = schritt ? schritt.body : campaign.emailBodyTemplate;
+  // Spintax zuerst auflösen (auf der Vorlage), danach Platzhalter einsetzen: so werden Lead-Werte nie als
+  // Spintax gelesen. Seed = Slug + Schritt + Feld; der Betreff nutzt immer Schritt 0, damit „Re: …“ der
+  // Follow-ups exakt dem Betreff der Erstmail entspricht.
+  const vorlage = loeseSpintax(schritt ? schritt.body : campaign.emailBodyTemplate, `${lead.slug}:${schritt ? (schritt.nr ?? 1) : 0}:text`);
+  const betreffVorlage = loeseSpintax(campaign.emailSubjectTemplate, `${lead.slug}:0:betreff`);
 
   // Betreff: Klartext, ohne Zeilenumbrüche (Header-Injection verhindern)
-  const ersterBetreff = renderTemplate(campaign.emailSubjectTemplate, { ...vars, vorschaubild: '' })
+  const ersterBetreff = renderTemplate(betreffVorlage, { ...vars, vorschaubild: '' })
     .replace(/[\r\n]+/g, ' ')
     .trim();
   const subject = schritt ? antwortBetreff(ersterBetreff) : ersterBetreff;

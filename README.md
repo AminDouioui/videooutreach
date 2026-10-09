@@ -13,6 +13,7 @@ Ablauf: Excel/CSV mit Leads hochladen, pro Lead entsteht ein eigenes Video (pers
 ## Funktionen
 
 - Login mit Admin-Passwort (ein Zugang), Kampagnen, Vorlagen mit Platzhaltern, Vorschau, Testmail.
+- Vorlagen: Spintax `{Hallo|Guten Tag}` (verschachtelbar, pro Lead stabil gewählt, auch in Betreff/Follow-ups), eigene Variablen aus nicht zugeordneten Import-Spalten (`{{stadt}}`, normalisiert), zusätzlich `{{position}}`, `{{website}}`, `{{email}}`, `{{absender_name}}`, und Fallbacks `{{vorname|Hallo zusammen}}`. Editor zeigt Variablen, Hilfe und Warnungen; unbalancierte Klammern verhindern das Speichern.
 - Import `.xlsx`/`.csv` mit Spalten-Mapping, Validierung (ungültige E-Mails, Duplikate, Sperrliste).
 - Rendern aller Leads, nur fehlgeschlagener oder einzelner Leads neu; Fortschritt im Dashboard.
 - Öffentliche Video-Seite (mobil, ohne Cookies/Fremd-Skripte, `noindex`).

@@ -3,6 +3,7 @@ import { getDb, schema } from './db';
 import { firmenDuplikate, firmenSchluessel } from './firma';
 import { deleteMedia } from './media';
 import { schliesseKampagneAb, stoppeRender } from './render-queue';
+import { normalisiereSpaltenname } from './vorlage';
 
 export const STANDARD_BETREFF = 'Kurzes Video für {{firma}}';
 export const STANDARD_TEXT = `{{begruessung}},
@@ -183,4 +184,17 @@ export function ladeKennzahlen(): Map<number, KampagnenKennzahlen> {
   for (const r of sehRows) get(r.id).sehdauer = r.avg === null ? null : Math.round(r.avg);
 
   return map;
+}
+
+// ---------------------------------------------------------------- Extra-Spalten (Vorlagen-Variablen)
+
+/** Alle normalisierten Extra-Spaltennamen der Leads einer Kampagne (sortiert). */
+export function kampagnenExtraSpalten(campaignId: number): string[] {
+  const zeilen = getDb().select({ extra: schema.leads.extra }).from(schema.leads).where(eq(schema.leads.campaignId, campaignId)).all();
+  const namen = new Set<string>();
+  for (const z of zeilen) for (const spalte of Object.keys(z.extra ?? {})) {
+    const k = normalisiereSpaltenname(spalte);
+    if (k) namen.add(k);
+  }
+  return [...namen].sort();
 }
