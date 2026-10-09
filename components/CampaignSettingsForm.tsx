@@ -11,6 +11,7 @@ type Werte = {
   sendWindowEnd: string;
   sendWeekdaysOnly: boolean;
   trackingPixel: boolean;
+  stoppBeiFirmenAntwort: boolean;
 };
 
 const feld = 'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600';
@@ -70,6 +71,15 @@ export function CampaignSettingsForm({ campaignId, initial }: { campaignId: numb
         <span>
           Öffnungs-Pixel einbinden
           <span className="block text-xs text-slate-500">Unzuverlässig (Mail-Programme laden Bilder oft nicht oder immer) und datenschutzrelevant. Standard: aus.</span>
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-sm text-slate-700">
+        <input type="checkbox" className="mt-1" checked={w.stoppBeiFirmenAntwort} onChange={(e) => set('stoppBeiFirmenAntwort', e.target.checked)} />
+        <span>
+          Bei Antwort einer Firma alle Kontakte dieser Firma stoppen
+          <span className="block text-xs text-slate-500">
+            Antwortet ein Kontakt, bekommen die anderen Leads mit derselben E-Mail-Domain keine Follow-ups und keine Erstmail mehr. Private Mail-Anbieter (gmail.com, gmx.de, web.de …) sind ausgenommen.
+          </span>
         </span>
       </label>
       <div className="flex items-center gap-3">

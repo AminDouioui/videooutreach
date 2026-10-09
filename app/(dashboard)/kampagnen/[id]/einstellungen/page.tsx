@@ -29,6 +29,7 @@ export default async function KampagnenEinstellungen({ params }: { params: Promi
           sendWindowEnd: k.sendWindowEnd,
           sendWeekdaysOnly: k.sendWeekdaysOnly,
           trackingPixel: k.trackingPixel,
+          stoppBeiFirmenAntwort: k.stoppBeiFirmenAntwort,
         }}
       />
     </div>

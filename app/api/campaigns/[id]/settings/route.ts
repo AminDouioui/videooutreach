@@ -18,6 +18,7 @@ const bodySchema = z
     sendWindowEnd: hhmm,
     sendWeekdaysOnly: z.boolean(),
     trackingPixel: z.boolean(),
+    stoppBeiFirmenAntwort: z.boolean(),
   })
   .refine((v) => parseHHMM(v.sendWindowStart) < parseHHMM(v.sendWindowEnd), { message: 'Fensterbeginn muss vor dem Fensterende liegen', path: ['sendWindowEnd'] });
 

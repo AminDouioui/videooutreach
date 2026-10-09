@@ -1,10 +1,13 @@
 import Link from 'next/link';
 import { asc, eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
-import { Badge } from '@/components/Badge';
+import { Badge, LeadStatusBadge } from '@/components/Badge';
+import { LeadStatusSelect } from '@/components/LeadStatusSelect';
 import { CopyButton } from '@/components/CopyButton';
 import { LeadActions, MailVorschau, NotizFeld } from '@/components/LeadDetailPanel';
 import { getDb, schema } from '@/lib/db';
+import { gmailThreadUrl } from '@/lib/lead-status';
+import { setzeAntwortGelesen } from '@/lib/lead-status-db';
 import { leadPageUrl, thumbnailUrl, videoUrl } from '@/lib/media';
 
 export const dynamic = 'force-dynamic';
@@ -32,6 +35,9 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const kampagne = db.select().from(schema.campaigns).where(eq(schema.campaigns.id, lead.campaignId)).get();
   if (!kampagne) notFound();
   const events = db.select().from(schema.events).where(eq(schema.events.leadId, id)).orderBy(asc(schema.events.createdAt), asc(schema.events.id)).all();
+
+  // Öffnen des Lead-Details markiert eine Antwort als gelesen
+  if (lead.flowStopp === 'beantwortet' && !lead.antwortGelesen) setzeAntwortGelesen(lead.id, true);
 
   const name = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
   const link = leadPageUrl(lead.slug);
@@ -61,6 +67,9 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
             <Badge status={lead.renderStatus} />
             <Badge status={lead.sendStatus} />
+            <LeadStatusBadge status={lead.leadStatus} />
+            {lead.variante && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700" title="Variante der Erstmail">Variante {lead.variante}</span>}
+            {lead.flowStopp && <Badge status={lead.flowStopp} />}
             {lead.unsubscribed && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">Abgemeldet</span>}
             <a href={`/v/${lead.slug}`} target="_blank" rel="noopener noreferrer" className="font-mono text-xs text-indigo-600 hover:underline">
               {link}
@@ -105,6 +114,29 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               ))}
             </ol>
           )}
+        </section>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Lead-Status &amp; Antwort</h2>
+          <div className="space-y-3 text-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <LeadStatusSelect leadId={lead.id} status={lead.leadStatus} />
+              {lead.leadStatusAt && <span className="text-xs text-slate-500">gesetzt am {zeit.format(lead.leadStatusAt)}</span>}
+            </div>
+            <p className="text-xs text-slate-500">Nicht interessiert, falscher Ansprechpartner, Termin gebucht, Gewonnen und Verloren beenden den Flow (keine Follow-ups mehr).</p>
+            <p>
+              <span className="text-slate-500">Erstmail-Variante:</span> {lead.variante ?? '–'}
+            </p>
+            <p>
+              <span className="text-slate-500">Antwort:</span>{' '}
+              {lead.flowStopp === 'beantwortet' ? (lead.antwortAt ?? lead.flowStoppAt ? `erkannt am ${zeit.format((lead.antwortAt ?? lead.flowStoppAt)!)}` : 'erkannt') : lead.flowStopp === 'firma_beantwortet' ? 'Kollege aus derselben Firma hat geantwortet' : 'keine'}
+            </p>
+            {lead.gmailThreadId && (
+              <a href={gmailThreadUrl(lead.gmailThreadId)} target="_blank" rel="noopener noreferrer" className="inline-block rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
+                In Gmail öffnen
+              </a>
+            )}
+          </div>
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-4">

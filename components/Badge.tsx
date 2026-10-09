@@ -1,3 +1,5 @@
+import { istLeadStatus, LEAD_STATUS_INFO } from '@/lib/lead-status';
+
 const FARBEN: Record<string, string> = {
   grau: 'bg-slate-100 text-slate-700',
   gruen: 'bg-green-100 text-green-800',
@@ -21,6 +23,8 @@ const ZUORDNUNG: Record<string, [string, string]> = {
   beantwortet: ['Beantwortet', 'gruen'],
   bounce: ['Bounce', 'rot'],
   abgemeldet: ['Abgemeldet', 'grau'],
+  status: ['Per Lead-Status beendet', 'grau'],
+  firma_beantwortet: ['Firma hat geantwortet', 'gelb'],
   // Kampagnen-Status
   entwurf: ['Entwurf', 'grau'],
   bereit: ['Bereit', 'gruen'],
@@ -32,4 +36,10 @@ const ZUORDNUNG: Record<string, [string, string]> = {
 export function Badge({ status }: { status: string }) {
   const [label, farbe] = ZUORDNUNG[status] ?? [status, 'grau'];
   return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${FARBEN[farbe]}`}>{label}</span>;
+}
+
+/** Badge für den Lead-Status (offen, interessiert …) */
+export function LeadStatusBadge({ status }: { status: string }) {
+  const info = istLeadStatus(status) ? LEAD_STATUS_INFO[status] : { label: status, farbe: 'grau' as const };
+  return <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${FARBEN[info.farbe]}`}>{info.label}</span>;
 }

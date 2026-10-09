@@ -1,7 +1,8 @@
-import { and, asc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { getDb, schema } from './db';
 import { getEnv } from './env';
 import { kannAntwortenPruefen, type GmailSender, type ThreadPruefer } from './gmail';
+import { FLOW_ENDENDE_STATUS } from './lead-status';
 import { decideSend, randomGapMs } from './send-plan';
 import { countSentToday, ladeFollowups, pruefeAntwort, readSendState, sendFollowup, sendLead, writeSendState, type SendResult } from './send';
 import { globalDailyLimit } from './settings';
@@ -35,6 +36,7 @@ function offeneErstmails(campaign: typeof schema.campaigns.$inferSelect) {
     .where(
       and(
         eq(schema.leads.campaignId, campaign.id),
+        notInArray(schema.leads.leadStatus, FLOW_ENDENDE_STATUS),
         or(eq(schema.leads.sendStatus, 'geplant'), and(eq(schema.leads.sendStatus, 'nicht_gesendet'), bereit)),
       ),
     )
@@ -56,6 +58,7 @@ function laufendeFlows(campaignId: number, anzahlFollowups: number) {
         eq(schema.leads.campaignId, campaignId),
         eq(schema.leads.sendStatus, 'gesendet'),
         isNull(schema.leads.flowStopp),
+        notInArray(schema.leads.leadStatus, FLOW_ENDENDE_STATUS),
         isNull(schema.leads.sendError),
         eq(schema.leads.unsubscribed, false),
         lt(schema.leads.followupsSent, anzahlFollowups),

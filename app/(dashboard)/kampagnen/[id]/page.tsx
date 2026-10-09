@@ -37,6 +37,7 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
     slug: l.slug,
     renderStatus: l.renderStatus,
     sendStatus: l.sendStatus,
+    leadStatus: l.leadStatus,
     sentAt: l.sentAt ? l.sentAt.getTime() : null,
     aufrufe: metriken.get(l.id)?.aufrufe ?? 0,
     videostarts: metriken.get(l.id)?.videostarts ?? 0,

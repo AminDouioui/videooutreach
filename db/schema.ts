@@ -34,6 +34,8 @@ export const campaigns = sqliteTable('campaigns', {
   status: text('status', { enum: KAMPAGNEN_STATUS }).notNull().default('entwurf'),
   // false = reine Text-Kampagne: kein Rendern, Versand direkt nach dem Import möglich
   mitVideo: integer('mit_video', { mode: 'boolean' }).notNull().default(true),
+  // Antwortet jemand einer Firma, werden die Flows aller anderen Leads mit derselben Domain gestoppt
+  stoppBeiFirmenAntwort: integer('stopp_bei_firmen_antwort', { mode: 'boolean' }).notNull().default(true),
 });
 
 /** Follow-up-Schritte einer Kampagne (Schritt 1 ist die Erstmail aus campaigns). Gesendet im selben Thread. */
@@ -73,7 +75,10 @@ export const varianten = sqliteTable(
   (t) => [index('varianten_campaign_idx').on(t.campaignId), uniqueIndex('varianten_campaign_kuerzel_idx').on(t.campaignId, t.kuerzel)],
 );
 
-export const FLOW_STOPP = ['beantwortet', 'bounce', 'abgemeldet'] as const;
+// 'status' = Flow per Lead-Status beendet, 'firma_beantwortet' = jemand anderes aus der Firma hat geantwortet
+// Muss mit LEAD_STATUS in lib/lead-status.ts übereinstimmen (Test lib/lead-status.test.ts)
+export const LEAD_STATUS = ['offen', 'interessiert', 'termin_gebucht', 'spaeter', 'nicht_interessiert', 'falscher_ansprechpartner', 'gewonnen', 'verloren'] as const;
+export const FLOW_STOPP = ['beantwortet', 'bounce', 'abgemeldet', 'status', 'firma_beantwortet'] as const;
 
 export const leads = sqliteTable(
   'leads',
@@ -115,11 +120,17 @@ export const leads = sqliteTable(
     flowStopp: text('flow_stopp', { enum: FLOW_STOPP }),
     flowStoppAt: ts('flow_stopp_at'),
     replyCheckedAt: ts('reply_checked_at'),
+    // Zeitpunkt, an dem die Antwort erkannt wurde
+    antwortAt: ts('antwort_at'),
+    antwortGelesen: integer('antwort_gelesen', { mode: 'boolean' }).notNull().default(false),
+    // Manueller Vertriebsstatus (wie „Lead Status“ bei Instantly)
+    leadStatus: text('lead_status', { enum: LEAD_STATUS }).notNull().default('offen'),
+    leadStatusAt: ts('lead_status_at'),
     // Kürzel der beim Versand der Erstmail genutzten Variante (A = Kampagnen-Vorlage); null = noch nicht gesendet
     variante: text('variante'),
     createdAt: ts('created_at').notNull().default(jetzt),
   },
-  (t) => [index('leads_campaign_idx').on(t.campaignId), index('leads_email_idx').on(t.email)],
+  (t) => [index('leads_campaign_idx').on(t.campaignId), index('leads_email_idx').on(t.email), index('leads_flow_stopp_idx').on(t.flowStopp)],
 );
 
 /** Jede gesendete Mail (Erstmail = step 0, Follow-ups = 1, 2 …); Grundlage der Tageslimits. */
