@@ -113,7 +113,7 @@ export type ValidatedRow = {
 };
 
 export type ValidationContext = {
-  /** E-Mails (lowercase), die bereits in irgendeiner Kampagne existieren */
+  /** E-Mails (lowercase), die bereits in der Ziel-Kampagne existieren */
   existingEmails: Set<string>;
   /** E-Mails (lowercase) der Sperrliste */
   suppressed: Set<string>;
@@ -159,7 +159,7 @@ export const STATUS_LABELS: Record<RowStatus, string> = {
   ok: 'Gültig',
   ungueltige_email: 'Ungültige E-Mail',
   duplikat_datei: 'Duplikat in Datei',
-  duplikat_bestand: 'Bereits vorhanden',
+  duplikat_bestand: 'Schon in dieser Kampagne',
   duplikat_firma: 'Gleiche Firma',
   gesperrt: 'Gesperrt',
   fehlende_pflichtfelder: 'Pflichtfelder fehlen',
@@ -177,7 +177,7 @@ export function summarize(rows: ValidatedRow[]): string {
   const teile: string[] = [`${c.ok} gültig`];
   const plural = (n: number, e: string, m: string) => `${n} ${n === 1 ? e : m}`;
   if (c.duplikat_datei) teile.push(plural(c.duplikat_datei, 'Duplikat', 'Duplikate'));
-  if (c.duplikat_bestand) teile.push(plural(c.duplikat_bestand, 'bereits vorhanden', 'bereits vorhanden'));
+  if (c.duplikat_bestand) teile.push(plural(c.duplikat_bestand, 'schon in dieser Kampagne', 'schon in dieser Kampagne'));
   if (c.duplikat_firma) teile.push(plural(c.duplikat_firma, 'weiterer Kontakt derselben Firma', 'weitere Kontakte derselben Firma'));
   if (c.ungueltige_email) teile.push(plural(c.ungueltige_email, 'ungültige E-Mail', 'ungültige E-Mails'));
   if (c.gesperrt) teile.push(`${c.gesperrt} gesperrt`);

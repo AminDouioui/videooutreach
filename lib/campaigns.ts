@@ -96,16 +96,18 @@ export const KAMPAGNEN_STATUS_LABEL: Record<string, string> = {
   abgeschlossen: 'Abgeschlossen',
 };
 
-/** E-Mails aller Leads (kampagnenübergreifend) und der Sperrliste für die Import-Validierung */
-export function ladeImportKontext(campaignId?: number) {
+/**
+ * Kontext für die Import-Prüfung. Jede Kampagne steht für sich: Duplikate (E-Mail, Firma) zählen nur innerhalb
+ * der Ziel-Kampagne. Nur die Sperrliste (Abmeldungen) gilt kampagnenübergreifend.
+ */
+export function ladeImportKontext(campaignId: number) {
   const db = getDb();
-  const vorhanden = db.select({ email: schema.leads.email, firma: schema.leads.firma, campaignId: schema.leads.campaignId }).from(schema.leads).all();
+  const vorhanden = db.select({ email: schema.leads.email, firma: schema.leads.firma }).from(schema.leads).where(eq(schema.leads.campaignId, campaignId)).all();
   const gesperrt = db.select({ email: schema.suppressionList.email }).from(schema.suppressionList).all();
   return {
     existingEmails: new Set(vorhanden.map((r) => r.email.toLowerCase())),
     suppressed: new Set(gesperrt.map((r) => r.email.toLowerCase())),
-    // Firmen, die in der Ziel-Kampagne schon vorkommen (für „ein Kontakt pro Firma“)
-    existingFirmen: new Set(vorhanden.filter((r) => r.campaignId === campaignId).map((r) => firmenSchluessel(r.firma))),
+    existingFirmen: new Set(vorhanden.map((r) => firmenSchluessel(r.firma))),
   };
 }
 
