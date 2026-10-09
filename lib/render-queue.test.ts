@@ -68,7 +68,8 @@ describe('Rendern stoppen', () => {
     expect(lead(fertig.id).renderStatus).toBe('fertig');
     // Der laufende Job ist noch nicht abgebrochen -> Kampagne bleibt vorerst 'rendert'
     expect(kampagne(k.id).status).toBe('rendert');
-    expect(m.queue.ladeKampagnenStatus(k.id)!.angefordert).toBe(1);
+    // Nichts mehr angefordert, der abzubrechende Job zählt aber noch als laufend (UI bleibt aktiv)
+    expect(m.queue.ladeKampagnenStatus(k.id)).toMatchObject({ angefordert: 0, rendert: 1 });
   });
 
   it('setzt die Kampagne auf bereit, wenn nichts mehr läuft', () => {
