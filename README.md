@@ -240,6 +240,35 @@ cd /srv/videooutreach && git pull && docker compose up -d --build
 
 Migrationen laufen beim Start automatisch. Der Worker beendet laufende Jobs sauber (bis 30 s); unterbrochene Renderjobs nimmt er danach wieder auf.
 
+#### Automatisches Deployment per GitHub Action
+
+Bei jedem Push oder Merge auf `main` prüft `.github/workflows/deploy.yml` den Code (Typecheck, Lint, Tests) und ruft danach per SSH `deploy/update.sh` auf dem VPS auf (git pull, Rebuild, Health-Check). Schlägt eine Prüfung fehl, wird nicht ausgerollt. Manuell auslösen: GitHub → Actions → „Prüfen und Deployen“ → „Run workflow“.
+
+Einmalige Einrichtung auf dem Server (als root):
+
+```bash
+# 1. Eigenen Deploy-Schlüssel erzeugen (ohne Passphrase)
+ssh-keygen -t ed25519 -N "" -C "github-deploy-videooutreach" -f /root/.ssh/videooutreach_deploy
+
+# 2. Schlüssel freischalten – aber NUR für das Update-Skript (Forced Command, keine Shell)
+echo "command=\"/srv/videooutreach/deploy/update.sh\",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty $(cat /root/.ssh/videooutreach_deploy.pub)" >> /root/.ssh/authorized_keys
+
+# 3. Werte für die GitHub-Secrets anzeigen
+cat /root/.ssh/videooutreach_deploy        # -> VPS_SSH_KEY (kompletter Inhalt inkl. BEGIN/END-Zeilen)
+ssh-keyscan -t ed25519 localhost 2>/dev/null | sed "s/^localhost/72.61.80.20/"   # -> VPS_KNOWN_HOSTS
+```
+
+Dann in GitHub unter **Settings → Secrets and variables → Actions → New repository secret** anlegen:
+
+| Secret | Wert |
+|---|---|
+| `VPS_HOST` | `72.61.80.20` |
+| `VPS_USER` | `root` |
+| `VPS_SSH_KEY` | Inhalt von `/root/.ssh/videooutreach_deploy` |
+| `VPS_KNOWN_HOSTS` | Ausgabe des `ssh-keyscan`-Befehls |
+
+Der Schlüssel kann wegen des Forced Commands ausschließlich `deploy/update.sh` ausführen – selbst wenn er in falsche Hände gerät, ist damit keine Shell auf dem Server möglich. Die private Datei kann nach dem Eintragen in GitHub auf dem Server gelöscht werden (`rm /root/.ssh/videooutreach_deploy`, die `.pub` und der Eintrag in `authorized_keys` bleiben).
+
 ### 11. Logs und Betrieb
 
 ```bash

@@ -1,0 +1,51 @@
+# Bei jedem Push/Merge auf main: prüfen (Typecheck, Lint, Tests) und danach auf den VPS ausrollen.
+# Benötigte Repository-Secrets (Settings → Secrets and variables → Actions):
+#   VPS_HOST         z.B. 72.61.80.20
+#   VPS_USER         z.B. root
+#   VPS_SSH_KEY      privater Deploy-Schlüssel (siehe README, Abschnitt „Automatisches Deployment“)
+#   VPS_KNOWN_HOSTS  Ausgabe von: ssh-keyscan -t ed25519 <VPS_HOST>
+name: Prüfen und Deployen
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+  deployen:
+    needs: pruefen
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: SSH einrichten
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Update auf dem VPS ausführen
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        # Der Schlüssel ist auf dem Server per Forced Command auf deploy/update.sh beschränkt.
+        run: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" update
