@@ -156,11 +156,20 @@ Läuft der Container 'traefik'? Sonst Werte per Umgebungsvariable setzen, z. B.:
     info "Erzeuge .env"
     local gid="${GOOGLE_CLIENT_ID:-}" gsec="${GOOGLE_CLIENT_SECRET:-}"
     if [ "$DRY_RUN" != "1" ]; then
+      # Formate prüfen, damit z.B. mehrfach eingefügte Werte (versteckte Eingabe!) auffallen
       if [ -z "$gid" ] && [ -z "${GOOGLE_CLIENT_ID+x}" ]; then
-        gid="$(frage "Google OAuth Client-ID (leer lassen = später eintragen): " 0)"
+        while :; do
+          gid="$(frage "Google OAuth Client-ID (leer lassen = später eintragen): " 0)"
+          [ -z "$gid" ] || [[ "$gid" =~ ^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$ ]] && break
+          warn "Das sieht nicht wie eine Client-ID aus (…apps.googleusercontent.com). Bitte genau einmal einfügen."
+        done
       fi
       if [ -z "$gsec" ] && [ -z "${GOOGLE_CLIENT_SECRET+x}" ]; then
-        gsec="$(frage "Google OAuth Client-Secret (Eingabe versteckt): " 1)"
+        while :; do
+          gsec="$(frage "Google OAuth Client-Secret (Eingabe versteckt, genau EINMAL einfügen, dann Enter): " 1)"
+          [ -z "$gsec" ] || [[ "$gsec" =~ ^GOCSPX-[A-Za-z0-9_-]{20,40}$ ]] && break
+          warn "Das Secret hat ${#gsec} Zeichen und sieht nicht wie 'GOCSPX-…' (ca. 35 Zeichen) aus. Bitte erneut, genau einmal einfügen."
+        done
       fi
     fi
     if [ -z "$gid" ] || [ -z "$gsec" ]; then

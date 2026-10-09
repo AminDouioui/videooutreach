@@ -276,7 +276,7 @@ Medien-URLs immer relativ `/media/...` auf der Seite; in Mails absolut `${APP_UR
   One-Click-URL im Header: `${APP_URL}/api/unsubscribe/{slug}` (POST), sichtbarer Link `${APP_URL}/abmelden/{slug}`.
 - Platzhalter: `{{begruessung}} {{anrede}} {{vorname}} {{nachname}} {{name}} {{firma}} {{video_link}} {{vorschaubild}}`.
   HTML: Text mit `<br>`/`<p>`, schlicht (Arial/Systemschrift 14px, keine Farben/Boxen). `{{vorschaubild}}` →
-  `<a href="video_link"><img src="thumb_url" alt="Video für {Firma} ansehen" width="480" style="max-width:100%;border:0"></a>`
+  `<a href="video_link"><img src="thumb_url" alt="Video für {Firma} ansehen" width="320" style="max-width:100%;height:auto;border:0"></a>`
   + darunter `<a href="video_link">Video ansehen: video_link</a>`. Klartext: `{{vorschaubild}}` → `Video ansehen: video_link`.
   Dann Signatur (settings, Zeilenumbrüche erhalten), dann klein: „Keine weiteren E-Mails? Hier abmelden: {link}“.
   Optional Öffnungs-Pixel wenn Kampagne `tracking_pixel`.

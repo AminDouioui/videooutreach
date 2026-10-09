@@ -126,7 +126,7 @@ export function buildEmail(lead: MailLead, campaign: MailCampaign, settings: Mai
   htmlVars.vorschaubild = BILD_TOKEN;
   const koerper = absaetze(renderTemplate(escapeHtml(campaign.emailBodyTemplate), htmlVars));
   const bild =
-    `<a href="${escapeHtml(link)}"><img src="${escapeHtml(thumb)}" alt="${escapeHtml(`Video für ${vars.firma} ansehen`)}" width="480" style="max-width:100%;border:0"></a>` +
+    `<a href="${escapeHtml(link)}"><img src="${escapeHtml(thumb)}" alt="${escapeHtml(`Video für ${vars.firma} ansehen`)}" width="320" style="max-width:100%;height:auto;border:0"></a>` +
     `<br><a href="${escapeHtml(link)}">Video ansehen: ${escapeHtml(link)}</a>`;
   const koerperMitBild = koerper.split(BILD_TOKEN).join(bild);
 
