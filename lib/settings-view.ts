@@ -1,5 +1,5 @@
 import { getEnv } from './env';
-import { connectedEmail, isGmailConnected, oauthConfigured } from './gmail';
+import { connectedEmail, isGmailConnected, kannAntwortenPruefen, oauthConfigured } from './gmail';
 import { getSetting, globalDailyLimit } from './settings';
 
 export function ladeEinstellungen() {
@@ -10,6 +10,6 @@ export function ladeEinstellungen() {
     globalDailyLimit: globalDailyLimit(),
     impressumUrl: getSetting('impressum_url') ?? env.IMPRESSUM_URL ?? '',
     datenschutzUrl: getSetting('datenschutz_url') ?? env.DATENSCHUTZ_URL ?? '',
-    gmail: { connected: isGmailConnected(), email: connectedEmail(), configured: oauthConfigured() },
+    gmail: { connected: isGmailConnected(), email: connectedEmail(), configured: oauthConfigured(), antwortPruefung: kannAntwortenPruefen() },
   };
 }

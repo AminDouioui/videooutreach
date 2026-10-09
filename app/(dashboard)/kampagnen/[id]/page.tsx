@@ -9,6 +9,7 @@ import { LeadsTable, type LeadRow } from '@/components/LeadsTable';
 import { SendControls } from '@/components/SendControls';
 import { getDb, schema } from '@/lib/db';
 import { getEnv } from '@/lib/env';
+import { ladeFollowups } from '@/lib/send';
 import { ladeLeadMetriken } from '@/lib/tracking';
 
 export const dynamic = 'force-dynamic';
@@ -37,8 +38,13 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
     terminKlicks: metriken.get(l.id)?.terminKlicks ?? 0,
     oeffnungen: metriken.get(l.id)?.oeffnungen ?? 0,
     score: l.score,
+    flowSchritt: l.sendStatus === 'gesendet' ? 1 + l.followupsSent : 0,
+    flowStopp: l.flowStopp,
   }));
   const gerendert = leads.filter((l) => l.renderStatus === 'fertig').length;
+  const followupSchritte = ladeFollowups(id).length;
+  // Text-Kampagnen sind sofort versandbereit
+  const versandbereit = kampagne.mitVideo ? gerendert : leads.length;
 
   return (
     <div>
@@ -54,16 +60,24 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
             {kampagne.name} <Badge status={kampagne.status} />
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            {gerendert} / {leads.length} gerendert · Termin-Link: {kampagne.ctaUrl}
+            {kampagne.mitVideo ? `${gerendert} / ${leads.length} gerendert` : `Text-Kampagne · ${leads.length} Leads`} ·{' '}
+            {followupSchritte > 0 ? `Flow: Erstmail + ${followupSchritte} Follow-up${followupSchritte === 1 ? '' : 's'}` : 'Nur Erstmail'} · Termin-Link: {kampagne.ctaUrl}
           </p>
         </div>
-        <CampaignActions campaignId={kampagne.id} leadCount={leads.length} />
+        <CampaignActions campaignId={kampagne.id} campaignName={kampagne.name} leadCount={leads.length} mitVideo={kampagne.mitVideo} />
       </div>
-      <RenderProgress campaignId={kampagne.id} initial={ladeKampagnenStatus(kampagne.id)!} />
+      {kampagne.mitVideo && <RenderProgress campaignId={kampagne.id} initial={ladeKampagnenStatus(kampagne.id)!} />}
       <div className="mb-4">
-        <SendControls campaignId={kampagne.id} readyCount={gerendert} />
+        <SendControls campaignId={kampagne.id} readyCount={versandbereit} />
       </div>
-      <LeadsTable leads={rows} baseUrl={getEnv().APP_URL} campaignId={kampagne.id} trackingPixel={kampagne.trackingPixel} />
+      <LeadsTable
+        leads={rows}
+        baseUrl={getEnv().APP_URL}
+        campaignId={kampagne.id}
+        trackingPixel={kampagne.trackingPixel}
+        mitVideo={kampagne.mitVideo}
+        followupSchritte={followupSchritte}
+      />
     </div>
   );
 }

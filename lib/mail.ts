@@ -16,7 +16,12 @@ export type MailCampaign = {
   emailSubjectTemplate: string;
   emailBodyTemplate: string;
   trackingPixel: boolean;
+  /** false = Text-Kampagne: {{video_link}} und {{vorschaubild}} werden leer ersetzt */
+  mitVideo?: boolean;
 };
+
+/** Für Follow-ups: eigener Text, Betreff „Re: …“ der Erstmail */
+export type MailSchritt = { body: string };
 
 export type MailSettings = {
   /** Basis-URL der App ohne Slash am Ende, z. B. https://video.example.de */
@@ -95,25 +100,34 @@ function absaetze(escaped: string): string {
     .join('\n');
 }
 
-/** Baut Betreff, HTML und Klartext einer Mail. */
-export function buildEmail(lead: MailLead, campaign: MailCampaign, settings: MailSettings): BuiltEmail {
+/** Betreff eines Follow-ups: „Re: “ + Betreff der Erstmail (nicht doppelt). */
+export function antwortBetreff(betreff: string): string {
+  return /^re:/i.test(betreff.trim()) ? betreff.trim() : `Re: ${betreff.trim()}`;
+}
+
+/** Baut Betreff, HTML und Klartext einer Mail (mit `schritt` ein Follow-up im selben Thread). */
+export function buildEmail(lead: MailLead, campaign: MailCampaign, settings: MailSettings, schritt?: MailSchritt): BuiltEmail {
   const appUrl = settings.appUrl.replace(/\/$/, '');
+  const mitVideo = campaign.mitVideo !== false;
   const vars = leadVars(lead, appUrl);
+  if (!mitVideo) vars.video_link = '';
   const link = vars.video_link;
   const thumb = thumbnailAbsUrl(appUrl, lead);
   const abmelden = unsubscribePageUrl(appUrl, lead.slug);
+  const vorlage = schritt ? schritt.body : campaign.emailBodyTemplate;
 
   // Betreff: Klartext, ohne Zeilenumbrüche (Header-Injection verhindern)
-  const subject = renderTemplate(campaign.emailSubjectTemplate, { ...vars, vorschaubild: '' })
+  const ersterBetreff = renderTemplate(campaign.emailSubjectTemplate, { ...vars, vorschaubild: '' })
     .replace(/[\r\n]+/g, ' ')
     .trim();
+  const subject = schritt ? antwortBetreff(ersterBetreff) : ersterBetreff;
 
   // Klartext
-  const textVars = { ...vars, vorschaubild: `Video ansehen: ${link}` };
+  const textVars = { ...vars, vorschaubild: mitVideo ? `Video ansehen: ${link}` : '' };
   const signaturText = settings.signature.replace(/\r\n?/g, '\n').trim();
   const text =
     [
-      renderTemplate(campaign.emailBodyTemplate.replace(/\r\n?/g, '\n'), textVars).trim(),
+      renderTemplate(vorlage.replace(/\r\n?/g, '\n'), textVars).trim(),
       signaturText ? `-- \n${signaturText}` : '',
       `Keine weiteren E-Mails? Hier abmelden: ${abmelden}`,
     ]
@@ -123,8 +137,8 @@ export function buildEmail(lead: MailLead, campaign: MailCampaign, settings: Mai
   // HTML: Vorlage und Werte escapen, Vorschaubild als Token einsetzen
   const htmlVars: Record<string, string> = {};
   for (const [k, v] of Object.entries(vars)) htmlVars[k] = escapeHtml(v);
-  htmlVars.vorschaubild = BILD_TOKEN;
-  const koerper = absaetze(renderTemplate(escapeHtml(campaign.emailBodyTemplate), htmlVars));
+  htmlVars.vorschaubild = mitVideo ? BILD_TOKEN : '';
+  const koerper = absaetze(renderTemplate(escapeHtml(vorlage), htmlVars));
   const bild =
     `<a href="${escapeHtml(link)}"><img src="${escapeHtml(thumb)}" alt="${escapeHtml(`Video für ${vars.firma} ansehen`)}" width="320" style="max-width:100%;height:auto;border:0"></a>` +
     `<br><a href="${escapeHtml(link)}">Video ansehen: ${escapeHtml(link)}</a>`;
@@ -193,17 +207,24 @@ export type MimeOptions = {
   text: string;
   listUnsubscribeUrl: string;
   listUnsubscribeMailto: string;
+  /** Follow-up: Message-ID der Erstmail (In-Reply-To/References), damit es im selben Thread landet */
+  inReplyTo?: string;
   /** Nur für Tests deterministisch */
   date?: Date;
   messageId?: string;
   boundary?: string;
 };
 
+/** Neue Message-ID für den Absender (`<zufall@domain>`). */
+export function neueMessageId(fromEmail: string): string {
+  const domain = fromEmail.split('@')[1] ?? 'localhost';
+  return `<${randomBytes(12).toString('hex')}@${domain}>`;
+}
+
 /** Baut die RFC-2822-Nachricht (multipart/alternative, text + html, kein Anhang) als String. */
 export function buildMimeText(o: MimeOptions): string {
   const boundary = o.boundary ?? `=_vo_${randomBytes(12).toString('hex')}`;
-  const domain = o.from.email.split('@')[1] ?? 'localhost';
-  const messageId = o.messageId ?? `<${randomBytes(12).toString('hex')}@${domain}>`;
+  const messageId = o.messageId ?? neueMessageId(o.from.email);
   const datum = (o.date ?? new Date()).toUTCString().replace('GMT', '+0000');
 
   const kopf = [
@@ -212,6 +233,7 @@ export function buildMimeText(o: MimeOptions): string {
     `To: ${sauber(o.to)}`,
     `Subject: ${encodeHeaderWord(sauber(o.subject))}`,
     `Message-ID: ${messageId}`,
+    ...(o.inReplyTo ? [`In-Reply-To: ${sauber(o.inReplyTo)}`, `References: ${sauber(o.inReplyTo)}`] : []),
     'MIME-Version: 1.0',
     `List-Unsubscribe: <${sauber(o.listUnsubscribeUrl)}>, <${sauber(o.listUnsubscribeMailto)}>`,
     'List-Unsubscribe-Post: List-Unsubscribe=One-Click',

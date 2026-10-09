@@ -9,7 +9,22 @@ const MELDUNGEN: Record<string, { text: string; fehler: boolean }> = {
   fehler: { text: 'Verbindung fehlgeschlagen.', fehler: true },
 };
 
-export function GmailStatus({ connected, email, configured, hinweis, detail }: { connected: boolean; email: string | null; configured: boolean; hinweis?: string; detail?: string }) {
+export function GmailStatus({
+  connected,
+  email,
+  configured,
+  hinweis,
+  detail,
+  antwortPruefung = false,
+}: {
+  connected: boolean;
+  email: string | null;
+  configured: boolean;
+  hinweis?: string;
+  detail?: string;
+  /** Leseberechtigung für Kopfzeilen erteilt (Antwort-Erkennung der Follow-ups) */
+  antwortPruefung?: boolean;
+}) {
   const router = useRouter();
   const [laedt, setLaedt] = useState(false);
   const m = hinweis ? MELDUNGEN[hinweis] : undefined;
@@ -44,7 +59,18 @@ export function GmailStatus({ connected, email, configured, hinweis, detail }: {
           {m.text} {detail}
         </p>
       )}
-      <p className="mt-3 text-xs text-slate-500">Es wird nur die Berechtigung „E-Mails senden“ (gmail.send) angefordert. Der Zugriffstoken wird verschlüsselt gespeichert.</p>
+      {connected && !antwortPruefung && (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+          <span>Für Follow-ups bitte neu verbinden: Die Antwort-Erkennung braucht eine zusätzliche Berechtigung.</span>
+          <a href="/api/gmail/connect" className="rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700">
+            Neu verbinden
+          </a>
+        </div>
+      )}
+      <p className="mt-3 text-xs text-slate-500">
+        Angefordert werden „E-Mails senden“ (gmail.send) und „Kopfzeilen lesen“ (gmail.metadata, nur um Antworten auf eigene Mails zu erkennen – kein Zugriff auf
+        Mail-Inhalte). Der Zugriffstoken wird verschlüsselt gespeichert.
+      </p>
     </section>
   );
 }

@@ -16,6 +16,11 @@ type Status = {
   sent: number;
   errors: number;
   gmailConnected: boolean;
+  followupSchritte: number;
+  followupsGesendet: number;
+  antworten: number;
+  bounces: number;
+  antwortPruefung: boolean;
 };
 
 const knopf = 'rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-60';
@@ -47,7 +52,7 @@ export function SendControls({ campaignId, readyCount }: { campaignId: number; r
   }, [laden]);
 
   async function aktion(action: 'start' | 'pause' | 'resume' | 'stop') {
-    if (action === 'stop' && !confirm('Versand abbrechen? Geplante Mails werden nicht mehr gesendet. Bereits gesendete bleiben unberührt; ein Neustart ist jederzeit möglich.')) return;
+    if (action === 'stop' && !confirm('Kampagne abbrechen? Geplante Mails und ausstehende Follow-ups werden nicht mehr gesendet. Bereits gesendete bleiben unberührt; ein Neustart ist jederzeit möglich.')) return;
     setLaedt(true);
     setMeldung(null);
     const res = await fetch(`/api/campaigns/${campaignId}/send`, {
@@ -73,13 +78,13 @@ export function SendControls({ campaignId, readyCount }: { campaignId: number; r
     <div className="rounded-lg border border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-center gap-2">
         {!laeuft && status !== 'pausiert' && (
-          <button onClick={() => aktion('start')} disabled={laedt || readyCount === 0} title={readyCount === 0 ? 'Noch keine fertig gerenderten Leads' : undefined} className={`${knopf} bg-indigo-600 text-white hover:bg-indigo-700`}>
-            Versand starten
+          <button onClick={() => aktion('start')} disabled={laedt || readyCount === 0} title={readyCount === 0 ? 'Noch keine versandbereiten Leads' : undefined} className={`${knopf} bg-indigo-600 text-white hover:bg-indigo-700`}>
+            Kampagne starten
           </button>
         )}
         {laeuft && (
           <button onClick={() => aktion('pause')} disabled={laedt} className={`${knopf} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}>
-            Pausieren
+            Kampagne pausieren
           </button>
         )}
         {status === 'pausiert' && (
@@ -89,7 +94,7 @@ export function SendControls({ campaignId, readyCount }: { campaignId: number; r
         )}
         {(laeuft || status === 'pausiert') && (
           <button onClick={() => aktion('stop')} disabled={laedt} className={`${knopf} border border-red-200 bg-white text-red-700 hover:bg-red-50`}>
-            Versand abbrechen
+            Kampagne abbrechen
           </button>
         )}
         <p className="text-sm text-slate-600">
@@ -99,6 +104,24 @@ export function SendControls({ campaignId, readyCount }: { campaignId: number; r
             {s.errors > 0 && <> · <span className="text-red-600">{s.errors} Fehler</span></>}
         </p>
       </div>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
+        <span>
+          Erstmails gesendet: <strong>{s.sent}</strong>
+        </span>
+        {s.followupSchritte > 0 && (
+          <span>
+            Follow-ups gesendet: <strong>{s.followupsGesendet}</strong>
+          </span>
+        )}
+        <span>
+          Antworten: <strong className={s.antworten > 0 ? 'text-green-700' : undefined}>{s.antworten}</strong>
+        </span>
+        {s.bounces > 0 && (
+          <span>
+            Bounces: <strong className="text-red-600">{s.bounces}</strong>
+          </span>
+        )}
+      </div>
       {laeuft && (
         <p className="mt-2 text-xs text-slate-500">
           {s.quotaStopped
@@ -106,6 +129,11 @@ export function SendControls({ campaignId, readyCount }: { campaignId: number; r
             : !s.windowOpen
               ? 'Außerhalb des Versandfensters – es wird gesendet, sobald es öffnet.'
               : (naechster ?? 'Nächste Mail wird in Kürze gesendet.')}
+        </p>
+      )}
+      {s.gmailConnected && s.followupSchritte > 0 && !s.antwortPruefung && (
+        <p className="mt-2 text-xs text-amber-700">
+          Follow-ups werden nicht gesendet, bis Gmail unter Einstellungen neu verbunden ist – die Antwort-Erkennung braucht eine zusätzliche Berechtigung (nur Kopfzeilen, keine Inhalte).
         </p>
       )}
       {!s.gmailConnected && <p className="mt-2 text-xs text-amber-700">Gmail ist nicht verbunden – bitte unter Einstellungen verbinden.</p>}

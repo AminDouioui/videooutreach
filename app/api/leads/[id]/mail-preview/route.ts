@@ -21,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   return NextResponse.json(mail);
 }
 
-/** Vorschau mit noch nicht gespeicherter Vorlage: Body { subject, body } */
+/** Vorschau mit noch nicht gespeicherter Vorlage: Body { subject, body, followupBody? } (mit followupBody: Follow-up im Thread) */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültiger Lead', 404);
@@ -30,16 +30,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!lead) return fehler('Lead nicht gefunden', 404);
   const kampagne = db.select().from(schema.campaigns).where(eq(schema.campaigns.id, lead.campaignId)).get();
   if (!kampagne) return fehler('Kampagne nicht gefunden', 404);
-  let body: { subject?: unknown; body?: unknown } = {};
+  let body: { subject?: unknown; body?: unknown; followupBody?: unknown } = {};
   try {
     body = await req.json();
   } catch {
     return fehler('Ungültiger Request-Body');
   }
-  const mail = buildLeadEmail(lead, {
-    ...kampagne,
-    emailSubjectTemplate: typeof body.subject === 'string' ? body.subject.slice(0, 500) : kampagne.emailSubjectTemplate,
-    emailBodyTemplate: typeof body.body === 'string' ? body.body.slice(0, 20000) : kampagne.emailBodyTemplate,
-  });
+  const mail = buildLeadEmail(
+    lead,
+    {
+      ...kampagne,
+      emailSubjectTemplate: typeof body.subject === 'string' ? body.subject.slice(0, 500) : kampagne.emailSubjectTemplate,
+      emailBodyTemplate: typeof body.body === 'string' ? body.body.slice(0, 20000) : kampagne.emailBodyTemplate,
+    },
+    typeof body.followupBody === 'string' ? { body: body.followupBody.slice(0, 20000) } : undefined,
+  );
   return NextResponse.json(mail);
 }

@@ -1,10 +1,10 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getDb, schema } from '@/lib/db';
-import { isGmailConnected } from '@/lib/gmail';
+import { isGmailConnected, kannAntwortenPruefen } from '@/lib/gmail';
 import { fehler, parseJson } from '@/lib/request';
-import { brecheVersandAb, countSentToday, readSendState } from '@/lib/send';
+import { brecheVersandAb, countSentToday, ladeFollowups, readSendState } from '@/lib/send';
 import { globalDailyLimit } from '@/lib/settings';
 import { isWithinWindow, todayBerlin } from '@/lib/time';
 
@@ -39,6 +39,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     sent: zaehl(eq(schema.leads.sendStatus, 'gesendet')),
     errors: zaehl(eq(schema.leads.sendStatus, 'fehler')),
     gmailConnected: isGmailConnected(),
+    // Flow (Follow-ups)
+    followupSchritte: ladeFollowups(id).length,
+    followupsGesendet: db.select({ n: sql<number>`count(*)` }).from(schema.sentMessages).where(and(eq(schema.sentMessages.campaignId, id), sql`${schema.sentMessages.step} > 0`)).get()?.n ?? 0,
+    antworten: zaehl(eq(schema.leads.flowStopp, 'beantwortet')),
+    bounces: zaehl(eq(schema.leads.flowStopp, 'bounce')),
+    antwortPruefung: kannAntwortenPruefen(),
   });
 }
 
@@ -68,13 +74,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (action === 'start' && k.status === 'versendet_laufend') return fehler('Versand läuft bereits');
   if (action === 'resume' && k.status !== 'pausiert') return fehler('Kampagne ist nicht pausiert');
 
-  // Fertig gerenderte, noch nicht gesendete Leads einplanen (gesperrte werden vom Worker übersprungen)
+  // Versandbereite, noch nicht gesendete Leads einplanen (gesperrte werden vom Worker übersprungen).
+  // Video-Kampagnen: nur fertig gerenderte; Text-Kampagnen: alle.
   db.update(schema.leads)
     .set({ sendStatus: 'geplant' })
-    .where(and(eq(schema.leads.campaignId, id), eq(schema.leads.sendStatus, 'nicht_gesendet'), eq(schema.leads.renderStatus, 'fertig')))
+    .where(
+      and(
+        eq(schema.leads.campaignId, id),
+        eq(schema.leads.sendStatus, 'nicht_gesendet'),
+        k.mitVideo ? eq(schema.leads.renderStatus, 'fertig') : sql`1 = 1`,
+      ),
+    )
     .run();
   const gesamtGeplant = db.select({ n: sql<number>`count(*)` }).from(schema.leads).where(and(eq(schema.leads.campaignId, id), eq(schema.leads.sendStatus, 'geplant'))).get()?.n ?? 0;
-  if (gesamtGeplant === 0) return fehler('Keine fertig gerenderten Leads zum Versenden vorhanden');
+  // Fortsetzen ist auch erlaubt, wenn nur noch Follow-ups ausstehen
+  const offeneFlows = ladeFollowups(id).length > 0
+    ? (db
+        .select({ n: sql<number>`count(*)` })
+        .from(schema.leads)
+        .where(and(eq(schema.leads.campaignId, id), eq(schema.leads.sendStatus, 'gesendet'), isNull(schema.leads.flowStopp)))
+        .get()?.n ?? 0)
+    : 0;
+  if (gesamtGeplant === 0 && offeneFlows === 0) {
+    return fehler(k.mitVideo ? 'Keine fertig gerenderten Leads zum Versenden vorhanden' : 'Keine Leads zum Versenden vorhanden');
+  }
 
   db.update(schema.campaigns).set({ status: 'versendet_laufend' }).where(eq(schema.campaigns.id, id)).run();
   return NextResponse.json({

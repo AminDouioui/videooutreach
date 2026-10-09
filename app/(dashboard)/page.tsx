@@ -33,6 +33,7 @@ export default function KampagnenUebersicht() {
                 <th className="px-3 py-2 text-right">Leads</th>
                 <th className="px-3 py-2 text-right">Gerendert</th>
                 <th className="px-3 py-2 text-right">Gesendet</th>
+                <th className="px-3 py-2 text-right">Antworten</th>
                 <th className="px-3 py-2 text-right">Seitenaufrufe</th>
                 <th className="px-3 py-2 text-right">Videostarts</th>
                 <th className="px-3 py-2 text-right">Ø Sehdauer</th>
@@ -49,17 +50,19 @@ export default function KampagnenUebersicht() {
                       <Link href={`/kampagnen/${k.id}`} className="font-medium text-indigo-600 hover:underline">
                         {k.name}
                       </Link>
+                      {!k.mitVideo && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">Nur Text</span>}
                     </td>
                     <td className="px-3 py-2">
                       <Badge status={k.status} />
                     </td>
                     <td className="px-3 py-2 text-right">{z?.leads ?? 0}</td>
-                    <td className="px-3 py-2 text-right">{z?.gerendert ?? 0}</td>
+                    <td className="px-3 py-2 text-right">{k.mitVideo ? (z?.gerendert ?? 0) : '–'}</td>
                     <td className="px-3 py-2 text-right">{z?.gesendet ?? 0}</td>
-                    <td className="px-3 py-2 text-right">{z?.seitenaufrufe ?? 0}</td>
-                    <td className="px-3 py-2 text-right">{z?.videostarts ?? 0}</td>
-                    <td className="px-3 py-2 text-right">{z?.sehdauer != null ? `${z.sehdauer} %` : '–'}</td>
-                    <td className="px-3 py-2 text-right">{z?.terminKlicks ?? 0}</td>
+                    <td className="px-3 py-2 text-right">{z?.antworten ?? 0}</td>
+                    <td className="px-3 py-2 text-right">{k.mitVideo ? (z?.seitenaufrufe ?? 0) : '–'}</td>
+                    <td className="px-3 py-2 text-right">{k.mitVideo ? (z?.videostarts ?? 0) : '–'}</td>
+                    <td className="px-3 py-2 text-right">{k.mitVideo && z?.sehdauer != null ? `${z.sehdauer} %` : '–'}</td>
+                    <td className="px-3 py-2 text-right">{k.mitVideo ? (z?.terminKlicks ?? 0) : '–'}</td>
                     <td className="px-3 py-2 text-right">{z?.abmeldungen ?? 0}</td>
                   </tr>
                 );

@@ -14,7 +14,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
   return (
     <div className="max-w-3xl space-y-6">
       <h1 className="text-xl font-semibold">Einstellungen</h1>
-      <GmailStatus connected={e.gmail.connected} email={e.gmail.email} configured={e.gmail.configured} hinweis={sp.gmail} detail={sp.detail} />
+      <GmailStatus connected={e.gmail.connected} email={e.gmail.email} configured={e.gmail.configured} antwortPruefung={e.gmail.antwortPruefung} hinweis={sp.gmail} detail={sp.detail} />
       <GlobalSettingsForm
         initial={{ senderName: e.senderName, signature: e.signature, globalDailyLimit: e.globalDailyLimit, impressumUrl: e.impressumUrl, datenschutzUrl: e.datenschutzUrl }}
       />

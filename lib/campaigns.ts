@@ -1,5 +1,7 @@
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { getDb, schema } from './db';
+import { deleteMedia } from './media';
+import { stoppeRender } from './render-queue';
 
 export const STANDARD_BETREFF = 'Kurzes Video für {{firma}}';
 export const STANDARD_TEXT = `{{begruessung}},
@@ -9,6 +11,42 @@ ich habe für {{firma}} ein kurzes, persönliches Video aufgenommen:
 {{vorschaubild}}
 
 Wenn das für Sie interessant ist, freue ich mich über eine kurze Rückmeldung oder einen 15-Minuten-Termin.`;
+
+export const STANDARD_BETREFF_OHNE_VIDEO = 'Kurze Frage an {{firma}}';
+export const STANDARD_TEXT_OHNE_VIDEO = `{{begruessung}},
+
+ich melde mich kurz bei Ihnen, weil …
+
+Wenn das für Sie interessant ist, freue ich mich über eine kurze Rückmeldung oder einen 15-Minuten-Termin.`;
+
+export type FollowupEingabe = { waitDays: number; body: string };
+
+/** Follow-up-Schritte einer Kampagne komplett ersetzen (Reihenfolge = Position). */
+export function speichereFollowups(campaignId: number, schritte: FollowupEingabe[]): void {
+  const db = getDb();
+  db.transaction((tx) => {
+    tx.delete(schema.followups).where(eq(schema.followups.campaignId, campaignId)).run();
+    schritte.forEach((s, i) => {
+      tx.insert(schema.followups).values({ campaignId, position: i + 1, waitDays: s.waitDays, body: s.body }).run();
+    });
+  });
+}
+
+/**
+ * Kampagne endgültig löschen: Rendern stoppen, Leads/Events/Follow-ups/Versandprotokoll (Cascade) und
+ * die gerenderten Videos + Vorschaubilder entfernen. Sperrliste und Abmeldungen bleiben erhalten.
+ */
+export function loescheKampagne(campaignId: number): { leads: number } | null {
+  const db = getDb();
+  const k = db.select({ id: schema.campaigns.id }).from(schema.campaigns).where(eq(schema.campaigns.id, campaignId)).get();
+  if (!k) return null;
+  // Laufenden Render-Job abbrechen lassen, damit er keine Dateien mehr schreibt
+  stoppeRender(campaignId);
+  const slugs = db.select({ slug: schema.leads.slug }).from(schema.leads).where(eq(schema.leads.campaignId, campaignId)).all();
+  db.delete(schema.campaigns).where(eq(schema.campaigns.id, campaignId)).run();
+  for (const { slug } of slugs) deleteMedia(slug);
+  return { leads: slugs.length };
+}
 
 export const KAMPAGNEN_STATUS_LABEL: Record<string, string> = {
   entwurf: 'Entwurf',
@@ -41,6 +79,7 @@ export type KampagnenKennzahlen = {
   sehdauer: number | null;
   terminKlicks: number;
   abmeldungen: number;
+  antworten: number;
 };
 
 /** Kennzahlen je Kampagne (Nicht-Bot-Events) */
@@ -50,7 +89,7 @@ export function ladeKennzahlen(): Map<number, KampagnenKennzahlen> {
   const get = (id: number) => {
     let k = map.get(id);
     if (!k) {
-      k = { id, leads: 0, gerendert: 0, gesendet: 0, seitenaufrufe: 0, videostarts: 0, sehdauer: null, terminKlicks: 0, abmeldungen: 0 };
+      k = { id, leads: 0, gerendert: 0, gesendet: 0, seitenaufrufe: 0, videostarts: 0, sehdauer: null, terminKlicks: 0, abmeldungen: 0, antworten: 0 };
       map.set(id, k);
     }
     return k;
@@ -63,11 +102,13 @@ export function ladeKennzahlen(): Map<number, KampagnenKennzahlen> {
       gerendert: sql<number>`sum(case when ${schema.leads.renderStatus} = 'fertig' then 1 else 0 end)`,
       gesendet: sql<number>`sum(case when ${schema.leads.sendStatus} = 'gesendet' then 1 else 0 end)`,
       abmeldungen: sql<number>`sum(case when ${schema.leads.unsubscribed} = 1 then 1 else 0 end)`,
+      antworten: sql<number>`sum(case when ${schema.leads.flowStopp} = 'beantwortet' then 1 else 0 end)`,
     })
     .from(schema.leads)
     .groupBy(schema.leads.campaignId)
     .all();
-  for (const r of leadRows) Object.assign(get(r.id), { leads: r.leads, gerendert: r.gerendert ?? 0, gesendet: r.gesendet ?? 0, abmeldungen: r.abmeldungen ?? 0 });
+  for (const r of leadRows)
+    Object.assign(get(r.id), { leads: r.leads, gerendert: r.gerendert ?? 0, gesendet: r.gesendet ?? 0, abmeldungen: r.abmeldungen ?? 0, antworten: r.antworten ?? 0 });
 
   const eventRows = db
     .select({

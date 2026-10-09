@@ -1,7 +1,8 @@
 # Gmail einrichten (Google Workspace)
 
 Das Dashboard versendet über die Gmail-API mit dem Konto `Amin.douioui@prozessia.de` (Google Workspace).
-Es wird ausschließlich die Berechtigung **„E-Mails senden“** (`gmail.send`) angefordert – kein Lesen des Postfachs.
+Angefordert werden **„E-Mails senden“** (`gmail.send`) und **„Kopfzeilen lesen“** (`gmail.metadata`). Letzteres braucht der
+E-Mail-Flow, um vor jedem Follow-up zu prüfen, ob der Lead im Thread geantwortet hat – Mail-Inhalte sind damit nicht lesbar.
 
 Einmalig durchführen (ca. 10 Minuten). Du brauchst Zugriff auf die Google Cloud Console mit einem Workspace-Konto
 der Domain prozessia.de (idealerweise Admin).
@@ -22,8 +23,11 @@ der Domain prozessia.de (idealerweise Admin).
 2. Nutzertyp **Intern** wählen (nur Konten der eigenen Workspace-Organisation; keine Google-Prüfung nötig,
    Refresh-Tokens laufen nicht nach 7 Tagen ab).
 3. App-Name `Video-Outreach`, Support-E-Mail und Entwickler-Kontakt: `Amin.douioui@prozessia.de`. Speichern.
-4. **Datenzugriff / Bereiche → Bereiche hinzufügen**: `https://www.googleapis.com/auth/gmail.send` eintragen
-   (steht unter „Gmail API“ als „E-Mails senden“), speichern.
+4. **Datenzugriff / Bereiche → Bereiche hinzufügen**: `https://www.googleapis.com/auth/gmail.send` und
+   `https://www.googleapis.com/auth/gmail.metadata` eintragen (unter „Gmail API“: „E-Mails senden“ und
+   „E-Mail-Metadaten wie Labels und Header ansehen“), speichern.
+   War Gmail schon vor dem E-Mail-Flow verbunden: Bereich ergänzen und unter **Einstellungen → Neu verbinden**
+   einmal neu verbinden, sonst werden keine Follow-ups gesendet.
 
 > Erscheint „Intern“ nicht auswählbar, gehört das Projekt nicht zur Workspace-Organisation. Dann das Projekt
 > unter der Organisation prozessia.de neu anlegen (Schritt 1).

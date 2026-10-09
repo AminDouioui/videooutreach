@@ -6,7 +6,7 @@ type LeadOption = { id: number; label: string };
 type Preview = { subject: string; html: string; text: string };
 
 const feld = 'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600';
-const PLATZHALTER: [string, string][] = [
+export const PLATZHALTER: [string, string][] = [
   ['{{begruessung}}', 'Guten Tag Max Mustermann'],
   ['{{anrede}}', 'Anrede (meist leer)'],
   ['{{vorname}}', 'Vorname'],
@@ -17,7 +17,26 @@ const PLATZHALTER: [string, string][] = [
   ['{{vorschaubild}}', 'Klickbares Vorschaubild + Textlink'],
 ];
 
-export function TemplateEditor({ campaignId, subject: s0, body: b0, leads, senderEmail }: { campaignId: number; subject: string; body: string; leads: LeadOption[]; senderEmail: string }) {
+/** Platzhalter, die zur Kampagne passen (Text-Kampagnen ohne Video-Platzhalter) */
+export function platzhalterFuer(mitVideo: boolean): [string, string][] {
+  return mitVideo ? PLATZHALTER : PLATZHALTER.filter(([p]) => p !== '{{video_link}}' && p !== '{{vorschaubild}}');
+}
+
+export function TemplateEditor({
+  campaignId,
+  subject: s0,
+  body: b0,
+  leads,
+  senderEmail,
+  mitVideo = true,
+}: {
+  campaignId: number;
+  subject: string;
+  body: string;
+  leads: LeadOption[];
+  senderEmail: string;
+  mitVideo?: boolean;
+}) {
   const [subject, setSubject] = useState(s0);
   const [body, setBody] = useState(b0);
   const [leadId, setLeadId] = useState<number | null>(leads[0]?.id ?? null);
@@ -97,7 +116,7 @@ export function TemplateEditor({ campaignId, subject: s0, body: b0, leads, sende
         <div>
           <p className="mb-1 text-xs font-medium text-slate-600">Platzhalter (Klick fügt ein)</p>
           <div className="flex flex-wrap gap-1.5">
-            {PLATZHALTER.map(([p, hilfe]) => (
+            {platzhalterFuer(mitVideo).map(([p, hilfe]) => (
               <button key={p} type="button" title={hilfe} onClick={() => einfuegen(p)} className="rounded border border-slate-300 bg-white px-2 py-0.5 font-mono text-xs text-slate-700 hover:bg-slate-50">
                 {p}
               </button>
@@ -146,7 +165,7 @@ export function TemplateEditor({ campaignId, subject: s0, body: b0, leads, sende
             <pre className="h-[560px] overflow-auto whitespace-pre-wrap p-3 text-sm text-slate-800">{preview?.text}</pre>
           )}
         </div>
-        <p className="mt-1 text-xs text-slate-500">Das Vorschaubild erscheint, sobald das Video des Leads gerendert ist.</p>
+        {mitVideo && <p className="mt-1 text-xs text-slate-500">Das Vorschaubild erscheint, sobald das Video des Leads gerendert ist.</p>}
       </div>
     </div>
   );

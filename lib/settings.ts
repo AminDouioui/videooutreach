@@ -7,6 +7,8 @@ import { getEnv } from './env';
 export type SettingKey =
   | 'gmail_refresh_token'
   | 'gmail_email'
+  // Von Google tatsächlich erteilte Berechtigungen (Leerzeichen-getrennt)
+  | 'gmail_scopes'
   | 'sender_name'
   | 'signature'
   | 'global_daily_limit'

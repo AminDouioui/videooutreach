@@ -23,15 +23,20 @@ export type LeadRow = {
   terminKlicks: number;
   oeffnungen: number;
   score: number;
+  /** Bisher gesendete Mails des Flows (Erstmail + Follow-ups) */
+  flowSchritt: number;
+  /** Flow beendet: beantwortet, bounce, abgemeldet */
+  flowStopp: string | null;
 };
 
-type SortKey = 'firma' | 'ansprechpartner' | 'email' | 'renderStatus' | 'sendStatus' | 'sentAt' | 'aufrufe' | 'maxProgress' | 'terminKlicks' | 'oeffnungen' | 'score';
-type FilterKey = 'alle' | 'mit_play' | 'nicht_gesendet' | 'fehler' | 'termin';
+type SortKey = 'firma' | 'ansprechpartner' | 'email' | 'renderStatus' | 'sendStatus' | 'flowSchritt' | 'sentAt' | 'aufrufe' | 'maxProgress' | 'terminKlicks' | 'oeffnungen' | 'score';
+type FilterKey = 'alle' | 'mit_play' | 'nicht_gesendet' | 'beantwortet' | 'fehler' | 'termin';
 
 const FILTER: { key: FilterKey; label: string }[] = [
   { key: 'alle', label: 'Alle' },
   { key: 'mit_play', label: 'Mit Play' },
   { key: 'nicht_gesendet', label: 'Nicht gesendet' },
+  { key: 'beantwortet', label: 'Beantwortet' },
   { key: 'fehler', label: 'Fehler' },
   { key: 'termin', label: 'Termin-Klick' },
 ];
@@ -43,12 +48,20 @@ export function LeadsTable({
   baseUrl,
   campaignId,
   trackingPixel = false,
+  mitVideo = true,
+  followupSchritte = 0,
 }: {
   leads: LeadRow[];
   baseUrl: string;
   campaignId?: number;
   trackingPixel?: boolean;
+  /** false = Text-Kampagne: keine Render-, Video- und Link-Spalten */
+  mitVideo?: boolean;
+  /** Anzahl Follow-ups im Flow (0 = keine Flow-Spalte) */
+  followupSchritte?: number;
 }) {
+  const flowGesamt = 1 + followupSchritte;
+  const filter_ = FILTER.filter((f) => mitVideo || (f.key !== 'mit_play' && f.key !== 'termin'));
   const [sortKey, setSortKey] = useState<SortKey>('score');
   const [sortAsc, setSortAsc] = useState(false); // Standard: Score absteigend
   const [filter, setFilter] = useState<FilterKey>('alle');
@@ -58,12 +71,17 @@ export function LeadsTable({
     { key: 'firma', label: 'Firma' },
     { key: 'ansprechpartner', label: 'Ansprechpartner' },
     { key: 'email', label: 'E-Mail' },
-    { key: 'renderStatus', label: 'Render-Status' },
+    ...(mitVideo ? [{ key: 'renderStatus' as SortKey, label: 'Render-Status' }] : []),
     { key: 'sendStatus', label: 'Versand-Status' },
+    ...(followupSchritte > 0 ? [{ key: 'flowSchritt' as SortKey, label: 'Flow' }] : []),
     { key: 'sentAt', label: 'Gesendet am' },
-    { key: 'aufrufe', label: 'Aufrufe', rechts: true },
-    { key: 'maxProgress', label: 'Angeschaut', rechts: true },
-    { key: 'terminKlicks', label: 'Termin-Klick' },
+    ...(mitVideo
+      ? [
+          { key: 'aufrufe' as SortKey, label: 'Aufrufe', rechts: true },
+          { key: 'maxProgress' as SortKey, label: 'Angeschaut', rechts: true },
+          { key: 'terminKlicks' as SortKey, label: 'Termin-Klick' },
+        ]
+      : []),
     ...(trackingPixel ? [{ key: 'oeffnungen' as SortKey, label: 'Geöffnet (unzuverlässig)', rechts: true }] : []),
     { key: 'score', label: 'Score', rechts: true },
   ];
@@ -74,6 +92,7 @@ export function LeadsTable({
       if (q && !l.firma.toLowerCase().includes(q) && !l.email.toLowerCase().includes(q)) return false;
       if (filter === 'mit_play') return l.videostarts > 0;
       if (filter === 'nicht_gesendet') return l.sendStatus === 'nicht_gesendet';
+      if (filter === 'beantwortet') return l.flowStopp === 'beantwortet';
       if (filter === 'fehler') return l.renderStatus === 'fehler' || l.sendStatus === 'fehler';
       if (filter === 'termin') return l.terminKlicks > 0;
       return true;
@@ -114,7 +133,7 @@ export function LeadsTable({
           className="w-64 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
         />
         <div className="flex flex-wrap gap-1">
-          {FILTER.map((f) => (
+          {filter_.map((f) => (
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
@@ -144,7 +163,7 @@ export function LeadsTable({
               {spalten.map((s) => (
                 <Kopf key={s.key} s={s} aktiv={sortKey === s.key} asc={sortAsc} onClick={() => sortieren(s.key)} />
               ))}
-              <th className="px-3 py-2">Link</th>
+              {mitVideo && <th className="px-3 py-2">Link</th>}
               <th className="px-3 py-2">Aktionen</th>
             </tr>
           </thead>
@@ -154,23 +173,43 @@ export function LeadsTable({
                 <td className="px-3 py-2 font-medium">{l.firma}</td>
                 <td className="px-3 py-2">{l.ansprechpartner || '–'}</td>
                 <td className="px-3 py-2">{l.email}</td>
-                <td className="px-3 py-2">
-                  <Badge status={l.renderStatus} />
-                </td>
+                {mitVideo && (
+                  <td className="px-3 py-2">
+                    <Badge status={l.renderStatus} />
+                  </td>
+                )}
                 <td className="px-3 py-2">
                   <Badge status={l.sendStatus} />
                 </td>
+                {followupSchritte > 0 && (
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <span className="tabular-nums text-slate-600">
+                      {l.flowSchritt}/{flowGesamt}
+                    </span>
+                    {l.flowStopp && (
+                      <span className="ml-1.5">
+                        <Badge status={l.flowStopp} />
+                      </span>
+                    )}
+                  </td>
+                )}
                 <td className="whitespace-nowrap px-3 py-2 text-slate-600">{l.sentAt ? datumFormat.format(l.sentAt) : '–'}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{l.aufrufe}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{l.videostarts > 0 ? `${l.maxProgress} %` : '–'}</td>
-                <td className="px-3 py-2">
-                  {l.terminKlicks > 0 ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Ja</span> : <span className="text-slate-400">–</span>}
-                </td>
+                {mitVideo && (
+                  <>
+                    <td className="px-3 py-2 text-right tabular-nums">{l.aufrufe}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{l.videostarts > 0 ? `${l.maxProgress} %` : '–'}</td>
+                    <td className="px-3 py-2">
+                      {l.terminKlicks > 0 ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Ja</span> : <span className="text-slate-400">–</span>}
+                    </td>
+                  </>
+                )}
                 {trackingPixel && <td className="px-3 py-2 text-right tabular-nums text-slate-500">{l.oeffnungen}</td>}
                 <td className="px-3 py-2 text-right font-semibold tabular-nums">{l.score}</td>
-                <td className="whitespace-nowrap px-3 py-2">
-                  <CopyButton text={`${baseUrl.replace(/\/$/, '')}/v/${l.slug}`} label="Link kopieren" />
-                </td>
+                {mitVideo && (
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <CopyButton text={`${baseUrl.replace(/\/$/, '')}/v/${l.slug}`} label="Link kopieren" />
+                  </td>
+                )}
                 <td className="whitespace-nowrap px-3 py-2">
                   <Link href={`/leads/${l.id}`} className="text-indigo-600 hover:underline">
                     Details
@@ -180,7 +219,7 @@ export function LeadsTable({
             ))}
             {sichtbar.length === 0 && (
               <tr>
-                <td colSpan={spalten.length + 2} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={spalten.length + (mitVideo ? 2 : 1)} className="px-3 py-6 text-center text-slate-500">
                   Keine Leads für diesen Filter.
                 </td>
               </tr>

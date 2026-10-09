@@ -11,6 +11,9 @@ export type RenderModus = 'all' | 'failed';
 export function fordereRenderAn(campaignId: number, modus: RenderModus): number {
   const db = getDb();
   return db.transaction((tx) => {
+    // Text-Kampagnen werden nie gerendert
+    const k = tx.select({ mitVideo: schema.campaigns.mitVideo }).from(schema.campaigns).where(eq(schema.campaigns.id, campaignId)).get();
+    if (!k?.mitVideo) return 0;
     const stati = modus === 'failed' ? (['fehler'] as const) : (['wartet', 'fehler'] as const);
     const res = tx
       .update(schema.leads)
@@ -51,6 +54,8 @@ export function fordereLeadRenderAn(leadId: number): boolean {
   return db.transaction((tx) => {
     const lead = tx.select().from(schema.leads).where(eq(schema.leads.id, leadId)).get();
     if (!lead || lead.renderStatus === 'rendert') return false;
+    const kampagne = tx.select({ mitVideo: schema.campaigns.mitVideo }).from(schema.campaigns).where(eq(schema.campaigns.id, lead.campaignId)).get();
+    if (!kampagne?.mitVideo) return false;
     tx.update(schema.leads).set({ renderStatus: 'wartet', renderRequested: true, renderError: null }).where(eq(schema.leads.id, leadId)).run();
     const k = tx.select().from(schema.campaigns).where(eq(schema.campaigns.id, lead.campaignId)).get();
     if (k && (k.status === 'entwurf' || k.status === 'bereit')) {

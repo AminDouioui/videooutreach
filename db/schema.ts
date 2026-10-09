@@ -32,7 +32,28 @@ export const campaigns = sqliteTable('campaigns', {
   ctaUrl: text('cta_url').notNull(),
   trackingPixel: integer('tracking_pixel', { mode: 'boolean' }).notNull().default(false),
   status: text('status', { enum: KAMPAGNEN_STATUS }).notNull().default('entwurf'),
+  // false = reine Text-Kampagne: kein Rendern, Versand direkt nach dem Import möglich
+  mitVideo: integer('mit_video', { mode: 'boolean' }).notNull().default(true),
 });
+
+/** Follow-up-Schritte einer Kampagne (Schritt 1 ist die Erstmail aus campaigns). Gesendet im selben Thread. */
+export const followups = sqliteTable(
+  'followups',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    campaignId: integer('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    // Reihenfolge 1, 2, 3 … (Follow-up 1 = zweite Mail des Flows)
+    position: integer('position').notNull(),
+    // Wartezeit nach der vorherigen Mail in Tagen
+    waitDays: integer('wait_days').notNull().default(3),
+    body: text('body').notNull(),
+  },
+  (t) => [index('followups_campaign_idx').on(t.campaignId)],
+);
+
+export const FLOW_STOPP = ['beantwortet', 'bounce', 'abgemeldet'] as const;
 
 export const leads = sqliteTable(
   'leads',
@@ -66,9 +87,36 @@ export const leads = sqliteTable(
     notizen: text('notizen'),
     // true = in der Render-Warteschlange („Alle rendern“ setzt es)
     renderRequested: integer('render_requested', { mode: 'boolean' }).notNull().default(false),
+    // Message-ID-Header der Erstmail (für In-Reply-To/References der Follow-ups)
+    rfcMessageId: text('rfc_message_id'),
+    // Anzahl bereits gesendeter Follow-ups
+    followupsSent: integer('followups_sent').notNull().default(0),
+    // Flow für diesen Lead beendet (Antwort oder Bounce erkannt)
+    flowStopp: text('flow_stopp', { enum: FLOW_STOPP }),
+    flowStoppAt: ts('flow_stopp_at'),
+    replyCheckedAt: ts('reply_checked_at'),
     createdAt: ts('created_at').notNull().default(jetzt),
   },
   (t) => [index('leads_campaign_idx').on(t.campaignId), index('leads_email_idx').on(t.email)],
+);
+
+/** Jede gesendete Mail (Erstmail = step 0, Follow-ups = 1, 2 …); Grundlage der Tageslimits. */
+export const sentMessages = sqliteTable(
+  'sent_messages',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    leadId: integer('lead_id')
+      .notNull()
+      .references(() => leads.id, { onDelete: 'cascade' }),
+    campaignId: integer('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    step: integer('step').notNull(),
+    gmailMessageId: text('gmail_message_id'),
+    gmailThreadId: text('gmail_thread_id'),
+    sentAt: ts('sent_at').notNull().default(jetzt),
+  },
+  (t) => [index('sent_messages_lead_idx').on(t.leadId), index('sent_messages_sent_at_idx').on(t.sentAt)],
 );
 
 export const events = sqliteTable(
@@ -100,6 +148,7 @@ export const suppressionList = sqliteTable('suppression_list', {
 });
 
 export type Campaign = typeof campaigns.$inferSelect;
+export type Followup = typeof followups.$inferSelect;
 export type Lead = typeof leads.$inferSelect;
 export type NewLead = typeof leads.$inferInsert;
 export type EventRow = typeof events.$inferSelect;

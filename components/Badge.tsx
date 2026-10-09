@@ -17,6 +17,10 @@ const ZUORDNUNG: Record<string, [string, string]> = {
   geplant: ['Geplant', 'gelb'],
   gesendet: ['Gesendet', 'gruen'],
   uebersprungen: ['Übersprungen', 'grau'],
+  // Flow-Stopp
+  beantwortet: ['Beantwortet', 'gruen'],
+  bounce: ['Bounce', 'rot'],
+  abgemeldet: ['Abgemeldet', 'grau'],
   // Kampagnen-Status
   entwurf: ['Entwurf', 'grau'],
   bereit: ['Bereit', 'gruen'],
