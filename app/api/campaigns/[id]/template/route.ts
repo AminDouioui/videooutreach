@@ -2,7 +2,9 @@ import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getDb, schema } from '@/lib/db';
+import { kampagnenExtraSpalten } from '@/lib/campaigns';
 import { fehler, parseJson } from '@/lib/request';
+import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
 
 export const runtime = 'nodejs';
 
@@ -17,11 +19,18 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const parsed = await parseJson(req, bodySchema);
   if ('response' in parsed) return parsed.response;
+  // Klammern prüfen (Fehler), unbekannte Platzhalter nur melden (Warnung)
+  const bekannt = [...STANDARD_VARIABLEN, ...kampagnenExtraSpalten(id)];
+  const betreff = pruefeVorlage(parsed.data.subject, bekannt);
+  const text = pruefeVorlage(parsed.data.body, bekannt);
+  const klammern = [...betreff.fehler.map((f) => `Betreff: ${f}`), ...text.fehler.map((f) => `Text: ${f}`)];
+  if (klammern.length) return fehler(`Vorlage ungültig: ${klammern.join('; ')}`);
+  const unbekannt = [...new Set([...betreff.unbekannt, ...text.unbekannt])];
   const res = getDb()
     .update(schema.campaigns)
     .set({ emailSubjectTemplate: parsed.data.subject, emailBodyTemplate: parsed.data.body })
     .where(eq(schema.campaigns.id, id))
     .run();
   if (res.changes === 0) return fehler('Kampagne nicht gefunden', 404);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, warnungen: unbekannt.map((u) => `Unbekannter Platzhalter {{${u}}}`) });
 }

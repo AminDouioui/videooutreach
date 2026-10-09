@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { isInRenderWindow, isWeekday, isWithinWindow, startOfDayBerlinMs, todayBerlin } from './time';
+import { formatSendDays, isInRenderWindow, isWeekday, isWithinWindow, parseSendDays, startOfDayBerlinMs, todayBerlin } from './time';
 
-const fenster = { sendWindowStart: '08:00', sendWindowEnd: '17:00', sendWeekdaysOnly: true };
+const fenster = { sendWindowStart: '08:00', sendWindowEnd: '17:00', sendDays: '1,2,3,4,5' };
 
 describe('Render-Fenster', () => {
   it('ohne Fenster immer offen', () => {
@@ -51,11 +51,11 @@ describe('time (Europe/Berlin)', () => {
     expect(isWithinWindow(fenster, new Date('2026-10-26T07:00:00Z'))).toBe(true); // Mo 08:00 CET
     expect(isWithinWindow(fenster, new Date('2026-10-26T06:59:00Z'))).toBe(false);
   });
-  it('Wochenende wird bei weekdaysOnly ausgeschlossen', () => {
+  it('Wochenende wird ohne Sa/So in sendDays ausgeschlossen', () => {
     const sa = new Date('2026-07-18T09:00:00Z');
     expect(isWeekday(sa)).toBe(false);
     expect(isWithinWindow(fenster, sa)).toBe(false);
-    expect(isWithinWindow({ ...fenster, sendWeekdaysOnly: false }, sa)).toBe(true);
+    expect(isWithinWindow({ ...fenster, sendDays: '1,2,3,4,5,6,7' }, sa)).toBe(true);
   });
   it('ungültiges Fenster ist geschlossen', () => {
     expect(isWithinWindow({ ...fenster, sendWindowStart: 'xx' }, new Date('2026-07-15T09:00:00Z'))).toBe(false);
@@ -65,5 +65,19 @@ describe('time (Europe/Berlin)', () => {
     expect(new Date(startOfDayBerlinMs(new Date('2026-01-15T10:00:00Z'))).toISOString()).toBe('2026-01-14T23:00:00.000Z');
     expect(new Date(startOfDayBerlinMs(new Date('2026-03-29T10:00:00Z'))).toISOString()).toBe('2026-03-28T23:00:00.000Z');
     expect(new Date(startOfDayBerlinMs(new Date('2026-10-25T10:00:00Z'))).toISOString()).toBe('2026-10-24T22:00:00.000Z');
+  });
+  it('freie Versandtage: nur Samstag erlaubt', () => {
+    const sa = new Date('2026-07-18T09:00:00Z');
+    const mi = new Date('2026-07-15T09:00:00Z');
+    expect(isWithinWindow({ ...fenster, sendDays: '6' }, sa)).toBe(true);
+    expect(isWithinWindow({ ...fenster, sendDays: '6' }, mi)).toBe(false);
+  });
+  it('leere Versandtage sperren alles', () => {
+    expect(isWithinWindow({ ...fenster, sendDays: '' }, new Date('2026-07-15T09:00:00Z'))).toBe(false);
+  });
+  it('parseSendDays/formatSendDays: bereinigen und sortieren', () => {
+    expect(parseSendDays('5, 1,1,x,8,0,7')).toEqual([1, 5, 7]);
+    expect(parseSendDays(null)).toEqual([]);
+    expect(formatSendDays([5, 3, 3, 9])).toBe('3,5');
   });
 });

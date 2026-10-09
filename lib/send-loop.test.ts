@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { eq } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { legePostfachAn, setzePostfaecherZurueck } from './test-postfach';
 
 // Eigene Test-DB, bevor lib/db das erste Mal geöffnet wird
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vo-send-'));
@@ -47,6 +48,7 @@ function neuerLead(campaignId: number, nr: number, extra: Partial<typeof import(
 beforeAll(async () => {
   m = { db: await import('./db'), loop: await import('./send-loop'), send: await import('./send'), sup: await import('./suppression'), settings: await import('./settings') };
   m.db.getDb();
+  await legePostfachAn();
 });
 
 describe('Versandschleife mit Fake-Sender', () => {
@@ -113,7 +115,7 @@ describe('Versandschleife mit Fake-Sender', () => {
   it('Quota-Fehler stoppt den Versand für heute, Lead bleibt geplant', async () => {
     const { getDb, schema } = m.db;
     for (const k0 of getDb().select().from(schema.campaigns).all()) getDb().update(schema.campaigns).set({ status: 'pausiert' }).where(eq(schema.campaigns.id, k0.id)).run();
-    m.settings.setSetting('send_state', '{}');
+    await setzePostfaecherZurueck();
     const k = neueKampagne();
     const l = neuerLead(k.id, 1);
     const { GmailSendError } = await import('./gmail');
@@ -137,7 +139,7 @@ describe('Versandschleife mit Fake-Sender', () => {
   it('globales Tageslimit gilt über Kampagnen', async () => {
     const { getDb, schema } = m.db;
     for (const k0 of getDb().select().from(schema.campaigns).all()) getDb().update(schema.campaigns).set({ status: 'pausiert' }).where(eq(schema.campaigns.id, k0.id)).run();
-    m.settings.setSetting('send_state', '{}');
+    await setzePostfaecherZurueck();
     m.settings.setSetting('global_daily_limit', '1');
     const k1 = neueKampagne();
     const k2 = neueKampagne();
@@ -156,7 +158,11 @@ describe('Versandschleife mit Fake-Sender', () => {
   it('sendLead ohne Gmail-Verbindung liefert saubere Meldung', async () => {
     const k = neueKampagne();
     const l = neuerLead(k.id, 9);
+    // Alle Postfächer trennen (Token weg), danach wieder verbinden
+    const { getDb, schema } = m.db;
+    getDb().update(schema.absender).set({ refreshTokenEnc: '' }).run();
     const r = await m.send.sendLead(l.id);
+    getDb().update(schema.absender).set({ refreshTokenEnc: 'enc-test-token' }).run();
     expect(r).toMatchObject({ ok: false, error: 'Gmail nicht verbunden' });
   });
 });

@@ -17,6 +17,7 @@ const STATUS_FARBE: Record<RowStatus, string> = {
   duplikat_bestand: 'bg-amber-100 text-amber-800',
   duplikat_firma: 'bg-amber-100 text-amber-800',
   gesperrt: 'bg-red-100 text-red-800',
+  kein_mx: 'bg-amber-100 text-amber-800',
   fehlende_pflichtfelder: 'bg-red-100 text-red-800',
 };
 
@@ -36,6 +37,7 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState('');
   const [einProFirma, setEinProFirma] = useState(false);
+  const [mxTrotzdem, setMxTrotzdem] = useState(false);
   const [statusFilter, setStatusFilter] = useState<RowStatus | 'alle'>('alle');
   const [suche, setSuche] = useState('');
 
@@ -80,7 +82,7 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
     if (inputRef.current) inputRef.current.value = '';
   }
 
-  async function pruefen(proFirma = einProFirma) {
+  async function pruefen(proFirma = einProFirma, trotzdem = mxTrotzdem) {
     if (!parsed || !mapping) return;
     setFehler('');
     setBusy(true);
@@ -88,7 +90,7 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
       const res = await fetch(`/api/campaigns/${campaignId}/import/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mapping, rows: parsed.rows, einProFirma: proFirma }),
+        body: JSON.stringify({ mapping, rows: parsed.rows, einProFirma: proFirma, mxTrotzdem: trotzdem }),
       });
       if (!res.ok) setFehler(await fehlerText(res));
       else setValidierung(await res.json());
@@ -105,7 +107,7 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
       const res = await fetch(`/api/campaigns/${campaignId}/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mapping, rows: parsed.rows, einProFirma }),
+        body: JSON.stringify({ mapping, rows: parsed.rows, einProFirma, mxTrotzdem }),
       });
       if (!res.ok) {
         setFehler(await fehlerText(res));
@@ -261,6 +263,23 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="mb-1 font-semibold">Ergebnis der Prüfung</h2>
           <p className="mb-3 text-sm text-slate-700">{validierung.summary}</p>
+          {(validierung.counts.kein_mx > 0 || mxTrotzdem) && (
+            <label className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <input
+                type="checkbox"
+                checked={mxTrotzdem}
+                onChange={(e) => {
+                  setMxTrotzdem(e.target.checked);
+                  void pruefen(einProFirma, e.target.checked);
+                }}
+                className="mt-0.5"
+              />
+              <span>
+                <strong>Warnung: Domain nimmt keine Mails an.</strong> Für diese Domains wurde weder ein MX- noch ein Adress-Eintrag gefunden; Mails würden zurückkommen. Standardmäßig werden
+                sie nicht importiert. Trotzdem importieren?
+              </span>
+            </label>
+          )}
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <Suche wert={suche} onChange={setSuche} platzhalter="Suche nach Firma, Name oder E-Mail" />
             <FilterChips
@@ -298,6 +317,7 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
                     <td className="px-2 py-1 text-slate-400">{r.index + 1}</td>
                     <td className="px-2 py-1">
                       <span className={`rounded-full px-2 py-0.5 font-medium ${STATUS_FARBE[r.status]}`}>{STATUS_LABELS[r.status]}</span>
+                      {r.warnung && r.status === 'ok' && <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">{r.warnung}</span>}
                     </td>
                     <td className="px-2 py-1">{r.lead.firma}</td>
                     <td className="px-2 py-1">{[r.lead.vorname, r.lead.nachname].filter(Boolean).join(' ')}</td>

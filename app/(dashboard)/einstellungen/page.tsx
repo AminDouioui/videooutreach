@@ -1,5 +1,5 @@
 import { GlobalSettingsForm } from '@/components/GlobalSettingsForm';
-import { GmailStatus } from '@/components/GmailStatus';
+import { PostfaecherVerwaltung } from '@/components/PostfaecherVerwaltung';
 import { SuppressionList } from '@/components/SuppressionList';
 import { ladeEinstellungen } from '@/lib/settings-view';
 import { listSuppression } from '@/lib/suppression';
@@ -14,9 +14,20 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
   return (
     <div className="max-w-3xl space-y-6">
       <h1 className="text-xl font-semibold">Einstellungen</h1>
-      <GmailStatus connected={e.gmail.connected} email={e.gmail.email} configured={e.gmail.configured} antwortPruefung={e.gmail.antwortPruefung} hinweis={sp.gmail} detail={sp.detail} />
+      <PostfaecherVerwaltung postfaecher={e.postfaecher} konfiguriert={e.gmailKonfiguriert} hinweis={sp.gmail} detail={sp.detail} />
       <GlobalSettingsForm
-        initial={{ senderName: e.senderName, signature: e.signature, globalDailyLimit: e.globalDailyLimit, impressumUrl: e.impressumUrl, datenschutzUrl: e.datenschutzUrl }}
+        initial={{
+          senderName: e.senderName,
+          signature: e.signature,
+          globalDailyLimit: e.globalDailyLimit,
+          rampeAktiv: e.rampeAktiv,
+          rampeStart: e.rampeStart,
+          rampeSchritt: e.rampeSchritt,
+          rampeBeginn: e.rampeBeginn,
+          impressumUrl: e.impressumUrl,
+          datenschutzUrl: e.datenschutzUrl,
+        }}
+        heuteErlaubt={e.heuteErlaubt}
       />
       <SuppressionList eintraege={sperrliste} />
     </div>

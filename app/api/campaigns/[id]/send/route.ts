@@ -2,10 +2,9 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getDb, schema } from '@/lib/db';
-import { isGmailConnected, kannAntwortenPruefen } from '@/lib/gmail';
+import { hatVerbundenesPostfach, kannAntwortenPruefen, ladeAbsender, postfachVerbunden } from '@/lib/absender';
 import { fehler, parseJson } from '@/lib/request';
-import { brecheVersandAb, countSentToday, ladeFollowups, readSendState } from '@/lib/send';
-import { globalDailyLimit } from '@/lib/settings';
+import { brecheVersandAb, countSentToday, effektivesGlobalLimit, ladeFollowups } from '@/lib/send';
 import { isWithinWindow, todayBerlin } from '@/lib/time';
 
 export const runtime = 'nodejs';
@@ -23,7 +22,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const k = laden(id);
   if (!k) return fehler('Kampagne nicht gefunden', 404);
-  const state = readSendState();
+  // Postfächer, die senden dürfen (aktiv, verbunden, ohne Fehler): Abstand und Quota-Stopp gelten je Postfach
+  const heute = todayBerlin();
+  const aktive = ladeAbsender().filter((a) => a.aktiv && postfachVerbunden(a) && !a.fehler);
+  const verbunden = ladeAbsender().filter(postfachVerbunden);
+  const bereitAb = aktive.filter((a) => a.quotaGestopptAm !== heute).map((a) => a.nextSendAt ?? 0);
   const db = getDb();
   const zaehl = (cond: ReturnType<typeof eq>) => db.select({ n: sql<number>`count(*)` }).from(schema.leads).where(and(eq(schema.leads.campaignId, id), cond)).get()?.n ?? 0;
   return NextResponse.json({
@@ -31,20 +34,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     sentToday: countSentToday(id),
     dailyLimit: k.dailySendLimit,
     sentTodayGlobal: countSentToday(),
-    globalLimit: globalDailyLimit(),
-    nextSendAt: state.nextSendAt,
-    quotaStopped: state.quotaStoppedDate === todayBerlin(),
+    globalLimit: effektivesGlobalLimit(),
+    // Frühester nächster Versand über alle sendebereiten Postfächer
+    nextSendAt: bereitAb.length > 0 ? Math.min(...bereitAb) || null : null,
+    quotaStopped: aktive.length > 0 && bereitAb.length === 0,
+    postfaecher: aktive.length,
     windowOpen: isWithinWindow(k),
     planned: zaehl(eq(schema.leads.sendStatus, 'geplant')),
     sent: zaehl(eq(schema.leads.sendStatus, 'gesendet')),
     errors: zaehl(eq(schema.leads.sendStatus, 'fehler')),
-    gmailConnected: isGmailConnected(),
+    gmailConnected: hatVerbundenesPostfach(),
     // Flow (Follow-ups)
     followupSchritte: ladeFollowups(id).length,
     followupsGesendet: db.select({ n: sql<number>`count(*)` }).from(schema.sentMessages).where(and(eq(schema.sentMessages.campaignId, id), sql`${schema.sentMessages.step} > 0`)).get()?.n ?? 0,
     antworten: zaehl(eq(schema.leads.flowStopp, 'beantwortet')),
     bounces: zaehl(eq(schema.leads.flowStopp, 'bounce')),
-    antwortPruefung: kannAntwortenPruefen(),
+    // Alle verbundenen Postfächer können Antworten erkennen (sonst warten deren Follow-ups)
+    antwortPruefung: verbunden.length > 0 && verbunden.every(kannAntwortenPruefen),
   });
 }
 
@@ -104,6 +110,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ok: true,
     status: 'versendet_laufend',
     planned: gesamtGeplant,
-    warning: isGmailConnected() ? undefined : 'Gmail ist noch nicht verbunden – es wird erst gesendet, wenn die Verbindung steht.',
+    warning: hatVerbundenesPostfach() ? undefined : 'Gmail ist noch nicht verbunden – es wird erst gesendet, wenn die Verbindung steht.',
   });
 }

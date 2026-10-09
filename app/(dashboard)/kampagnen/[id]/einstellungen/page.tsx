@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { CampaignSettingsForm } from '@/components/CampaignSettingsForm';
 import { getDb, schema } from '@/lib/db';
+import { parseSendDays } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,8 +28,11 @@ export default async function KampagnenEinstellungen({ params }: { params: Promi
           dailySendLimit: k.dailySendLimit,
           sendWindowStart: k.sendWindowStart,
           sendWindowEnd: k.sendWindowEnd,
-          sendWeekdaysOnly: k.sendWeekdaysOnly,
+          sendDays: parseSendDays(k.sendDays),
+          startDatum: k.startDatum ?? '',
+          maxNeueLeadsProTag: k.maxNeueLeadsProTag,
           trackingPixel: k.trackingPixel,
+          stoppBeiFirmenAntwort: k.stoppBeiFirmenAntwort,
         }}
       />
     </div>

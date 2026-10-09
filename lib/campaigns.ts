@@ -3,6 +3,7 @@ import { getDb, schema } from './db';
 import { firmenDuplikate, firmenSchluessel } from './firma';
 import { deleteMedia } from './media';
 import { schliesseKampagneAb, stoppeRender } from './render-queue';
+import { normalisiereSpaltenname } from './vorlage';
 
 export const STANDARD_BETREFF = 'Kurzes Video für {{firma}}';
 export const STANDARD_TEXT = `{{begruessung}},
@@ -47,6 +48,31 @@ export function loescheKampagne(campaignId: number): { leads: number } | null {
   db.delete(schema.campaigns).where(eq(schema.campaigns.id, campaignId)).run();
   for (const { slug } of slugs) deleteMedia(slug);
   return { leads: slugs.length };
+}
+
+/**
+ * Kampagne duplizieren: Vorlage, Einstellungen, Follow-ups und Varianten (inkl. aktiv-Status) werden kopiert,
+ * Leads nicht. Die Kopie heißt „<Name> (Kopie)“ und startet als Entwurf. Gibt die neue Kampagne zurück.
+ */
+export function dupliziereKampagne(campaignId: number): typeof schema.campaigns.$inferSelect | null {
+  const db = getDb();
+  return db.transaction((tx) => {
+    const quelle = tx.select().from(schema.campaigns).where(eq(schema.campaigns.id, campaignId)).get();
+    if (!quelle) return null;
+    const einstellungen: Partial<typeof quelle> = { ...quelle };
+    delete einstellungen.id;
+    delete einstellungen.createdAt;
+    const [kopie] = tx
+      .insert(schema.campaigns)
+      .values({ ...(einstellungen as Omit<typeof quelle, 'id' | 'createdAt'>), name: `${quelle.name} (Kopie)`.slice(0, 220), status: 'entwurf' })
+      .returning()
+      .all();
+    const followups = tx.select().from(schema.followups).where(eq(schema.followups.campaignId, campaignId)).orderBy(schema.followups.position).all();
+    for (const f of followups) tx.insert(schema.followups).values({ campaignId: kopie.id, position: f.position, waitDays: f.waitDays, body: f.body }).run();
+    const varianten = tx.select().from(schema.varianten).where(eq(schema.varianten.campaignId, campaignId)).orderBy(schema.varianten.id).all();
+    for (const v of varianten) tx.insert(schema.varianten).values({ campaignId: kopie.id, kuerzel: v.kuerzel, betreff: v.betreff, text: v.text, aktiv: v.aktiv }).run();
+    return kopie;
+  });
 }
 
 export const FIRMEN_DUPLIKAT = 'Firmen-Duplikat';
@@ -183,4 +209,17 @@ export function ladeKennzahlen(): Map<number, KampagnenKennzahlen> {
   for (const r of sehRows) get(r.id).sehdauer = r.avg === null ? null : Math.round(r.avg);
 
   return map;
+}
+
+// ---------------------------------------------------------------- Extra-Spalten (Vorlagen-Variablen)
+
+/** Alle normalisierten Extra-Spaltennamen der Leads einer Kampagne (sortiert). */
+export function kampagnenExtraSpalten(campaignId: number): string[] {
+  const zeilen = getDb().select({ extra: schema.leads.extra }).from(schema.leads).where(eq(schema.leads.campaignId, campaignId)).all();
+  const namen = new Set<string>();
+  for (const z of zeilen) for (const spalte of Object.keys(z.extra ?? {})) {
+    const k = normalisiereSpaltenname(spalte);
+    if (k) namen.add(k);
+  }
+  return [...namen].sort();
 }

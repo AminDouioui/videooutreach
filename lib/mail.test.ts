@@ -134,3 +134,53 @@ describe('Helfer', () => {
     expect(encodeHeaderWord('ü'.repeat(60)).split('\r\n ').length).toBeGreaterThan(1);
   });
 });
+
+describe('renderTemplate: Fallbacks', () => {
+  it('nimmt den Fallback bei leerem oder unbekanntem Wert', () => {
+    expect(renderTemplate('{{vorname|Hallo zusammen}}', { vorname: '' })).toBe('Hallo zusammen');
+    expect(renderTemplate('{{ vorname | Hallo zusammen }}', { vorname: 'Max' })).toBe('Max');
+    expect(renderTemplate('{{stadt|dort}} {{foo}}', {})).toBe('dort {{foo}}');
+  });
+});
+
+describe('buildEmail: Spintax, Variablen, Fallbacks', () => {
+  const k = (betreff: string, text: string) => ({ ...kampagne, emailSubjectTemplate: betreff, emailBodyTemplate: text });
+  it('Spintax ist deterministisch und gilt in HTML und Klartext gleich', () => {
+    const x = buildEmail(lead, k('{A|B|C} {{firma}}', '{Hallo|Moin|Servus} Welt'), settings);
+    const y = buildEmail(lead, k('{A|B|C} {{firma}}', '{Hallo|Moin|Servus} Welt'), settings);
+    expect(x).toEqual(y);
+    const wort = /(Hallo|Moin|Servus)/.exec(x.text)![1];
+    expect(x.html).toContain(wort);
+  });
+  it('Follow-up-Betreff entspricht dem Erstbetreff, auch bei Spintax', () => {
+    const vorlage = k('{Eins|Zwei|Drei|Vier|Fünf|Sechs} für {{firma}}', 'x');
+    for (let i = 0; i < 20; i++) {
+      const l = { ...lead, slug: `lead-${i}` };
+      const erst = buildEmail(l, vorlage, settings);
+      const f1 = buildEmail(l, vorlage, settings, { body: 'Hi', nr: 1 });
+      const f2 = buildEmail(l, vorlage, settings, { body: 'Hi', nr: 2 });
+      expect(f1.subject).toBe(`Re: ${erst.subject}`);
+      expect(f2.subject).toBe(f1.subject);
+    }
+  });
+  it('Lead-Werte mit {a|b} bleiben wörtlich', () => {
+    const l = { ...lead, firma: 'Foo {a|b} GmbH', vorname: '{x|y}', extra: { Notiz: '{p|q}' } };
+    const x = buildEmail(l, k('{{firma}} {{notiz}}', '{{vorname}} {{firma}} {{notiz}}'), settings);
+    expect(x.subject).toBe('Foo {a|b} GmbH {p|q}');
+    expect(x.text).toContain('{x|y} Foo {a|b} GmbH {p|q}');
+    expect(x.html).toContain('{x|y} Foo {a|b} GmbH {p|q}');
+  });
+  it('Extra-Spalten, Position, Website, E-Mail, Absendername', () => {
+    const l = { ...lead, position: 'GF', website: 'https://m.de', email: 'a@b.de', extra: { 'Stadt (PLZ)': 'Köln 50667', Größe: '' } };
+    const x = buildEmail(l, k('s', '{{position}}|{{website}}|{{email}}|{{absender_name}}|{{stadt_plz}}|{{groesse|klein}}'), { ...settings, senderName: 'Amin' });
+    expect(x.text).toContain('GF|https://m.de|a@b.de|Amin|Köln 50667|klein');
+  });
+  it('Fallback und fehlende Extra-Spalte der Kampagne', () => {
+    const x = buildEmail({ ...lead, vorname: null }, { ...k('s', '{{vorname|Hallo zusammen}} {{stadt}}|{{stadt|dort}}'), extraSpalten: ['stadt'] }, settings);
+    expect(x.text).toContain('Hallo zusammen |dort');
+  });
+  it('Spintax und Platzhalter mit Fallback zusammen', () => {
+    const x = buildEmail({ ...lead, vorname: null }, k('s', '{Hi {{vorname|du}}|Hallo {{vorname|du}}}'), settings);
+    expect(x.text).toMatch(/^(Hi|Hallo) du/);
+  });
+});

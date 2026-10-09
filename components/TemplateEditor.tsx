@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
+import { VorlagenHinweise } from './VorlagenHilfe';
 
 type LeadOption = { id: number; label: string };
 type Preview = { subject: string; html: string; text: string };
@@ -13,13 +15,19 @@ export const PLATZHALTER: [string, string][] = [
   ['{{nachname}}', 'Nachname'],
   ['{{name}}', 'Vor- und Nachname'],
   ['{{firma}}', 'Firmenname'],
+  ['{{position}}', 'Position / Funktion'],
+  ['{{website}}', 'Website'],
+  ['{{email}}', 'E-Mail-Adresse des Leads'],
+  ['{{absender_name}}', 'Dein Absendername (Einstellungen)'],
   ['{{video_link}}', 'Link zur Video-Seite'],
   ['{{vorschaubild}}', 'Klickbares Vorschaubild + Textlink'],
 ];
 
 /** Platzhalter, die zur Kampagne passen (Text-Kampagnen ohne Video-Platzhalter) */
-export function platzhalterFuer(mitVideo: boolean): [string, string][] {
-  return mitVideo ? PLATZHALTER : PLATZHALTER.filter(([p]) => p !== '{{video_link}}' && p !== '{{vorschaubild}}');
+export function platzhalterFuer(mitVideo: boolean, extraSpalten: string[] = []): [string, string][] {
+  const basis = mitVideo ? PLATZHALTER : PLATZHALTER.filter(([p]) => p !== '{{video_link}}' && p !== '{{vorschaubild}}');
+  const extra = extraSpalten.filter((e) => !STANDARD_VARIABLEN.includes(e as (typeof STANDARD_VARIABLEN)[number])).map((e): [string, string] => [`{{${e}}}`, 'Eigene Spalte aus dem Import']);
+  return [...basis, ...extra];
 }
 
 export function TemplateEditor({
@@ -27,15 +35,19 @@ export function TemplateEditor({
   subject: s0,
   body: b0,
   leads,
-  senderEmail,
+  postfaecher,
   mitVideo = true,
+  extraSpalten = [],
 }: {
   campaignId: number;
   subject: string;
   body: string;
   leads: LeadOption[];
-  senderEmail: string;
+  /** Postfächer, von denen die Testmail gesendet werden kann */
+  postfaecher: { id: number; email: string; nutzbar: boolean }[];
   mitVideo?: boolean;
+  /** Normalisierte Extra-Spalten der Kampagne (aus den Leads) */
+  extraSpalten?: string[];
 }) {
   const [subject, setSubject] = useState(s0);
   const [body, setBody] = useState(b0);
@@ -44,8 +56,14 @@ export function TemplateEditor({
   const [vorschauFehler, setVorschauFehler] = useState('');
   const [status, setStatus] = useState<{ text: string; fehler: boolean } | null>(null);
   const [tab, setTab] = useState<'html' | 'text'>('html');
+  const [absenderId, setAbsenderId] = useState<number | null>(postfaecher.find((p) => p.nutzbar)?.id ?? postfaecher[0]?.id ?? null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [gespeichert, setGespeichert] = useState({ subject: s0, body: b0 });
+  const bekannt = [...STANDARD_VARIABLEN, ...extraSpalten];
+  const pruefBetreff = pruefeVorlage(subject, bekannt);
+  const pruefText = pruefeVorlage(body, bekannt);
+  const klammerFehler = [...pruefBetreff.fehler.map((f) => `Betreff: ${f}`), ...pruefText.fehler.map((f) => `Text: ${f}`)];
+  const unbekannt = [...new Set([...pruefBetreff.unbekannt, ...pruefText.unbekannt])];
   const geaendert = subject !== gespeichert.subject || body !== gespeichert.body;
 
   // Live-Vorschau (entprellt) mit der aktuellen, auch ungespeicherten Vorlage
@@ -89,7 +107,8 @@ export function TemplateEditor({
     const res = await fetch(`/api/campaigns/${campaignId}/template`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subject, body }) });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
-      setStatus({ text: 'Gespeichert', fehler: false });
+      const w: string[] = data.warnungen ?? [];
+      setStatus({ text: w.length ? `Gespeichert (${w.join(', ')})` : 'Gespeichert', fehler: false });
       setGespeichert({ subject, body });
     } else setStatus({ text: data.error ?? 'Speichern fehlgeschlagen', fehler: true });
   }
@@ -97,7 +116,7 @@ export function TemplateEditor({
   async function testmail() {
     setStatus({ text: 'Testmail wird gesendet …', fehler: false });
     if (geaendert) await speichern();
-    const res = await fetch(`/api/campaigns/${campaignId}/test-mail`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadId: leadId ?? undefined }) });
+    const res = await fetch(`/api/campaigns/${campaignId}/test-mail`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadId: leadId ?? undefined, absenderId: absenderId ?? undefined }) });
     const data = await res.json().catch(() => ({}));
     setStatus(data.ok ? { text: `Testmail an ${data.to} gesendet`, fehler: false } : { text: data.error ?? 'Testmail fehlgeschlagen', fehler: true });
   }
@@ -116,24 +135,42 @@ export function TemplateEditor({
         <div>
           <p className="mb-1 text-xs font-medium text-slate-600">Platzhalter (Klick fügt ein)</p>
           <div className="flex flex-wrap gap-1.5">
-            {platzhalterFuer(mitVideo).map(([p, hilfe]) => (
+            {platzhalterFuer(mitVideo, extraSpalten).map(([p, hilfe]) => (
               <button key={p} type="button" title={hilfe} onClick={() => einfuegen(p)} className="rounded border border-slate-300 bg-white px-2 py-0.5 font-mono text-xs text-slate-700 hover:bg-slate-50">
                 {p}
               </button>
             ))}
           </div>
+          <VorlagenHinweise fehler={klammerFehler} unbekannt={unbekannt} />
           <p className="mt-2 text-xs text-slate-500">Signatur (Einstellungen) und Abmeldelink werden automatisch angehängt.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={speichern} disabled={!geaendert} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+          <button onClick={speichern} disabled={!geaendert || klammerFehler.length > 0} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
             Speichern
           </button>
-          <button onClick={testmail} disabled={leadId === null} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          <button onClick={testmail} disabled={leadId === null || absenderId === null} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
             Testmail an mich senden
           </button>
           {status && <span className={`text-sm ${status.fehler ? 'text-red-600' : 'text-green-700'}`}>{status.text}</span>}
         </div>
-        <p className="text-xs text-slate-500">Testmail geht an {senderEmail || 'SENDER_EMAIL (nicht gesetzt)'} mit „[TEST]“ im Betreff.</p>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+          {postfaecher.length === 0 ? (
+            <span>Kein Postfach verbunden – bitte unter Einstellungen ein Gmail-Postfach hinzufügen.</span>
+          ) : (
+            <>
+              <label htmlFor="testpostfach">Testmail senden von</label>
+              <select id="testpostfach" value={absenderId ?? ''} onChange={(e) => setAbsenderId(Number(e.target.value))} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
+                {postfaecher.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.email}
+                    {p.nutzbar ? '' : ' (nicht verfügbar)'}
+                  </option>
+                ))}
+              </select>
+              <span>an dieses Postfach, mit „[TEST]“ im Betreff.</span>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="min-w-0">

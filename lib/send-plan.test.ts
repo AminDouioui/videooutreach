@@ -6,7 +6,7 @@ const jetzt = new Date('2026-07-15T09:00:00Z');
 const basis: PlanInput = {
   now: jetzt,
   today: '2026-07-15',
-  campaign: { status: 'versendet_laufend', dailySendLimit: 10, sendWindowStart: '08:00', sendWindowEnd: '17:00', sendWeekdaysOnly: true },
+  campaign: { status: 'versendet_laufend', dailySendLimit: 10, sendWindowStart: '08:00', sendWindowEnd: '17:00', sendDays: '1,2,3,4,5' },
   globalLimit: 30,
   sentTodayGlobal: 0,
   sentTodayCampaign: 0,
@@ -18,6 +18,12 @@ describe('decideSend', () => {
   it('pausierte Kampagne wartet', () => expect(decideSend({ ...basis, campaign: { ...basis.campaign, status: 'pausiert' } })).toMatchObject({ reason: 'status' }));
   it('Fenster zu (nachts)', () => expect(decideSend({ ...basis, now: new Date('2026-07-15T20:00:00Z') })).toMatchObject({ reason: 'fenster_zu', global: false }));
   it('Fenster zu (Wochenende)', () => expect(decideSend({ ...basis, now: new Date('2026-07-18T09:00:00Z') })).toMatchObject({ reason: 'fenster_zu' }));
+  it('vor dem Startdatum wird nicht gesendet', () =>
+    expect(decideSend({ ...basis, campaign: { ...basis.campaign, startDatum: '2026-07-16' } })).toMatchObject({ reason: 'vor_start', global: false }));
+  it('am Startdatum und danach wird gesendet', () => {
+    expect(decideSend({ ...basis, campaign: { ...basis.campaign, startDatum: '2026-07-15' } })).toEqual({ action: 'send' });
+    expect(decideSend({ ...basis, campaign: { ...basis.campaign, startDatum: null } })).toEqual({ action: 'send' });
+  });
   it('Kampagnenlimit erreicht', () => expect(decideSend({ ...basis, sentTodayCampaign: 10 })).toMatchObject({ reason: 'limit_kampagne', global: false }));
   it('globales Limit erreicht', () => expect(decideSend({ ...basis, sentTodayGlobal: 30 })).toMatchObject({ reason: 'limit_global', global: true }));
   it('Abstand noch nicht verstrichen', () =>

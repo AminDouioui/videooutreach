@@ -16,6 +16,8 @@ export type KampagnenZeile = {
   gerendert: number;
   gesendet: number;
   antworten: number;
+  /** Antworten / gesendet (0–1), null ohne Versand */
+  antwortRate: number | null;
   seitenaufrufe: number;
   videostarts: number;
   sehdauer: number | null;
@@ -42,6 +44,7 @@ const SPALTEN: { key: Spalte; label: string; zahl: boolean; nurVideo?: boolean }
   { key: 'gerendert', label: 'Gerendert', zahl: true, nurVideo: true },
   { key: 'gesendet', label: 'Gesendet', zahl: true },
   { key: 'antworten', label: 'Antworten', zahl: true },
+  { key: 'antwortRate', label: 'Antwortrate', zahl: true },
   { key: 'seitenaufrufe', label: 'Seitenaufrufe', zahl: true, nurVideo: true },
   { key: 'videostarts', label: 'Videostarts', zahl: true, nurVideo: true },
   { key: 'sehdauer', label: 'Ø Sehdauer', zahl: true, nurVideo: true },
@@ -108,6 +111,7 @@ export function KampagnenTabelle({ kampagnen }: { kampagnen: KampagnenZeile[] })
                 <td className="px-3 py-2 text-right">{videoWert(k, k.gerendert)}</td>
                 <td className="px-3 py-2 text-right">{k.gesendet}</td>
                 <td className="px-3 py-2 text-right">{k.antworten}</td>
+                <td className="px-3 py-2 text-right">{k.antwortRate != null ? `${(k.antwortRate * 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %` : '–'}</td>
                 <td className="px-3 py-2 text-right">{videoWert(k, k.seitenaufrufe)}</td>
                 <td className="px-3 py-2 text-right">{videoWert(k, k.videostarts)}</td>
                 <td className="px-3 py-2 text-right">{videoWert(k, k.sehdauer != null ? `${k.sehdauer} %` : '–')}</td>

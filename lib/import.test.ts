@@ -91,3 +91,46 @@ describe('Nur ein Kontakt pro Firma', () => {
     expect(summarize(res)).toBe('0 gültig, 1 weiterer Kontakt derselben Firma');
   });
 });
+
+describe('Domain-Sperre und MX im Import', () => {
+  const mapping = { ...guessMapping(['Firma', 'E-Mail']) };
+  const rows = [
+    { Firma: 'A', 'E-Mail': 'a@gesperrt.de' },
+    { Firma: 'B', 'E-Mail': 'b@sub.gesperrt.de' },
+    { Firma: 'C', 'E-Mail': 'c@tot.de' },
+    { Firma: 'D', 'E-Mail': 'd@unklar.de' },
+  ];
+  const ctx = {
+    existingEmails: new Set<string>(),
+    suppressed: new Set(['@gesperrt.de']),
+    mx: new Map<string, 'ok' | 'kein_mx' | 'unbekannt'>([['tot.de', 'kein_mx'], ['unklar.de', 'unbekannt']]),
+  };
+
+  it('Domain-Eintrag sperrt alle Adressen der Domain (nicht Subdomains)', () => {
+    expect(validateRows(rows, mapping, ctx).map((r) => r.status)).toEqual(['gesperrt', 'ok', 'kein_mx', 'ok']);
+  });
+
+  it('kein_mx wird standardmäßig nicht importiert, mit mxTrotzdem als Warnung', () => {
+    const standard = validateRows(rows, mapping, ctx);
+    expect(standard[2]).toMatchObject({ status: 'kein_mx', warnung: 'Domain nimmt keine Mails an' });
+    const trotzdem = validateRows(rows, mapping, { ...ctx, mxTrotzdem: true });
+    expect(trotzdem[2]).toMatchObject({ status: 'ok', warnung: 'Domain nimmt keine Mails an' });
+    expect(trotzdem[3].warnung).toBeUndefined();
+  });
+
+  it('kein_mx verbraucht bei „ein Kontakt pro Firma“ keinen Firmenplatz', () => {
+    const r = validateRows(
+      [
+        { Firma: 'Müller GmbH', 'E-Mail': 'a@tot.de' },
+        { Firma: 'Müller GmbH', 'E-Mail': 'b@mueller.de' },
+      ],
+      mapping,
+      { ...ctx, einProFirma: true },
+    );
+    expect(r.map((x) => x.status)).toEqual(['kein_mx', 'ok']);
+  });
+
+  it('Zusammenfassung nennt Domains ohne Mail-Server', () => {
+    expect(summarize(validateRows(rows, mapping, ctx))).toContain('1 mit Domain ohne Mail-Server');
+  });
+});

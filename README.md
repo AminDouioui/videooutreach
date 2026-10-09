@@ -13,10 +13,19 @@ Ablauf: Excel/CSV mit Leads hochladen, pro Lead entsteht ein eigenes Video (pers
 ## Funktionen
 
 - Login mit Admin-Passwort (ein Zugang), Kampagnen, Vorlagen mit Platzhaltern, Vorschau, Testmail.
-- Import `.xlsx`/`.csv` mit Spalten-Mapping, Validierung (ungültige E-Mails, Duplikate, Sperrliste).
+- Vorlagen: Spintax `{Hallo|Guten Tag}` (verschachtelbar, pro Lead stabil gewählt, auch in Betreff/Follow-ups), eigene Variablen aus nicht zugeordneten Import-Spalten (`{{stadt}}`, normalisiert), zusätzlich `{{position}}`, `{{website}}`, `{{email}}`, `{{absender_name}}`, und Fallbacks `{{vorname|Hallo zusammen}}`. Editor zeigt Variablen, Hilfe und Warnungen; unbalancierte Klammern verhindern das Speichern.
+- A/B-Tests: Die Kampagnen-Vorlage ist Variante A, auf der Vorlagen-Seite kommen bis zu vier weitere Varianten (B–E, je Betreff + Text, aktiv/inaktiv) dazu. Jede Erstmail geht gleichmäßig rotierend mit der Variante raus, die bisher am seltensten gesendet wurde (`leads.variante`); Follow-ups nutzen den Betreff der Variante des Leads. Auswertung je Variante (gesendet, Video-Seite, Play, Termin-Klick, Antworten, Raten) auf der Kampagnenseite, Variante auch im CSV-Export.
+- Lead-Status (offen, interessiert, Termin gebucht, später, nicht interessiert, falscher Ansprechpartner, gewonnen, verloren): im Lead-Detail, Postfach und per Filter nutzbar, im CSV-Export enthalten. Termin gebucht, nicht interessiert, falscher Ansprechpartner, gewonnen und verloren beenden den Flow (`flow_stopp = 'status'`, offene Erstmail wird übersprungen); zurück auf „offen“ hebt nur diesen Status-Stopp auf, nicht Antwort/Bounce/Abmeldung.
+- Antworten-Postfach `/antworten`: alle erkannten Antworten aller Kampagnen (neueste zuerst, ungelesen/alle, nach Lead-Status), Link „In Gmail öffnen“, Status setzen, gelesen markieren; Zähler ungelesener Antworten in der Navigation. Erkannt werden nur Antworten (Gmail-Scope `gmail.metadata`), nicht deren Inhalt.
+- Firmen-Stopp (Kampagnen-Einstellung, Standard an): Antwortet ein Kontakt, werden die anderen Leads der Kampagne mit gleicher E-Mail-Domain gestoppt (`flow_stopp = 'firma_beantwortet'`, offene Erstmails übersprungen). Freemail-Domains (gmail.com, gmx.de, web.de … siehe `lib/lead-status.ts`) sind ausgenommen.
+- Leads-Seite `/leads`: kampagnenübergreifende Suche und Filter (Kampagne, Lead-Status, Versandstatus, beantwortet), Sortierung nach Score/Datum, serverseitig paginiert (100 pro Seite).
+- Analyse: je Kampagne `/kampagnen/[id]/analyse` (Kennzahlen, Trichter Leads → gesendet → Video-Seite → Play → 50 % → 100 % → Termin-Klick → Antwort, Bounces, Abmeldungen, Lead-Status, Tabelle je Schritt mit Antworten nach Schritt, Tagesverlauf 30 Tage, A/B-Vergleich); Startseite mit globalen Kennzahlen und 14-Tage-Verlauf; Kampagnenliste mit Antwortrate. Raten beziehen sich auf gesendete Erstmails, Bots sind ausgenommen. Logik in `lib/analyse.ts`.
+- Import `.xlsx`/`.csv` mit Spalten-Mapping, Validierung (ungültige E-Mails, Duplikate, Sperrliste inkl. Domain-Sperren) und MX-Prüfung der Domains (siehe „Versandregeln“).
+- Zeitplan: frei wählbare Versandtage (Mo–So), optionales Startdatum, „Neue Leads pro Tag“ je Kampagne, globale Aufwärmrampe (Einstellungen); Kampagne duplizieren (Vorlage, Einstellungen, Follow-ups, Varianten, ohne Leads).
 - Rendern aller Leads, nur fehlgeschlagener oder einzelner Leads neu; Fortschritt im Dashboard.
 - Öffentliche Video-Seite (mobil, ohne Cookies/Fremd-Skripte, `noindex`).
 - Versand mit Warteschlange, Versandfenster, Tageslimit, zufälligem Abstand, Pausieren/Fortsetzen.
+- Mehrere Absender-Postfächer (Einstellungen → Postfächer): Erstmails rotieren über die aktiven Postfächer, Abstand, Tageslimit, Quota-/Auth-Fehler und Aufwärmrampe gelten je Postfach; Follow-ups und Antwort-Erkennung laufen immer über das Postfach der Erstmail. Eigener Name und eigene Signatur je Postfach, Postfach-Spalte bei Leads, Tabelle „Postfächer“ in der Kampagnen-Analyse.
 - Abmeldelink (Seite + One-Click per `List-Unsubscribe-Post`), kampagnenübergreifende Sperrliste.
 - Tracking mit Score, Lead-Detail mit Event-Zeitleiste, CSV-Export.
 
@@ -81,7 +90,7 @@ Vorlage: `.env.example`. Die `.env` gehört nie ins Repository. Fehlende Pflicht
 | `FFMPEG_PATH` | nein | Pfad zum `ffmpeg`-Binary (Standard `ffmpeg`; im Image vorhanden) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | für Versand | OAuth-Client aus der Google Cloud Console |
 | `GOOGLE_REDIRECT_URI` | für Versand | Muss exakt zur Redirect-URI in der Cloud Console passen, `https://video.DEINEDOMAIN.de/api/gmail/callback` |
-| `SENDER_EMAIL`, `SENDER_NAME` | nein | Absenderadresse und -name |
+| `SENDER_EMAIL`, `SENDER_NAME` | nein | Nur noch Vorschlag/Rückfall: `SENDER_EMAIL` ist der `login_hint` beim ersten Verbinden und die Adresse, falls ein altes Postfach ohne gespeicherte Adresse übernommen wird; `SENDER_NAME` ist der Standard-Absendername. Die Postfächer selbst verwaltet man unter Einstellungen. |
 | `DEFAULT_CTA_URL` | nein | Standard-Termin-Link neuer Kampagnen |
 | `IMPRESSUM_URL`, `DATENSCHUTZ_URL` | empfohlen | Links im Footer der Video-Seite |
 | `SEND_MIN_GAP_MINUTES`, `SEND_MAX_GAP_MINUTES` | nein | Zufälliger Abstand zwischen zwei Mails (Standard 3 bis 9) |
@@ -90,15 +99,25 @@ Vorlage: `.env.example`. Die `.env` gehört nie ins Repository. Fehlende Pflicht
 
 Ausführliche Schritt-für-Schritt-Anleitung: **[docs/gmail-einrichtung.md](docs/gmail-einrichtung.md)**.
 
-Kurzfassung: In der Google Cloud Console ein Projekt anlegen, die Gmail API aktivieren, den OAuth-Zustimmungsbildschirm als „Intern“ (Workspace) mit dem Bereich `gmail.send` einrichten, einen OAuth-Client „Webanwendung“ erstellen und als Weiterleitungs-URIs `http://localhost:3000/api/gmail/callback` sowie `https://video.DEINEDOMAIN.de/api/gmail/callback` eintragen. Client-ID, Secret und Redirect-URI in die `.env`, Dienste neu starten, im Dashboard unter Einstellungen „Gmail verbinden“ und mit einer Testmail prüfen.
+Kurzfassung: In der Google Cloud Console ein Projekt anlegen, die Gmail API aktivieren, den OAuth-Zustimmungsbildschirm als „Intern“ (Workspace) mit den Bereichen `gmail.send`, `gmail.metadata` sowie `openid` und `email` einrichten, einen OAuth-Client „Webanwendung“ erstellen und als Weiterleitungs-URIs `http://localhost:3000/api/gmail/callback` sowie `https://video.DEINEDOMAIN.de/api/gmail/callback` eintragen. Client-ID, Secret und Redirect-URI in die `.env`, Dienste neu starten, im Dashboard unter Einstellungen → Postfächer „Postfach hinzufügen“ und mit einer Testmail prüfen.
+
+**Mehrere Postfächer:** Jedes Konto wird einzeln verbunden („Postfach hinzufügen“). Die Adresse liest die App aus dem ID-Token von Google (Bereiche `openid` und `email`); dieselbe Adresse erneut zu verbinden aktualisiert nur den Token („Neu verbinden“). Je Postfach: Name, Tageslimit, eigene Signatur (leer = Standard-Signatur), Pausieren, Entfernen.
+
+**Update von einer Version mit einem Postfach:** Ein „Neu verbinden“ ist **nicht** nötig. Beim ersten Start nach dem Update wird das bisherige Postfach (`gmail_*`-Einstellungen) automatisch als erstes Postfach übernommen (Tageslimit = bisheriges globales Limit, Name = bisheriger Absendername); bereits gesendete Leads und Mails werden ihm zugeordnet, damit laufende Follow-ups und die Antwort-Erkennung weiterlaufen. Nur **neue** Postfächer brauchen die zusätzlichen Bereiche `openid` und `email` – diese im OAuth-Zustimmungsbildschirm ergänzen, bevor das zweite Postfach verbunden wird.
 
 ## Versandregeln
 
 - Es werden nur fertig gerenderte, nicht gesperrte und nicht abgemeldete Leads versendet.
-- Versandfenster: Standard Montag bis Freitag, 08 bis 17 Uhr (Europe/Berlin).
-- Tageslimit: Standard 30 Mails, über alle Kampagnen hinweg.
-- Zufälliger Abstand zwischen zwei Mails: 3 bis 9 Minuten (`SEND_MIN_GAP_MINUTES`/`SEND_MAX_GAP_MINUTES`).
-- Pausieren und Fortsetzen jederzeit; Fehler werden pro Lead gespeichert. Meldet Gmail ein Limit (Quota), stoppt der Versand für den Tag.
+- Versandfenster: Standard Montag bis Freitag, 08 bis 17 Uhr (Europe/Berlin). Die Versandtage wählt man je Kampagne frei (Mo–So, `campaigns.send_days`, z. B. `1,2,3,4,5`; 1 = Montag). Die alte Spalte `send_weekdays_only` bleibt bestehen, wird aber nicht mehr ausgewertet (die Migration hat `send_days` daraus übernommen).
+- Startdatum (optional, je Kampagne): vorher wird nicht gesendet.
+- Gesamtlimit: Standard 30 Mails pro Tag über alle Kampagnen **und alle Postfächer** hinweg (inkl. Follow-ups, Einstellung „Gesamtlimit über alle Postfächer“). Zusätzlich hat jedes Postfach sein eigenes Tageslimit (Standard 30).
+- Rotation (`lib/rotation.ts`): Eine Erstmail geht über das aktive, verbundene Postfach ohne Auth-Fehler und ohne Quota-Stopp, dessen Abstand abgelaufen ist und dessen heutige Mails unter dem effektiven Limit liegen (min aus Tageslimit und Rampe); unter mehreren gewinnt das mit den wenigsten Mails heute, bei Gleichstand die kleinere ID. Follow-ups und Antwort-Erkennung laufen immer über das Postfach der Erstmail (`leads.absender_id`); ist es pausiert, getrennt, fehlerhaft oder für heute gestoppt, **wartet** das Follow-up (nie über ein fremdes Postfach, der Thread gehört nur dorthin). Altbestand ohne Zuordnung läuft über das älteste aktive Postfach.
+- Neue Leads pro Tag (optional, je Kampagne): begrenzt nur Erstmails. Ist das Limit erreicht, gehen heute nur noch fällige Follow-ups raus (sie haben ohnehin Vorrang und unterliegen nur dem Tageslimit).
+- Aufwärmrampe (Einstellungen, Standard aus): effektives Limit = min(Limit, Startwert + Schritt x Tage seit Beginn); Standard 10 Mails am ersten Tag, plus 5 pro Tag. Sie gilt für das Gesamtlimit (Beginn: eingetragenes Datum, sonst Tag der ersten gesendeten Mail, sonst heute) und **je Postfach** für dessen Tageslimit (Beginn: Rampen-Beginn des Postfachs, sonst Tag seiner ersten Mail, sonst heute) – ein neu hinzugefügtes Postfach startet also wieder bei 10. Die Einstellungen zeigen „Heute insgesamt erlaubt: N“, die Postfach-Liste „Heute x / Limit“. Logik als reine Funktion in `lib/rampe.ts`.
+- Domain-Sperrliste: Ein Eintrag mit `@` davor (z. B. `@firma.de`) sperrt die ganze Domain (nicht Subdomains) für Import, Versand und Follow-ups; ausstehende Mails an die Domain werden übersprungen.
+- MX-Prüfung beim Import: Domains werden per DNS auf Mail-Server geprüft (MX, sonst A/AAAA als Fallback nach RFC 5321; Zeitlimit 3 s, Cache je Domain, höchstens 10 Abfragen gleichzeitig). Domains ohne beides werden als „Domain nimmt keine Mails an“ gewarnt und standardmäßig nicht importiert (Option „trotzdem importieren“). Timeout oder Netzfehler zählt als „unbekannt“ und blockiert nicht.
+- Zufälliger Abstand zwischen zwei Mails **desselben Postfachs**: 3 bis 9 Minuten (`SEND_MIN_GAP_MINUTES`/`SEND_MAX_GAP_MINUTES`, gespeichert in `absender.next_send_at`). Mehrere Postfächer senden dadurch zeitversetzt parallel; die Schleife verschickt dabei höchstens eine Mail pro Durchlauf (alle 3 s).
+- Pausieren und Fortsetzen jederzeit; Fehler werden pro Lead gespeichert. Meldet Gmail ein Limit (Quota), stoppt nur das betroffene Postfach für den Tag (die anderen senden weiter). Ein Auth-Fehler (`invalid_grant`) markiert das Postfach mit dem Fehler und pausiert es, bis es neu verbunden wird.
 - Mails: `multipart/alternative`, schlichtes HTML, kein Anhang, Signatur mit Impressumsangaben, Abmeldelink sowie `List-Unsubscribe` und `List-Unsubscribe-Post`.
 - Neue Absenderdomänen langsam hochfahren (10, dann 20, dann 30 pro Tag); SPF, DKIM und DMARC müssen eingerichtet sein.
 
@@ -210,7 +229,7 @@ curl -fsSL https://raw.githubusercontent.com/AminDouioui/videooutreach/main/depl
 bash deploy/install-traefik.sh email.prozessia.space
 ```
 
-Das Skript klont nach `/srv/videooutreach` (`INSTALL_DIR`), erzeugt `.env` (Zufallswerte, fragt Google Client-ID/-Secret ab) und `docker-compose.override.yml`, startet alles, wartet auf die Health der App und richtet den Backup-Cron (täglich 03:15) ein. Erkennung übersteuern: `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT`, `TRAEFIK_CERTRESOLVER`. Trockenlauf: `DRY_RUN=1`. **Update** = Skript erneut ausführen (git pull + Rebuild, `.env` und `data/` bleiben). Danach Redirect-URI in der Google Cloud Console eintragen und unter `/einstellungen` „Gmail verbinden“.
+Das Skript klont nach `/srv/videooutreach` (`INSTALL_DIR`), erzeugt `.env` (Zufallswerte, fragt Google Client-ID/-Secret ab) und `docker-compose.override.yml`, startet alles, wartet auf die Health der App und richtet den Backup-Cron (täglich 03:15) ein. Erkennung übersteuern: `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT`, `TRAEFIK_CERTRESOLVER`. Trockenlauf: `DRY_RUN=1`. **Update** = Skript erneut ausführen (git pull + Rebuild, `.env` und `data/` bleiben). Danach Redirect-URI in der Google Cloud Console eintragen und unter `/einstellungen` ein Postfach hinzufügen.
 
 ### 7. HTTPS prüfen
 
@@ -218,7 +237,7 @@ Das Skript klont nach `/srv/videooutreach` (`INSTALL_DIR`), erzeugt `.env` (Zufa
 
 ### 8. Gmail Redirect URI
 
-In der Google Cloud Console beim OAuth-Client `https://video.DEINEDOMAIN.de/api/gmail/callback` als Weiterleitungs-URI eintragen (siehe [docs/gmail-einrichtung.md](docs/gmail-einrichtung.md)). Im Dashboard unter Einstellungen „Gmail verbinden“ und Testmail senden.
+In der Google Cloud Console beim OAuth-Client `https://video.DEINEDOMAIN.de/api/gmail/callback` als Weiterleitungs-URI eintragen (siehe [docs/gmail-einrichtung.md](docs/gmail-einrichtung.md)). Im Dashboard unter Einstellungen → Postfächer „Postfach hinzufügen“ und Testmail senden.
 
 ### 9. Backup-Cron
 
@@ -296,7 +315,8 @@ docker compose down            # stoppen (Daten bleiben in ./data)
 | Video spult nicht / lädt nicht auf dem Handy | Proxy liefert `/media/` ohne Range-Support (z. B. über `proxy_pass` mit Puffer); Direktauslieferung verwenden |
 | Upload schlägt fehl (413) | `client_max_body_size 6m` im Proxy; Dateien max. 5 MB |
 | `redirect_uri_mismatch` bei Gmail | Redirect-URI in der Cloud Console und `GOOGLE_REDIRECT_URI` stimmen nicht exakt überein |
-| `invalid_grant` beim Senden | Gmail im Dashboard trennen und neu verbinden |
+| `invalid_grant` beim Senden | Das betroffene Postfach ist in den Einstellungen als „Fehler“ markiert und pausiert: dort „Neu verbinden“ (gleiche Adresse aktualisiert den Token) |
+| Neues Postfach: „kein ID-Token“ / keine E-Mail-Adresse | Bereiche `openid` und `email` im OAuth-Zustimmungsbildschirm ergänzen, dann erneut „Postfach hinzufügen“ |
 | Zertifikat wird nicht ausgestellt | DNS-A-Record noch nicht aktiv oder Port 80 gesperrt (`ufw`, Hetzner-Firewall) |
 | Port 80/443 belegt beim Start von Caddy-Container | Es läuft schon ein Webserver; Variante A, B (Host) oder C wählen |
 | Healthcheck „unhealthy“ | `docker compose logs app`; meist fehlende `.env`-Werte |

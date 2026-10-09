@@ -1,6 +1,6 @@
 import { runSendTick } from '../lib/send-loop';
 
-// Versand-Schleife des Workers: pollt alle 3 s, sendet höchstens eine Mail pro Durchlauf.
+// Versand-Schleife des Workers: pollt alle 3 s, sendet höchstens eine Mail pro Durchlauf (Abstand und Limits je Postfach, Rotation siehe lib/send-loop.ts).
 const POLL_MS = 3000;
 
 export function startSendLoop(): { stop(): Promise<void> } {

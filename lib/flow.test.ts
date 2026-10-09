@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { legePostfachAn, setzePostfaecherZurueck } from './test-postfach';
 
 // Eigene Test-DB, bevor lib/db das erste Mal geöffnet wird
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vo-flow-'));
@@ -76,13 +77,14 @@ beforeAll(async () => {
     media: await import('./media'),
   };
   m.db.getDb();
+  await legePostfachAn();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   // Jede Prüfung für sich: andere Kampagnen anhalten, Versand-Zustand zurücksetzen
   const { getDb, schema } = m.db;
   getDb().update(schema.campaigns).set({ status: 'pausiert' }).run();
-  m.settings.setSetting('send_state', '{}');
+  await setzePostfaecherZurueck();
 });
 
 describe('E-Mail-Flow mit Follow-ups', () => {

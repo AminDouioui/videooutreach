@@ -125,7 +125,7 @@ export function SendControls({ campaignId, readyCount }: { campaignId: number; r
       {laeuft && (
         <p className="mt-2 text-xs text-slate-500">
           {s.quotaStopped
-            ? 'Gmail-Limit erreicht – der Versand ruht bis morgen.'
+            ? 'Gmail-Limit erreicht – alle aktiven Postfächer ruhen bis morgen.'
             : !s.windowOpen
               ? 'Außerhalb des Versandfensters – es wird gesendet, sobald es öffnet.'
               : (naechster ?? 'Nächste Mail wird in Kürze gesendet.')}
@@ -133,10 +133,10 @@ export function SendControls({ campaignId, readyCount }: { campaignId: number; r
       )}
       {s.gmailConnected && s.followupSchritte > 0 && !s.antwortPruefung && (
         <p className="mt-2 text-xs text-amber-700">
-          Follow-ups werden nicht gesendet, bis Gmail unter Einstellungen neu verbunden ist – die Antwort-Erkennung braucht eine zusätzliche Berechtigung (nur Kopfzeilen, keine Inhalte).
+          Follow-ups werden nicht gesendet, bis alle Postfächer unter Einstellungen neu verbunden sind – die Antwort-Erkennung braucht eine zusätzliche Berechtigung (nur Kopfzeilen, keine Inhalte).
         </p>
       )}
-      {!s.gmailConnected && <p className="mt-2 text-xs text-amber-700">Gmail ist nicht verbunden – bitte unter Einstellungen verbinden.</p>}
+      {!s.gmailConnected && <p className="mt-2 text-xs text-amber-700">Kein Postfach verbunden – bitte unter Einstellungen ein Gmail-Postfach hinzufügen.</p>}
       {meldung && <p className={`mt-2 text-sm ${meldung.fehler ? 'text-red-600' : 'text-amber-700'}`}>{meldung.text}</p>}
     </div>
   );

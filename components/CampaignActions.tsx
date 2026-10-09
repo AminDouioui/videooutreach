@@ -6,10 +6,10 @@ import { useState } from 'react';
 
 const sekundaer = 'rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50';
 
-/** Aktionsleiste der Kampagne: Import, Rendern (nur Video-Kampagnen), E-Mail-Flow, Einstellungen, Löschen. */
+/** Aktionsleiste der Kampagne: Import, Rendern (nur Video-Kampagnen), E-Mail-Flow, Einstellungen, Duplizieren, Löschen. */
 export function CampaignActions({ campaignId, campaignName, leadCount, mitVideo }: { campaignId: number; campaignName: string; leadCount: number; mitVideo: boolean }) {
   const router = useRouter();
-  const [busy, setBusy] = useState<'all' | 'failed' | 'loeschen' | null>(null);
+  const [busy, setBusy] = useState<'all' | 'failed' | 'loeschen' | 'duplizieren' | null>(null);
   const [meldung, setMeldung] = useState<string | null>(null);
 
   async function rendern(mode: 'all' | 'failed') {
@@ -28,6 +28,21 @@ export function CampaignActions({ campaignId, campaignName, leadCount, mitVideo 
     } catch (e) {
       setMeldung(e instanceof Error ? e.message : 'Fehler');
     } finally {
+      setBusy(null);
+    }
+  }
+
+  async function duplizieren() {
+    setBusy('duplizieren');
+    setMeldung(null);
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/duplizieren`, { method: 'POST' });
+      const data = (await res.json().catch(() => ({}))) as { id?: number; error?: string };
+      if (!res.ok || !data.id) throw new Error(data.error ?? 'Duplizieren fehlgeschlagen');
+      router.push(`/kampagnen/${data.id}`);
+      router.refresh();
+    } catch (e) {
+      setMeldung(e instanceof Error ? e.message : 'Fehler');
       setBusy(null);
     }
   }
@@ -68,12 +83,18 @@ export function CampaignActions({ campaignId, campaignName, leadCount, mitVideo 
           {busy === 'failed' ? 'Wird eingereiht …' : 'Fehlgeschlagene erneut rendern'}
         </button>
       )}
+      <Link href={`/kampagnen/${campaignId}/analyse`} className={sekundaer}>
+        Analyse
+      </Link>
       <Link href={`/kampagnen/${campaignId}/vorlage`} className={sekundaer}>
         E-Mail-Flow
       </Link>
       <Link href={`/kampagnen/${campaignId}/einstellungen`} className={sekundaer}>
         Einstellungen
       </Link>
+      <button onClick={duplizieren} disabled={busy !== null} className={sekundaer}>
+        {busy === 'duplizieren' ? 'Wird dupliziert …' : 'Duplizieren'}
+      </button>
       <button
         onClick={loeschen}
         disabled={busy !== null}

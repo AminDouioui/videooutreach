@@ -4,6 +4,7 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import fs from 'fs';
 import path from 'path';
 import * as schema from '@/db/schema';
+import { uebernehmeAltesPostfach } from './absender-uebernahme';
 import { getEnv } from './env';
 
 export type Db = BetterSQLite3Database<typeof schema>;
@@ -28,6 +29,14 @@ export function getDb(): Db {
 
   g.__voSqlite = sqlite;
   g.__voDb = db;
+
+  // Bisheriges Einzel-Postfach (settings.gmail_*) als erstes Postfach übernehmen; ein Fehler darf den Start nicht verhindern
+  try {
+    const u = uebernehmeAltesPostfach(db);
+    if (u) console.log(`[absender] Altes Postfach ${u.email} übernommen (${u.leads} Leads, ${u.mails} Mails zugeordnet)`);
+  } catch (e) {
+    console.error('[absender] Übernahme des alten Postfachs fehlgeschlagen:', e);
+  }
   return db;
 }
 

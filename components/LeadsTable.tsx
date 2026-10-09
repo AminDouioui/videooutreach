@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { Badge } from './Badge';
+import { LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
+import { Badge, LeadStatusBadge } from './Badge';
 import { CopyButton } from './CopyButton';
 
 export type LeadRow = {
@@ -14,6 +15,8 @@ export type LeadRow = {
   slug: string;
   renderStatus: string;
   sendStatus: string;
+  /** Lead-Status (offen, interessiert …) */
+  leadStatus: string;
   /** Unix-ms oder null */
   sentAt: number | null;
   /** Nicht-Bot-Seitenaufrufe */
@@ -24,6 +27,10 @@ export type LeadRow = {
   terminKlicks: number;
   oeffnungen: number;
   score: number;
+  /** Variante der Erstmail (A, B …) oder null */
+  variante: string | null;
+  /** Absender-Postfach (E-Mail) der Erstmail oder null */
+  postfach: string | null;
   /** Bisher gesendete Mails des Flows (Erstmail + Follow-ups) */
   flowSchritt: number;
   /** Flow beendet: beantwortet, bounce, abgemeldet */
@@ -34,7 +41,7 @@ export type LeadRow = {
   duplikatAusgeschlossen: boolean;
 };
 
-type SortKey = 'firma' | 'ansprechpartner' | 'email' | 'renderStatus' | 'sendStatus' | 'flowSchritt' | 'sentAt' | 'aufrufe' | 'maxProgress' | 'terminKlicks' | 'oeffnungen' | 'score';
+type SortKey = 'firma' | 'ansprechpartner' | 'email' | 'renderStatus' | 'sendStatus' | 'leadStatus' | 'variante' | 'postfach' | 'flowSchritt' | 'sentAt' | 'aufrufe' | 'maxProgress' | 'terminKlicks' | 'oeffnungen' | 'score';
 type FilterKey = 'alle' | 'mit_play' | 'nicht_gesendet' | 'beantwortet' | 'duplikate' | 'fehler' | 'termin';
 
 const FILTER: { key: FilterKey; label: string }[] = [
@@ -56,6 +63,8 @@ export function LeadsTable({
   trackingPixel = false,
   mitVideo = true,
   followupSchritte = 0,
+  abTest = false,
+  mehrerePostfaecher = false,
 }: {
   leads: LeadRow[];
   baseUrl: string;
@@ -65,6 +74,10 @@ export function LeadsTable({
   mitVideo?: boolean;
   /** Anzahl Follow-ups im Flow (0 = keine Flow-Spalte) */
   followupSchritte?: number;
+  /** Mehr als eine Variante: Spalte „Variante“ anzeigen */
+  abTest?: boolean;
+  /** Mehr als ein Postfach: Spalte „Postfach“ anzeigen */
+  mehrerePostfaecher?: boolean;
 }) {
   const flowGesamt = 1 + followupSchritte;
   const filter_ = FILTER.filter((f) => mitVideo || (f.key !== 'mit_play' && f.key !== 'termin'));
@@ -72,6 +85,7 @@ export function LeadsTable({
   const [sortAsc, setSortAsc] = useState(false); // Standard: Score absteigend
   const [filter, setFilter] = useState<FilterKey>('alle');
   const [suche, setSuche] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [ohneDuplikate, setOhneDuplikate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [meldung, setMeldung] = useState<string | null>(null);
@@ -102,7 +116,10 @@ export function LeadsTable({
     { key: 'email', label: 'E-Mail' },
     ...(mitVideo ? [{ key: 'renderStatus' as SortKey, label: 'Render-Status' }] : []),
     { key: 'sendStatus', label: 'Versand-Status' },
+    { key: 'leadStatus', label: 'Lead-Status' },
     ...(followupSchritte > 0 ? [{ key: 'flowSchritt' as SortKey, label: 'Flow' }] : []),
+    ...(abTest ? [{ key: 'variante' as SortKey, label: 'Variante' }] : []),
+    ...(mehrerePostfaecher ? [{ key: 'postfach' as SortKey, label: 'Postfach' }] : []),
     { key: 'sentAt', label: 'Gesendet am' },
     ...(mitVideo
       ? [
@@ -120,6 +137,7 @@ export function LeadsTable({
     const gefiltert = leads.filter((l) => {
       if (q && !l.firma.toLowerCase().includes(q) && !l.email.toLowerCase().includes(q) && !l.ansprechpartner.toLowerCase().includes(q)) return false;
       if (ohneDuplikate && l.firmenDuplikat) return false;
+      if (statusFilter && l.leadStatus !== statusFilter) return false;
       if (filter === 'duplikate') return l.firmenDuplikat;
       if (filter === 'mit_play') return l.videostarts > 0;
       if (filter === 'nicht_gesendet') return l.sendStatus === 'nicht_gesendet';
@@ -135,13 +153,13 @@ export function LeadsTable({
       const c = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb), 'de');
       return c * dir || a.firma.localeCompare(b.firma, 'de');
     });
-  }, [leads, sortKey, sortAsc, filter, suche, ohneDuplikate]);
+  }, [leads, sortKey, sortAsc, filter, suche, ohneDuplikate, statusFilter]);
 
   function sortieren(key: SortKey) {
     if (key === sortKey) setSortAsc(!sortAsc);
     else {
       setSortKey(key);
-      setSortAsc(key === 'firma' || key === 'ansprechpartner' || key === 'email' || key === 'renderStatus' || key === 'sendStatus');
+      setSortAsc(key === 'firma' || key === 'ansprechpartner' || key === 'email' || key === 'renderStatus' || key === 'sendStatus' || key === 'leadStatus');
     }
   }
 
@@ -174,6 +192,19 @@ export function LeadsTable({
             </button>
           ))}
         </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          aria-label="Nach Lead-Status filtern"
+          className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+        >
+          <option value="">Alle Lead-Status</option>
+          {LEAD_STATUS.map((s) => (
+            <option key={s} value={s}>
+              {LEAD_STATUS_INFO[s].label}
+            </option>
+          ))}
+        </select>
         {duplikate.length > 0 && (
           <label className="flex items-center gap-1.5 text-xs text-slate-600">
             <input type="checkbox" checked={ohneDuplikate} onChange={(e) => setOhneDuplikate(e.target.checked)} />
@@ -249,6 +280,9 @@ export function LeadsTable({
                 <td className="px-3 py-2">
                   <Badge status={l.sendStatus} />
                 </td>
+                <td className="px-3 py-2">
+                  <LeadStatusBadge status={l.leadStatus} />
+                </td>
                 {followupSchritte > 0 && (
                   <td className="whitespace-nowrap px-3 py-2">
                     <span className="tabular-nums text-slate-600">
@@ -261,6 +295,12 @@ export function LeadsTable({
                     )}
                   </td>
                 )}
+                {abTest && (
+                  <td className="px-3 py-2">
+                    {l.variante ? <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700">{l.variante}</span> : <span className="text-slate-400">–</span>}
+                  </td>
+                )}
+                {mehrerePostfaecher && <td className="whitespace-nowrap px-3 py-2 text-slate-600">{l.postfach ?? '–'}</td>}
                 <td className="whitespace-nowrap px-3 py-2 text-slate-600">{l.sentAt ? datumFormat.format(l.sentAt) : '–'}</td>
                 {mitVideo && (
                   <>

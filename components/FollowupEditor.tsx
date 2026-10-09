@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
 import { platzhalterFuer } from './TemplateEditor';
+import { VorlagenHinweise } from './VorlagenHilfe';
 
 type LeadOption = { id: number; label: string };
 type Schritt = { waitDays: number; body: string };
@@ -23,15 +25,17 @@ export function FollowupEditor({
   campaignId,
   initial,
   leads,
-  subject,
+  varianten = [],
   mitVideo,
+  extraSpalten = [],
 }: {
   campaignId: number;
   initial: Schritt[];
   leads: LeadOption[];
-  /** Betreff der Erstmail (für die Vorschau „Re: …“) */
-  subject: string;
+  /** Kürzel aller Varianten der Erstmail (A, B …); bei mehr als einer wählbar für die Vorschau „Re: …“ */
+  varianten?: string[];
   mitVideo: boolean;
+  extraSpalten?: string[];
 }) {
   const [schritte, setSchritte] = useState<Schritt[]>(initial);
   const [gespeichert, setGespeichert] = useState(JSON.stringify(initial));
@@ -39,6 +43,12 @@ export function FollowupEditor({
   const [aktiv, setAktiv] = useState(0);
   const [leadId, setLeadId] = useState<number | null>(leads[0]?.id ?? null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  // leer = Variante des Leads (bzw. die, die er bekäme)
+  const [variante, setVariante] = useState('');
+  const bekannt = [...STANDARD_VARIABLEN, ...extraSpalten];
+  const pruefungen = schritte.map((x) => pruefeVorlage(x.body, bekannt));
+  const klammerFehler = pruefungen.flatMap((p, i) => p.fehler.map((f) => `Follow-up ${i + 1}: ${f}`));
+  const unbekannt = [...new Set(pruefungen.flatMap((p) => p.unbekannt))];
   const geaendert = JSON.stringify(schritte) !== gespeichert;
   const schritt = schritte[aktiv];
 
@@ -51,7 +61,7 @@ export function FollowupEditor({
         const res = await fetch(`/api/leads/${leadId}/mail-preview`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subject, followupBody: schritt.body }),
+          body: JSON.stringify({ variante: variante || undefined, followupBody: schritt.body, followupNr: aktiv + 1 }),
           signal: ctrl.signal,
         });
         if (res.ok) setPreview(await res.json());
@@ -63,7 +73,7 @@ export function FollowupEditor({
       clearTimeout(t);
       ctrl.abort();
     };
-  }, [leadId, schritt, subject]);
+  }, [leadId, schritt, variante, aktiv]);
 
   function aendern(i: number, patch: Partial<Schritt>) {
     setSchritte((s) => s.map((x, j) => (j === i ? { ...x, ...patch } : x)));
@@ -96,7 +106,8 @@ export function FollowupEditor({
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setGespeichert(JSON.stringify(schritte));
-      setStatus({ text: 'Gespeichert', fehler: false });
+      const w: string[] = data.warnungen ?? [];
+      setStatus({ text: w.length ? `Gespeichert (${w.join(', ')})` : 'Gespeichert', fehler: false });
     } else setStatus({ text: data.error ?? 'Speichern fehlgeschlagen', fehler: true });
   }
 
@@ -151,13 +162,14 @@ export function FollowupEditor({
           <button type="button" onClick={hinzufuegen} disabled={schritte.length >= 10} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
             + Follow-up hinzufügen
           </button>
-          <button onClick={speichern} disabled={!geaendert} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+          <button onClick={speichern} disabled={!geaendert || klammerFehler.length > 0} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
             Follow-ups speichern
           </button>
           {status && <span className={`text-sm ${status.fehler ? 'text-red-600' : 'text-green-700'}`}>{status.text}</span>}
         </div>
+        <VorlagenHinweise fehler={klammerFehler} unbekannt={unbekannt} />
         <p className="text-xs text-slate-500">
-          Platzhalter wie in der Erstmail: {platzhalterFuer(mitVideo).map(([p]) => p).join(' ')}. Follow-ups gehen als Antwort im selben Thread raus (Betreff „Re: …“). Antwortet ein Lead oder kommt die Mail
+          Platzhalter wie in der Erstmail: {platzhalterFuer(mitVideo, extraSpalten).map(([p]) => p).join(' ')}. Follow-ups gehen als Antwort im selben Thread raus (Betreff „Re: …“). Antwortet ein Lead oder kommt die Mail
           zurück, endet sein Flow automatisch. Tageslimit, Versandfenster und Abstand gelten auch für Follow-ups.
         </p>
       </div>
@@ -173,6 +185,16 @@ export function FollowupEditor({
               </option>
             ))}
           </select>
+          {varianten.length > 1 && (
+            <select value={variante} onChange={(e) => setVariante(e.target.value)} aria-label="Variante der Erstmail" className="rounded-md border border-slate-300 px-2 py-1 text-sm">
+              <option value="">Variante des Leads</option>
+              {varianten.map((k) => (
+                <option key={k} value={k}>
+                  Betreff von Variante {k}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="rounded-lg border border-slate-200 bg-white">
           <div className="border-b border-slate-200 px-3 py-2 text-sm">

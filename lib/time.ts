@@ -49,12 +49,30 @@ export function parseHHMM(s: string): number {
   return h * 60 + min;
 }
 
-export type FensterKampagne = { sendWindowStart: string; sendWindowEnd: string; sendWeekdaysOnly: boolean };
+export type FensterKampagne = { sendWindowStart: string; sendWindowEnd: string; sendDays: string };
+
+export const ALLE_WOCHENTAGE = [1, 2, 3, 4, 5, 6, 7] as const;
+export const WOCHENTAG_KURZ = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] as const;
+
+/** '1,2,3' → [1, 2, 3] (nur 1–7, ohne Duplikate, sortiert; ungültige Teile werden ignoriert). */
+export function parseSendDays(s: string | null | undefined): number[] {
+  const tage = new Set<number>();
+  for (const teil of (s ?? '').split(',')) {
+    const n = Number(teil.trim());
+    if (teil.trim() !== '' && Number.isInteger(n) && n >= 1 && n <= 7) tage.add(n);
+  }
+  return [...tage].sort((a, b) => a - b);
+}
+
+/** [5, 1, 1] → '1,5' */
+export function formatSendDays(tage: number[]): string {
+  return parseSendDays(tage.join(',')).join(',');
+}
 
 /** Liegt `jetzt` im Versandfenster der Kampagne (Start inklusive, Ende exklusive)? */
 export function isWithinWindow(k: FensterKampagne, jetzt: Date = new Date()): boolean {
   const t = berlinTeile(jetzt);
-  if (k.sendWeekdaysOnly && t.wochentag > 5) return false;
+  if (!parseSendDays(k.sendDays).includes(t.wochentag)) return false;
   const start = parseHHMM(k.sendWindowStart);
   const ende = parseHHMM(k.sendWindowEnd);
   if (Number.isNaN(start) || Number.isNaN(ende)) return false;
