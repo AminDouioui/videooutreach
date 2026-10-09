@@ -235,14 +235,18 @@ Für echte Ausfallsicherheit den Ordner `backups/` zusätzlich extern ablegen (z
 ### 10. Updates
 
 ```bash
-bash /srv/videooutreach/deploy/update.sh   # git pull + fertiges Image laden + Neustart
+bash /srv/videooutreach/deploy/update.sh   # git pull + fertiges Image laden (nur geänderte Schichten) + Neustart
 ```
 
 Migrationen laufen beim Start automatisch. Der Worker beendet laufende Jobs sauber (bis 30 s); unterbrochene Renderjobs nimmt er danach wieder auf.
 
 #### Automatisches Deployment per GitHub Action
 
-Bei jedem Push oder Merge auf `main` prüft `.github/workflows/deploy.yml` den Code (Typecheck, Lint, Tests) und baut das Docker-Image auf GitHub-Rechnern, legt es in der GitHub Container Registry (`ghcr.io/amindouioui/videooutreach`) ab und ruft danach per SSH `deploy/update.sh` auf dem VPS auf (git pull, Image laden, Neustart, Health-Check). Der Server baut selbst nichts. Schlägt eine Prüfung fehl, wird nicht ausgerollt. Manuell auslösen: GitHub → Actions → „Prüfen und Deployen“ → „Run workflow“.
+Bei jedem Push oder Merge auf `main` prüft `.github/workflows/deploy.yml` den Code (Typecheck, Lint, Tests) und baut parallel dazu das Docker-Image auf GitHub-Rechnern, legt es in der GitHub Container Registry (`ghcr.io/amindouioui/videooutreach`) ab und ruft danach per SSH `deploy/update.sh` auf dem VPS auf (git pull, Image laden, Neustart, Health-Check). Der Server baut selbst nichts. Schlägt eine Prüfung fehl, wird nicht ausgerollt. Manuell auslösen: GitHub → Actions → „Prüfen und Deployen“ → „Run workflow“.
+
+Ein normaler Code-Deploy dauert wenige Minuten: Das Image ist in Schichten aufgeteilt, `node_modules` + Chrome (~1,7 GB) liegen in einer eigenen Schicht, die sich nur mit `package-lock.json` ändert und dann schon auf dem Server liegt – geladen wird nur die kleine App-Schicht. Ändern sich Abhängigkeiten, dauert der nächste Deploy einmalig länger.
+
+Den Host-Key des VPS holt der Workflow per `ssh-keyscan` und vergleicht ihn mit `VPS_HOSTKEY_FINGERPRINT` in `deploy.yml` (ändert sich der Host-Key, dort aktualisieren: `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`).
 
 Einmalige Einrichtung auf dem Server (als root):
 
@@ -255,17 +259,15 @@ echo "command=\"/srv/videooutreach/deploy/update.sh\",no-port-forwarding,no-agen
 
 # 3. Werte für die GitHub-Secrets anzeigen
 cat /root/.ssh/videooutreach_deploy        # -> VPS_SSH_KEY (kompletter Inhalt inkl. BEGIN/END-Zeilen)
-ssh-keyscan -t ed25519 localhost 2>/dev/null | sed "s/^localhost/72.61.80.20/"   # -> VPS_KNOWN_HOSTS
 ```
 
 Dann in GitHub unter **Settings → Secrets and variables → Actions → New repository secret** anlegen:
 
 | Secret | Wert |
 |---|---|
-| `VPS_HOST` | `72.61.80.20` |
-| `VPS_USER` | `root` |
 | `VPS_SSH_KEY` | Inhalt von `/root/.ssh/videooutreach_deploy` |
-| `VPS_KNOWN_HOSTS` | Ausgabe des `ssh-keyscan`-Befehls |
+| `VPS_HOST` | optional, Standard `72.61.80.20` |
+| `VPS_USER` | optional, Standard `root` |
 
 Der Schlüssel kann wegen des Forced Commands ausschließlich `deploy/update.sh` ausführen – selbst wenn er in falsche Hände gerät, ist damit keine Shell auf dem Server möglich. Die private Datei kann nach dem Eintragen in GitHub auf dem Server gelöscht werden (`rm /root/.ssh/videooutreach_deploy`, die `.pub` und der Eintrag in `authorized_keys` bleiben).
 
