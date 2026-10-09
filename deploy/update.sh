@@ -18,8 +18,24 @@ git merge --ff-only --quiet origin/main
 NEU=$(git rev-parse --short HEAD)
 echo "    $ALT -> $NEU"
 
-echo "==> Bauen und neu starten"
-docker compose up -d --build --remove-orphans
+echo "==> Neues Image laden"
+# Die GitHub Action schickt ihr kurzlebiges Token über stdin (nichts wird dauerhaft gespeichert).
+if [ ! -t 0 ]; then
+  TOKEN=$(head -c 4096 || true)
+  if [ -n "$TOKEN" ]; then
+    printf '%s' "$TOKEN" | docker login ghcr.io -u github-actions --password-stdin >/dev/null
+  fi
+fi
+PULL_OK=1
+docker compose pull app worker || PULL_OK=0
+[ -n "${TOKEN:-}" ] && docker logout ghcr.io >/dev/null 2>&1 || true
+if [ "$PULL_OK" = 0 ]; then
+  echo "    Image konnte nicht geladen werden – baue lokal (kann lange dauern)."
+  docker compose build app
+fi
+
+echo "==> Neu starten"
+docker compose up -d --remove-orphans
 
 echo "==> Warte auf Health-Check der App (max. 3 min)"
 APP=$(docker compose ps -q app)

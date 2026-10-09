@@ -4,7 +4,7 @@
 #   bash deploy/install-traefik.sh email.prozessia.space
 #   curl -fsSL https://raw.githubusercontent.com/AminDouioui/videooutreach/main/deploy/install-traefik.sh | bash -s -- email.prozessia.space
 #
-# Als root ausführen. Das Skript ist idempotent: erneutes Ausführen = Update (git pull + Rebuild),
+# Als root ausführen. Das Skript ist idempotent: erneutes Ausführen = Update (git pull + neues Image),
 # .env und data/ bleiben erhalten. Traefik, die Website und andere Container werden NIE verändert
 # (es wird nur gelesen: docker ps / docker inspect).
 #
@@ -295,8 +295,16 @@ YML
   fi
 
   # ---------- 7. Starten ----------
-  info "Baue und starte (docker compose up -d --build, erster Build dauert einige Minuten)"
-  docker compose up -d --build
+  # Fertiges Image aus der GitHub Container Registry laden (gebaut von der GitHub Action).
+  # Nur wenn das nicht klappt, wird auf dem Server selbst gebaut (dauert auf ausgelasteten Servern lange).
+  info "Lade Image (docker compose pull)"
+  if docker compose pull app worker; then
+    docker compose up -d --remove-orphans
+  else
+    warn "Image konnte nicht geladen werden – baue lokal (kann lange dauern)."
+    docker compose build app
+    docker compose up -d --remove-orphans
+  fi
   info "Warte auf Health der App (max. 3 Minuten)"
   local i status="" cid
   for i in $(seq 1 36); do
@@ -339,7 +347,7 @@ CRON
        https://$DOMAIN/api/gmail/callback
   2. https://$DOMAIN/einstellungen öffnen -> „Gmail verbinden“.
   3. Dort die E-Mail-Signatur setzen.
-  4. Update später: Skript erneut ausführen (git pull + Rebuild, .env und data bleiben):
+  4. Update später: Skript erneut ausführen (git pull + neues Image, .env und data bleiben):
        bash $INSTALL_DIR/deploy/install-traefik.sh $DOMAIN
   Backup: täglich 03:15 per /etc/cron.d/videooutreach-backup -> $INSTALL_DIR/backups
 TXT

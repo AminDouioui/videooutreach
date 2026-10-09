@@ -2,9 +2,10 @@
 # Daten liegen auf dem Host in ./data (Datenbank ./data/app.db, Medien ./data/media).
 # Der Proxy (nginx/Caddy) liest ./data/media direkt – siehe deploy/.
 # Rechte: Container läuft als uid 1000 ->  mkdir -p data && sudo chown -R 1000:1000 data
+# Das Image wird von der GitHub Action gebaut und in die GitHub Container Registry (GHCR) gelegt;
+# der Server lädt es nur herunter (docker compose pull). Lokal bauen: docker compose build app
 x-gemeinsam: &gemeinsam
-  build: .
-  image: videooutreach:latest
+  image: ${VO_IMAGE:-ghcr.io/amindouioui/videooutreach:latest}
   env_file: .env
   environment:
     DATA_DIR: /data          # überschreibt den Wert aus .env
@@ -16,6 +17,7 @@ x-gemeinsam: &gemeinsam
 services:
   app:
     <<: *gemeinsam
+    build: .                  # nur die App hat einen Build – der Worker nutzt dasselbe Image (kein doppelter Build)
     ports:
       - "127.0.0.1:${APP_PORT:-3000}:3000"   # nur lokal erreichbar, öffentlich über den Reverse Proxy
     healthcheck:
