@@ -15,11 +15,32 @@ export function fordereRenderAn(campaignId: number, modus: RenderModus): number 
       .set({ renderStatus: 'wartet', renderRequested: true, renderError: null })
       .where(and(eq(schema.leads.campaignId, campaignId), inArray(schema.leads.renderStatus, [...stati])))
       .run();
+    // Ein gerade gestoppter, noch laufender Job soll weiterlaufen statt abgebrochen zu werden
+    tx.update(schema.leads)
+      .set({ renderRequested: true })
+      .where(and(eq(schema.leads.campaignId, campaignId), eq(schema.leads.renderStatus, 'rendert')))
+      .run();
     if (res.changes > 0) {
       tx.update(schema.campaigns).set({ status: 'rendert' }).where(eq(schema.campaigns.id, campaignId)).run();
     }
     return res.changes;
   });
+}
+
+/**
+ * Rendern der Kampagne stoppen: Warteschlange leeren und laufende Jobs zum Abbruch markieren
+ * (der Worker bricht Leads mit renderStatus 'rendert' und renderRequested = false ab).
+ * Die Leads bleiben auf 'wartet' und lassen sich mit „Alle rendern“ fortsetzen.
+ */
+export function stoppeRender(campaignId: number): number {
+  const db = getDb();
+  const res = db
+    .update(schema.leads)
+    .set({ renderRequested: false })
+    .where(and(eq(schema.leads.campaignId, campaignId), eq(schema.leads.renderRequested, true), inArray(schema.leads.renderStatus, ['wartet', 'rendert'])))
+    .run();
+  schliesseKampagneAb(campaignId);
+  return res.changes;
 }
 
 /** Einzelnen Lead erzwungen neu rendern (auch wenn fertig). Ein laufender Job wird nicht angefasst. */

@@ -46,7 +46,8 @@ export function SendControls({ campaignId, readyCount }: { campaignId: number; r
     return () => clearInterval(t);
   }, [laden]);
 
-  async function aktion(action: 'start' | 'pause' | 'resume') {
+  async function aktion(action: 'start' | 'pause' | 'resume' | 'stop') {
+    if (action === 'stop' && !confirm('Versand abbrechen? Geplante Mails werden nicht mehr gesendet. Bereits gesendete bleiben unberührt; ein Neustart ist jederzeit möglich.')) return;
     setLaedt(true);
     setMeldung(null);
     const res = await fetch(`/api/campaigns/${campaignId}/send`, {
@@ -84,6 +85,11 @@ export function SendControls({ campaignId, readyCount }: { campaignId: number; r
         {status === 'pausiert' && (
           <button onClick={() => aktion('resume')} disabled={laedt} className={`${knopf} bg-indigo-600 text-white hover:bg-indigo-700`}>
             Fortsetzen
+          </button>
+        )}
+        {(laeuft || status === 'pausiert') && (
+          <button onClick={() => aktion('stop')} disabled={laedt} className={`${knopf} border border-red-200 bg-white text-red-700 hover:bg-red-50`}>
+            Versand abbrechen
           </button>
         )}
         <p className="text-sm text-slate-600">

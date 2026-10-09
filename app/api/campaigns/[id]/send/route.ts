@@ -4,14 +4,14 @@ import { z } from 'zod';
 import { getDb, schema } from '@/lib/db';
 import { isGmailConnected } from '@/lib/gmail';
 import { fehler, parseJson } from '@/lib/request';
-import { countSentToday, readSendState } from '@/lib/send';
+import { brecheVersandAb, countSentToday, readSendState } from '@/lib/send';
 import { globalDailyLimit } from '@/lib/settings';
 import { isWithinWindow, todayBerlin } from '@/lib/time';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const bodySchema = z.object({ action: z.enum(['start', 'pause', 'resume']) });
+const bodySchema = z.object({ action: z.enum(['start', 'pause', 'resume', 'stop']) });
 
 function laden(id: number) {
   return getDb().select().from(schema.campaigns).where(eq(schema.campaigns.id, id)).get();
@@ -42,7 +42,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   });
 }
 
-/** Versand starten / pausieren / fortsetzen */
+/** Versand starten / pausieren / fortsetzen / abbrechen */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
@@ -57,6 +57,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (k.status !== 'versendet_laufend') return fehler('Versand läuft nicht');
     db.update(schema.campaigns).set({ status: 'pausiert' }).where(eq(schema.campaigns.id, id)).run();
     return NextResponse.json({ ok: true, status: 'pausiert' });
+  }
+
+  if (action === 'stop') {
+    if (k.status !== 'versendet_laufend' && k.status !== 'pausiert') return fehler('Versand läuft nicht');
+    const zurueckgesetzt = brecheVersandAb(id);
+    return NextResponse.json({ ok: true, unplanned: zurueckgesetzt });
   }
 
   if (action === 'start' && k.status === 'versendet_laufend') return fehler('Versand läuft bereits');

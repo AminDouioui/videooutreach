@@ -1,15 +1,17 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Status = { total: number; wartet: number; rendert: number; fertig: number; fehler: number; angefordert: number; campaignStatus: string };
 
-/** Fortschrittsbalken „143 / 200 fertig“; pollt alle 3 s, solange Videos angefordert sind oder gerendert werden. */
+/** Fortschrittsbalken „143 / 200 fertig“ mit Stoppen/Fortsetzen; pollt alle 3 s, solange Videos angefordert sind oder gerendert werden. */
 export function RenderProgress({ campaignId, initial }: { campaignId: number; initial: Status }) {
   const router = useRouter();
   const [s, setS] = useState<Status>(initial);
   const vorher = useRef(initial);
+  const [busy, setBusy] = useState(false);
+  const [meldung, setMeldung] = useState<string | null>(null);
 
   useEffect(() => {
     setS(initial);
@@ -18,34 +20,52 @@ export function RenderProgress({ campaignId, initial }: { campaignId: number; in
 
   const aktiv = s.angefordert > 0 || s.rendert > 0;
 
-  useEffect(() => {
-    // Beim Anfordern ist die Seite evtl. schon veraltet: immer einmal pollen, dann nur bei Aktivität
-    let stop = false;
-    async function lade() {
-      try {
-        const res = await fetch(`/api/campaigns/${campaignId}/status`, { cache: 'no-store' });
-        if (!res.ok) return;
-        const neu = (await res.json()) as Status;
-        if (stop) return;
-        const warAktiv = vorher.current.angefordert > 0 || vorher.current.rendert > 0;
-        const istAktiv = neu.angefordert > 0 || neu.rendert > 0;
-        vorher.current = neu;
-        setS(neu);
-        // Fertig geworden -> Tabelle serverseitig neu laden
-        if (warAktiv && !istAktiv) router.refresh();
-      } catch {
-        // Netzwerkfehler: beim nächsten Takt erneut
-      }
+  const lade = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/status`, { cache: 'no-store' });
+      if (!res.ok) return;
+      const neu = (await res.json()) as Status;
+      const warAktiv = vorher.current.angefordert > 0 || vorher.current.rendert > 0;
+      const istAktiv = neu.angefordert > 0 || neu.rendert > 0;
+      vorher.current = neu;
+      setS(neu);
+      // Fertig geworden oder gestoppt -> Tabelle serverseitig neu laden
+      if (warAktiv && !istAktiv) router.refresh();
+    } catch {
+      // Netzwerkfehler: beim nächsten Takt erneut
     }
+  }, [campaignId, router]);
+
+  useEffect(() => {
     if (!aktiv) return;
     const t = setInterval(lade, 3000);
-    return () => {
-      stop = true;
-      clearInterval(t);
-    };
-  }, [aktiv, campaignId, router]);
+    return () => clearInterval(t);
+  }, [aktiv, lade]);
+
+  async function steuern(mode: 'stop' | 'all') {
+    if (mode === 'stop' && !confirm('Rendern stoppen? Der laufende Job wird abgebrochen, die Warteschlange geleert. Fortsetzen ist jederzeit möglich.')) return;
+    setBusy(true);
+    setMeldung(null);
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setMeldung(data.error ?? 'Aktion fehlgeschlagen');
+      }
+      await lade();
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (s.total === 0 || (!aktiv && s.fertig === 0 && s.fehler === 0)) return null;
+  // Gestoppt (oder nie vollständig angefordert): offene Leads warten, nichts läuft
+  const gestoppt = !aktiv && s.wartet > 0;
   const prozent = Math.round((s.fertig / s.total) * 100);
   return (
     <div className="mb-4 rounded-md border border-slate-200 bg-white p-3" aria-live="polite">
@@ -54,11 +74,24 @@ export function RenderProgress({ campaignId, initial }: { campaignId: number; in
           {s.fertig} / {s.total} fertig
           {aktiv && <span className="ml-2 font-normal text-slate-500">· {s.rendert} in Arbeit, {s.angefordert - s.rendert} in der Warteschlange</span>}
         </span>
-        {s.fehler > 0 && <span className="text-red-600">{s.fehler} fehlgeschlagen</span>}
+        <span className="flex items-center gap-3">
+          {s.fehler > 0 && <span className="text-red-600">{s.fehler} fehlgeschlagen</span>}
+          {aktiv && (
+            <button onClick={() => steuern('stop')} disabled={busy} className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+              {busy ? 'Wird gestoppt …' : 'Rendern stoppen'}
+            </button>
+          )}
+          {gestoppt && (
+            <button onClick={() => steuern('all')} disabled={busy} className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-60">
+              {busy ? 'Wird eingereiht …' : `Rendern fortsetzen (${s.wartet} offen)`}
+            </button>
+          )}
+        </span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-slate-100">
         <div className="h-full bg-indigo-600 transition-all" style={{ width: `${prozent}%` }} />
       </div>
+      {meldung && <p className="mt-1.5 text-sm text-red-600">{meldung}</p>}
     </div>
   );
 }

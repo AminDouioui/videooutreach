@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { bundle } from '@remotion/bundler';
-import { openBrowser, renderMedia, renderStill, selectComposition, type HeadlessBrowser } from '@remotion/renderer';
+import { makeCancelSignal, openBrowser, renderMedia, renderStill, selectComposition, type HeadlessBrowser } from '@remotion/renderer';
 import { getDb, schema } from '../lib/db';
 import { getEnv } from '../lib/env';
 import { mediaDir, thumbnailPath, videoPath } from '../lib/media';
@@ -68,7 +68,7 @@ export function recoverRenderJobs(): void {
   const db = getDb();
   const res = db
     .update(schema.leads)
-    .set({ renderStatus: 'wartet', renderRequested: true })
+    .set({ renderStatus: 'wartet' }) // renderRequested bleibt: per „Rendern stoppen“ abgebrochene Jobs nicht wieder einreihen
     .where(eq(schema.leads.renderStatus, 'rendert'))
     .run();
   if (res.changes > 0) console.log(`[render] Recovery: ${res.changes} hängende Jobs wieder eingereiht`);
@@ -89,6 +89,19 @@ async function renderLead(leadId: number): Promise<void> {
   const tmpVideo = path.join(mediaDir(), `${lead.slug}.rendering.mp4`);
   const tmpIntro = path.join(mediaDir(), `${lead.slug}.intro.mp4`);
   const tmpThumb = path.join(mediaDir(), `${lead.slug}.rendering.jpg`);
+  // „Rendern stoppen“ setzt renderRequested während des Jobs auf false -> Job abbrechen
+  const { cancelSignal, cancel } = makeCancelSignal();
+  let abgebrochen = false;
+  const abbruchPruefer = setInterval(() => {
+    const l = db.select({ angefordert: schema.leads.renderRequested }).from(schema.leads).where(eq(schema.leads.id, leadId)).get();
+    if (l && !l.angefordert && !abgebrochen) {
+      abgebrochen = true;
+      cancel();
+    }
+  }, 2000);
+  const pruefeAbbruch = () => {
+    if (abgebrochen) throw new Error('Rendern gestoppt');
+  };
   try {
     fs.mkdirSync(mediaDir(), { recursive: true });
     const inputProps: OutreachProps = outreachPropsSchema.parse({
@@ -115,11 +128,14 @@ async function renderLead(leadId: number): Promise<void> {
       inputProps,
       outputLocation: tmpIntro,
       overwrite: true,
+      cancelSignal,
       // Remotion bricht ab, wenn concurrency die erkannten Kerne übersteigt (z. B. bei CPU-Limit im Container)
       concurrency: Math.min(2, os.availableParallelism()),
     });
+    pruefeAbbruch();
     await concatIntroTeaser(tmpIntro, teaser, tmpVideo);
     fs.rmSync(tmpIntro, { force: true });
+    pruefeAbbruch();
 
     const thumbComp = await selectComposition({ ...common, id: 'OutreachThumbnail', inputProps });
     await renderStill({
@@ -130,7 +146,9 @@ async function renderLead(leadId: number): Promise<void> {
       jpegQuality: 85,
       output: tmpThumb,
       overwrite: true,
+      cancelSignal,
     });
+    pruefeAbbruch();
 
     // Atomar an den Zielort verschieben
     fs.renameSync(tmpVideo, videoPath(lead.slug));
@@ -148,8 +166,14 @@ async function renderLead(leadId: number): Promise<void> {
       .run();
     console.log(`[render] ${lead.slug} fertig in ${((Date.now() - start) / 1000).toFixed(1)} s`);
   } catch (e) {
-    console.error(`[render] ${lead.slug} fehlgeschlagen:`, e);
     for (const p of [tmpVideo, tmpIntro, tmpThumb]) fs.rmSync(p, { force: true });
+    if (abgebrochen) {
+      // Gestoppt: Lead bleibt unverändert in 'wartet' und kann später fortgesetzt werden
+      console.log(`[render] ${lead.slug} gestoppt`);
+      db.update(schema.leads).set({ renderStatus: 'wartet', renderError: null }).where(eq(schema.leads.id, leadId)).run();
+      return;
+    }
+    console.error(`[render] ${lead.slug} fehlgeschlagen:`, e);
     // Browser nach Fehlern verwerfen, beim nächsten Job wird ein frischer geöffnet
     const kaputt = browser;
     browser = null;
@@ -159,6 +183,7 @@ async function renderLead(leadId: number): Promise<void> {
       .where(eq(schema.leads.id, leadId))
       .run();
   } finally {
+    clearInterval(abbruchPruefer);
     try {
       schliesseKampagneAb(lead.campaignId);
     } catch (e) {

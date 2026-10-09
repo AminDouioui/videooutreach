@@ -10,6 +10,34 @@ import { startOfDayBerlinMs, todayBerlin } from './time';
 
 // Gemeinsame Sendefunktion für Worker-Schleife und „Jetzt senden“-API
 
+// ---------------------------------------------------------------- Versand abbrechen
+
+/**
+ * Versand der Kampagne abbrechen: geplante Leads zurück auf 'nicht_gesendet', Kampagne zurück auf
+ * 'rendert' (falls noch Videos anstehen) bzw. 'bereit'. Bereits gesendete Mails bleiben unberührt.
+ */
+export function brecheVersandAb(campaignId: number): number {
+  const db = getDb();
+  return db.transaction((tx) => {
+    const res = tx
+      .update(schema.leads)
+      .set({ sendStatus: 'nicht_gesendet' })
+      .where(and(eq(schema.leads.campaignId, campaignId), eq(schema.leads.sendStatus, 'geplant')))
+      .run();
+    const offen =
+      tx
+        .select({ n: sql<number>`count(*)` })
+        .from(schema.leads)
+        .where(and(eq(schema.leads.campaignId, campaignId), sql`(${schema.leads.renderStatus} = 'rendert' or (${schema.leads.renderStatus} = 'wartet' and ${schema.leads.renderRequested} = 1))`))
+        .get()?.n ?? 0;
+    tx.update(schema.campaigns)
+      .set({ status: offen > 0 ? 'rendert' : 'bereit' })
+      .where(eq(schema.campaigns.id, campaignId))
+      .run();
+    return res.changes;
+  });
+}
+
 // ---------------------------------------------------------------- Absender & Mail
 
 export function senderInfo(): { name: string; email: string } {
