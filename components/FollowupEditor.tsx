@@ -25,15 +25,15 @@ export function FollowupEditor({
   campaignId,
   initial,
   leads,
-  subject,
+  varianten = [],
   mitVideo,
   extraSpalten = [],
 }: {
   campaignId: number;
   initial: Schritt[];
   leads: LeadOption[];
-  /** Betreff der Erstmail (für die Vorschau „Re: …“) */
-  subject: string;
+  /** Kürzel aller Varianten der Erstmail (A, B …); bei mehr als einer wählbar für die Vorschau „Re: …“ */
+  varianten?: string[];
   mitVideo: boolean;
   extraSpalten?: string[];
 }) {
@@ -43,6 +43,8 @@ export function FollowupEditor({
   const [aktiv, setAktiv] = useState(0);
   const [leadId, setLeadId] = useState<number | null>(leads[0]?.id ?? null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  // leer = Variante des Leads (bzw. die, die er bekäme)
+  const [variante, setVariante] = useState('');
   const bekannt = [...STANDARD_VARIABLEN, ...extraSpalten];
   const pruefungen = schritte.map((x) => pruefeVorlage(x.body, bekannt));
   const klammerFehler = pruefungen.flatMap((p, i) => p.fehler.map((f) => `Follow-up ${i + 1}: ${f}`));
@@ -59,7 +61,7 @@ export function FollowupEditor({
         const res = await fetch(`/api/leads/${leadId}/mail-preview`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subject, followupBody: schritt.body, followupNr: aktiv + 1 }),
+          body: JSON.stringify({ variante: variante || undefined, followupBody: schritt.body, followupNr: aktiv + 1 }),
           signal: ctrl.signal,
         });
         if (res.ok) setPreview(await res.json());
@@ -71,7 +73,7 @@ export function FollowupEditor({
       clearTimeout(t);
       ctrl.abort();
     };
-  }, [leadId, schritt, subject, aktiv]);
+  }, [leadId, schritt, variante, aktiv]);
 
   function aendern(i: number, patch: Partial<Schritt>) {
     setSchritte((s) => s.map((x, j) => (j === i ? { ...x, ...patch } : x)));
@@ -183,6 +185,16 @@ export function FollowupEditor({
               </option>
             ))}
           </select>
+          {varianten.length > 1 && (
+            <select value={variante} onChange={(e) => setVariante(e.target.value)} aria-label="Variante der Erstmail" className="rounded-md border border-slate-300 px-2 py-1 text-sm">
+              <option value="">Variante des Leads</option>
+              {varianten.map((k) => (
+                <option key={k} value={k}>
+                  Betreff von Variante {k}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="rounded-lg border border-slate-200 bg-white">
           <div className="border-b border-slate-200 px-3 py-2 text-sm">

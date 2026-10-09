@@ -24,6 +24,8 @@ export type LeadRow = {
   terminKlicks: number;
   oeffnungen: number;
   score: number;
+  /** Variante der Erstmail (A, B …) oder null */
+  variante: string | null;
   /** Bisher gesendete Mails des Flows (Erstmail + Follow-ups) */
   flowSchritt: number;
   /** Flow beendet: beantwortet, bounce, abgemeldet */
@@ -34,7 +36,7 @@ export type LeadRow = {
   duplikatAusgeschlossen: boolean;
 };
 
-type SortKey = 'firma' | 'ansprechpartner' | 'email' | 'renderStatus' | 'sendStatus' | 'flowSchritt' | 'sentAt' | 'aufrufe' | 'maxProgress' | 'terminKlicks' | 'oeffnungen' | 'score';
+type SortKey = 'firma' | 'ansprechpartner' | 'email' | 'renderStatus' | 'sendStatus' | 'variante' | 'flowSchritt' | 'sentAt' | 'aufrufe' | 'maxProgress' | 'terminKlicks' | 'oeffnungen' | 'score';
 type FilterKey = 'alle' | 'mit_play' | 'nicht_gesendet' | 'beantwortet' | 'duplikate' | 'fehler' | 'termin';
 
 const FILTER: { key: FilterKey; label: string }[] = [
@@ -56,6 +58,7 @@ export function LeadsTable({
   trackingPixel = false,
   mitVideo = true,
   followupSchritte = 0,
+  abTest = false,
 }: {
   leads: LeadRow[];
   baseUrl: string;
@@ -65,6 +68,8 @@ export function LeadsTable({
   mitVideo?: boolean;
   /** Anzahl Follow-ups im Flow (0 = keine Flow-Spalte) */
   followupSchritte?: number;
+  /** Mehr als eine Variante: Spalte „Variante“ anzeigen */
+  abTest?: boolean;
 }) {
   const flowGesamt = 1 + followupSchritte;
   const filter_ = FILTER.filter((f) => mitVideo || (f.key !== 'mit_play' && f.key !== 'termin'));
@@ -103,6 +108,7 @@ export function LeadsTable({
     ...(mitVideo ? [{ key: 'renderStatus' as SortKey, label: 'Render-Status' }] : []),
     { key: 'sendStatus', label: 'Versand-Status' },
     ...(followupSchritte > 0 ? [{ key: 'flowSchritt' as SortKey, label: 'Flow' }] : []),
+    ...(abTest ? [{ key: 'variante' as SortKey, label: 'Variante' }] : []),
     { key: 'sentAt', label: 'Gesendet am' },
     ...(mitVideo
       ? [
@@ -259,6 +265,11 @@ export function LeadsTable({
                         <Badge status={l.flowStopp} />
                       </span>
                     )}
+                  </td>
+                )}
+                {abTest && (
+                  <td className="px-3 py-2">
+                    {l.variante ? <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700">{l.variante}</span> : <span className="text-slate-400">–</span>}
                   </td>
                 )}
                 <td className="whitespace-nowrap px-3 py-2 text-slate-600">{l.sentAt ? datumFormat.format(l.sentAt) : '–'}</td>

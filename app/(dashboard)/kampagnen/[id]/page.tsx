@@ -12,6 +12,8 @@ import { duplikatReihenfolge, FIRMEN_DUPLIKAT } from '@/lib/campaigns';
 import { getEnv } from '@/lib/env';
 import { firmenDuplikate } from '@/lib/firma';
 import { ladeFollowups } from '@/lib/send';
+import { ladeVariantenStatistik } from '@/lib/varianten-statistik';
+import { VariantenTabelle } from '@/components/VariantenTabelle';
 import { ladeLeadMetriken } from '@/lib/tracking';
 
 export const dynamic = 'force-dynamic';
@@ -42,11 +44,14 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
     terminKlicks: metriken.get(l.id)?.terminKlicks ?? 0,
     oeffnungen: metriken.get(l.id)?.oeffnungen ?? 0,
     score: l.score,
+    variante: l.variante,
     flowSchritt: l.sendStatus === 'gesendet' ? 1 + l.followupsSent : 0,
     flowStopp: l.flowStopp,
     firmenDuplikat: duplikate.has(l.id),
     duplikatAusgeschlossen: l.sendStatus === 'uebersprungen' && l.sendError === FIRMEN_DUPLIKAT,
   }));
+  const variantenStatistik = ladeVariantenStatistik(id);
+  const abTest = variantenStatistik.length > 1;
   const gerendert = leads.filter((l) => l.renderStatus === 'fertig').length;
   const followupSchritte = ladeFollowups(id).length;
   // Text-Kampagnen sind sofort versandbereit
@@ -76,6 +81,7 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
       <div className="mb-4">
         <SendControls campaignId={kampagne.id} readyCount={versandbereit} />
       </div>
+      {abTest && <VariantenTabelle statistik={variantenStatistik} mitVideo={kampagne.mitVideo} />}
       <LeadsTable
         leads={rows}
         baseUrl={getEnv().APP_URL}
@@ -83,6 +89,7 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
         trackingPixel={kampagne.trackingPixel}
         mitVideo={kampagne.mitVideo}
         followupSchritte={followupSchritte}
+        abTest={abTest}
       />
     </div>
   );

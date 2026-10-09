@@ -27,14 +27,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const leads = db.select().from(schema.leads).where(eq(schema.leads.campaignId, id)).all();
   const m = ladeLeadMetriken(id);
 
-  const kopf = ['Firma', 'Anrede', 'Vorname', 'Nachname', 'E-Mail', 'Position', 'Website', 'Render-Status', 'Versand-Status', 'Gesendet am', 'Abgemeldet', 'Aufrufe', 'Videostarts', 'Angeschaut max. %', 'Termin-Klick', 'Score', 'Notizen', 'Link'];
-  if (k.trackingPixel) kopf.splice(15, 0, 'Geöffnet (unzuverlässig)');
+  const kopf = ['Firma', 'Anrede', 'Vorname', 'Nachname', 'E-Mail', 'Position', 'Website', 'Render-Status', 'Versand-Status', 'Gesendet am', 'Variante', 'Abgemeldet', 'Aufrufe', 'Videostarts', 'Angeschaut max. %', 'Termin-Klick', 'Score', 'Notizen', 'Link'];
+  if (k.trackingPixel) kopf.splice(16, 0, 'Geöffnet (unzuverlässig)');
   const zeilen = leads
     .sort((a, b) => b.score - a.score)
     .map((l) => {
       const x = m.get(l.id);
-      const z: unknown[] = [l.firma, l.anrede, l.vorname, l.nachname, l.email, l.position, l.website, l.renderStatus, l.sendStatus, datum(l.sentAt), l.unsubscribed ? 'ja' : 'nein', x?.aufrufe ?? 0, x?.videostarts ?? 0, x?.maxProgress ?? 0, x?.terminKlicks ? 'ja' : 'nein', l.score, l.notizen, leadPageUrl(l.slug)];
-      if (k.trackingPixel) z.splice(15, 0, x?.oeffnungen ?? 0);
+      const z: unknown[] = [l.firma, l.anrede, l.vorname, l.nachname, l.email, l.position, l.website, l.renderStatus, l.sendStatus, datum(l.sentAt), l.variante, l.unsubscribed ? 'ja' : 'nein', x?.aufrufe ?? 0, x?.videostarts ?? 0, x?.maxProgress ?? 0, x?.terminKlicks ? 'ja' : 'nein', l.score, l.notizen, leadPageUrl(l.slug)];
+      if (k.trackingPixel) z.splice(16, 0, x?.oeffnungen ?? 0);
       return z;
     });
   const csv = '﻿' + [kopf, ...zeilen].map((r) => r.map(zelle).join(';')).join('\r\n') + '\r\n';

@@ -14,6 +14,7 @@ Ablauf: Excel/CSV mit Leads hochladen, pro Lead entsteht ein eigenes Video (pers
 
 - Login mit Admin-Passwort (ein Zugang), Kampagnen, Vorlagen mit Platzhaltern, Vorschau, Testmail.
 - Vorlagen: Spintax `{Hallo|Guten Tag}` (verschachtelbar, pro Lead stabil gewählt, auch in Betreff/Follow-ups), eigene Variablen aus nicht zugeordneten Import-Spalten (`{{stadt}}`, normalisiert), zusätzlich `{{position}}`, `{{website}}`, `{{email}}`, `{{absender_name}}`, und Fallbacks `{{vorname|Hallo zusammen}}`. Editor zeigt Variablen, Hilfe und Warnungen; unbalancierte Klammern verhindern das Speichern.
+- A/B-Tests: Die Kampagnen-Vorlage ist Variante A, auf der Vorlagen-Seite kommen bis zu vier weitere Varianten (B–E, je Betreff + Text, aktiv/inaktiv) dazu. Jede Erstmail geht gleichmäßig rotierend mit der Variante raus, die bisher am seltensten gesendet wurde (`leads.variante`); Follow-ups nutzen den Betreff der Variante des Leads. Auswertung je Variante (gesendet, Video-Seite, Play, Termin-Klick, Antworten, Raten) auf der Kampagnenseite, Variante auch im CSV-Export.
 - Import `.xlsx`/`.csv` mit Spalten-Mapping, Validierung (ungültige E-Mails, Duplikate, Sperrliste).
 - Rendern aller Leads, nur fehlgeschlagener oder einzelner Leads neu; Fortschritt im Dashboard.
 - Öffentliche Video-Seite (mobil, ohne Cookies/Fremd-Skripte, `noindex`).

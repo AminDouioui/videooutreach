@@ -9,6 +9,7 @@ import { STANDARD_VARIABLEN, verwendeteVariablen } from './vorlage';
 import type { SendState } from './send-plan';
 import { isSuppressed } from './suppression';
 import { startOfDayBerlinMs, todayBerlin } from './time';
+import { kampagneMitVariante, waehleVarianteFuerKampagne } from './varianten-db';
 
 // Gemeinsame Sendefunktion für Worker-Schleife und „Jetzt senden“-API
 
@@ -60,8 +61,13 @@ function extraSpaltenFuer(campaign: typeof schema.campaigns.$inferSelect, schrit
   return noetig.length ? kampagnenExtraSpalten(campaign.id) : [];
 }
 
-/** Baut die Mail für einen Lead (Vorschau und Versand nutzen dieselbe Funktion). Mit `schritt` ein Follow-up. */
-export function buildLeadEmail(lead: typeof schema.leads.$inferSelect, campaign: typeof schema.campaigns.$inferSelect, schritt?: MailSchritt): BuiltEmail {
+/**
+ * Baut die Mail für einen Lead (Vorschau und Versand nutzen dieselbe Funktion). Mit `schritt` ein Follow-up.
+ * Betreff/Text der Erstmail stammen aus der Variante: `variante`, sonst die des Leads (leads.variante), sonst A.
+ * Follow-ups bekommen so den „Re: …“-Betreff der Variante, die der Lead erhalten hat.
+ */
+export function buildLeadEmail(lead: typeof schema.leads.$inferSelect, kampagne: typeof schema.campaigns.$inferSelect, schritt?: MailSchritt, variante?: string | null): BuiltEmail {
+  const campaign = kampagneMitVariante(kampagne, variante ?? lead.variante);
   return buildEmail(
     lead,
     { ...campaign, extraSpalten: extraSpaltenFuer(campaign, schritt) },
@@ -74,11 +80,11 @@ export function buildLeadEmail(lead: typeof schema.leads.$inferSelect, campaign:
   );
 }
 
-type MimeOpts = { to?: string; subjectPrefix?: string; schritt?: MailSchritt; inReplyTo?: string };
+type MimeOpts = { to?: string; subjectPrefix?: string; schritt?: MailSchritt; inReplyTo?: string; variante?: string | null };
 
 /** Fertige MIME-Nachricht (base64url) samt ihrer Message-ID. */
 export function buildLeadMimeMitId(lead: typeof schema.leads.$inferSelect, campaign: typeof schema.campaigns.$inferSelect, opts: MimeOpts = {}): { raw: string; messageId: string } {
-  const mail = buildLeadEmail(lead, campaign, opts.schritt);
+  const mail = buildLeadEmail(lead, campaign, opts.schritt, opts.variante);
   const from = senderInfo();
   const appUrl = getEnv().APP_URL.replace(/\/$/, '');
   const messageId = neueMessageId(from.email);
@@ -202,11 +208,13 @@ export async function sendLead(leadId: number, opts: SendOptions = {}): Promise<
   if (!opts.sender && !isGmailConnected()) return { ok: false, kind: 'nicht_verbunden', error: 'Gmail nicht verbunden' };
 
   try {
-    const { raw, messageId } = buildLeadMimeMitId(lead, kampagne);
+    // Variante der Erstmail: gleichmäßig rotierend unter den aktiven; wird erst mit dem Versand gespeichert
+    const variante = waehleVarianteFuerKampagne(kampagne.id);
+    const { raw, messageId } = buildLeadMimeMitId(lead, kampagne, { variante });
     const res = await sender(raw);
     db.transaction((tx) => {
       tx.update(schema.leads)
-        .set({ sendStatus: 'gesendet', sentAt: jetzt, sendError: null, gmailMessageId: res.id, gmailThreadId: res.threadId, rfcMessageId: messageId })
+        .set({ sendStatus: 'gesendet', sentAt: jetzt, sendError: null, gmailMessageId: res.id, gmailThreadId: res.threadId, rfcMessageId: messageId, variante })
         .where(eq(schema.leads.id, lead.id))
         .run();
       tx.insert(schema.sentMessages)

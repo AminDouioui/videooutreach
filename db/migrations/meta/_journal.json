@@ -15,6 +15,13 @@
       "when": 1791571448816,
       "tag": "0001_flows_und_textkampagnen",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791574109916,
+      "tag": "0002_ab_tests_varianten",
+      "breakpoints": true
     }
   ]
 }

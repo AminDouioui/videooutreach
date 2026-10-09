@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 const ts = (name: string) => integer(name, { mode: 'timestamp_ms' });
 const jetzt = sql`(unixepoch() * 1000)`;
@@ -53,6 +53,26 @@ export const followups = sqliteTable(
   (t) => [index('followups_campaign_idx').on(t.campaignId)],
 );
 
+/**
+ * Zusätzliche Varianten (B, C …) der Erstmail für A/B-Tests. Die Kampagnen-Vorlage selbst ist Variante „A“
+ * und liegt nicht in dieser Tabelle.
+ */
+export const varianten = sqliteTable(
+  'varianten',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    campaignId: integer('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    kuerzel: text('kuerzel').notNull(),
+    betreff: text('betreff').notNull(),
+    text: text('text').notNull(),
+    aktiv: integer('aktiv', { mode: 'boolean' }).notNull().default(true),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [index('varianten_campaign_idx').on(t.campaignId), uniqueIndex('varianten_campaign_kuerzel_idx').on(t.campaignId, t.kuerzel)],
+);
+
 export const FLOW_STOPP = ['beantwortet', 'bounce', 'abgemeldet'] as const;
 
 export const leads = sqliteTable(
@@ -95,6 +115,8 @@ export const leads = sqliteTable(
     flowStopp: text('flow_stopp', { enum: FLOW_STOPP }),
     flowStoppAt: ts('flow_stopp_at'),
     replyCheckedAt: ts('reply_checked_at'),
+    // Kürzel der beim Versand der Erstmail genutzten Variante (A = Kampagnen-Vorlage); null = noch nicht gesendet
+    variante: text('variante'),
     createdAt: ts('created_at').notNull().default(jetzt),
   },
   (t) => [index('leads_campaign_idx').on(t.campaignId), index('leads_email_idx').on(t.email)],
@@ -148,6 +170,7 @@ export const suppressionList = sqliteTable('suppression_list', {
 });
 
 export type Campaign = typeof campaigns.$inferSelect;
+export type Variante = typeof varianten.$inferSelect;
 export type Followup = typeof followups.$inferSelect;
 export type Lead = typeof leads.$inferSelect;
 export type NewLead = typeof leads.$inferInsert;
