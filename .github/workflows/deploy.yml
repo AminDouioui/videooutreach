@@ -1,6 +1,6 @@
-# Bei jedem Push/Merge auf main: prüfen (Typecheck, Lint, Tests), danach auf dem VPS per SSH
-# deploy/update.sh ausführen (git pull + docker compose build + up). Der VPS baut mit seinem
-# Build-Cache, das ist viel schneller als jedes Mal ein 3-GB-Image aus der Registry zu laden.
+# Bei jedem Push/Merge auf main: prüfen (Typecheck, Lint, Tests) und parallel das Image auf GitHub
+# bauen (Schicht-Cache in der Registry), danach auf dem VPS per SSH deploy/update.sh ausführen
+# (git pull + docker compose pull + up). Der VPS lädt nur die geänderte, kleine App-Schicht.
 # Benötigte Repository-Secrets (Settings → Secrets and variables → Actions):
 #   VPS_HOST         z.B. 72.61.80.20
 #   VPS_USER         z.B. root
@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 env:
   VPS_HOST_FALLBACK: 72.61.80.20
@@ -40,10 +41,32 @@ jobs:
       - run: npm run lint
       - run: npm test
 
-  deployen:
-    needs: pruefen
+  # Läuft parallel zu den Prüfungen; deployt wird nur, wenn beide grün sind
+  image:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/amindouioui/videooutreach:latest
+            ghcr.io/amindouioui/videooutreach:${{ github.sha }}
+          # Registry-Cache: bleibt erhalten, damit die node_modules-Schicht identisch bleibt
+          cache-from: type=registry,ref=ghcr.io/amindouioui/videooutreach:buildcache
+          cache-to: type=registry,ref=ghcr.io/amindouioui/videooutreach:buildcache,mode=max
+
+  deployen:
+    needs: [pruefen, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: SSH einrichten
         env:
@@ -65,4 +88,5 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST || env.VPS_HOST_FALLBACK }}
           VPS_USER: ${{ secrets.VPS_USER || 'root' }}
         # Der Schlüssel ist auf dem Server per Forced Command auf deploy/update.sh beschränkt.
-        run: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 "$VPS_USER@$VPS_HOST" update < /dev/null
+        # Das kurzlebige GITHUB_TOKEN geht über stdin an den Server, damit er das Image laden kann.
+        run: printf '%s' "${{ secrets.GITHUB_TOKEN }}" | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 "$VPS_USER@$VPS_HOST" update

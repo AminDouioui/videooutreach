@@ -19,10 +19,18 @@ git merge --ff-only --quiet origin/main
 NEU=$(git rev-parse --short HEAD)
 echo "    $ALT -> $NEU"
 
-echo "==> Image bauen"
-# Lokal bauen statt ein 3-GB-Image aus der Registry zu laden: dank Build-Cache laufen bei
-# Code-Änderungen nur COPY + next build neu (npm ci und Chrome nur bei geändertem package-lock).
-docker compose build app
+echo "==> Neues Image laden"
+# Das Image baut die GitHub Action. Bei Code-Änderungen ändert sich nur die kleine App-Schicht,
+# node_modules + Chrome liegen in einer eigenen Schicht und sind schon auf dem Server.
+# Die Action schickt ihr kurzlebiges Token über stdin (nichts wird dauerhaft gespeichert).
+if [ ! -t 0 ]; then
+  TOKEN=$(head -c 4096 || true)
+  if [ -n "$TOKEN" ]; then
+    printf '%s' "$TOKEN" | docker login ghcr.io -u github-actions --password-stdin >/dev/null
+  fi
+fi
+docker compose pull --quiet app worker
+[ -n "${TOKEN:-}" ] && docker logout ghcr.io >/dev/null 2>&1 || true
 
 echo "==> Neu starten"
 docker compose up -d --remove-orphans
