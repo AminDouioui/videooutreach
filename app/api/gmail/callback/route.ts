@@ -14,7 +14,7 @@ function gleich(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-/** OAuth-Rückkehr: state prüfen, Code gegen Refresh-Token tauschen, zurück zu den Einstellungen. */
+/** OAuth-Rückkehr: state prüfen, Code tauschen, Adresse aus dem ID-Token lesen, Postfach speichern, zurück zu den Einstellungen. */
 export async function GET(req: NextRequest) {
   const base = getEnv().APP_URL.replace(/\/$/, '');
   const ziel = (status: string, detail?: string) => {
@@ -34,9 +34,9 @@ export async function GET(req: NextRequest) {
   const code = sp.get('code');
   if (!code) return ziel('fehler', 'Kein Code erhalten');
   try {
-    await handleCallbackCode(code);
+    const { email } = await handleCallbackCode(code);
+    return ziel('verbunden', email);
   } catch (e) {
     return ziel('fehler', e instanceof Error ? e.message : 'Unbekannter Fehler');
   }
-  return ziel('verbunden');
 }

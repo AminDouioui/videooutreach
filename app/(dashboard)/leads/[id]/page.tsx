@@ -5,6 +5,7 @@ import { Badge, LeadStatusBadge } from '@/components/Badge';
 import { LeadStatusSelect } from '@/components/LeadStatusSelect';
 import { CopyButton } from '@/components/CopyButton';
 import { LeadActions, MailVorschau, NotizFeld } from '@/components/LeadDetailPanel';
+import { ladeAbsenderMitId } from '@/lib/absender';
 import { getDb, schema } from '@/lib/db';
 import { gmailThreadUrl } from '@/lib/lead-status';
 import { setzeAntwortGelesen } from '@/lib/lead-status-db';
@@ -39,6 +40,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   // Öffnen des Lead-Details markiert eine Antwort als gelesen
   if (lead.flowStopp === 'beantwortet' && !lead.antwortGelesen) setzeAntwortGelesen(lead.id, true);
 
+  const postfach = lead.absenderId !== null ? ladeAbsenderMitId(lead.absenderId) : null;
   const name = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
   const link = leadPageUrl(lead.slug);
   const fertig = lead.renderStatus === 'fertig';
@@ -126,6 +128,10 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
             <p className="text-xs text-slate-500">Nicht interessiert, falscher Ansprechpartner, Termin gebucht, Gewonnen und Verloren beenden den Flow (keine Follow-ups mehr).</p>
             <p>
               <span className="text-slate-500">Erstmail-Variante:</span> {lead.variante ?? '–'}
+            </p>
+            <p>
+              <span className="text-slate-500">Absender-Postfach:</span> {postfach ? postfach.email : lead.sendStatus === 'gesendet' ? 'nicht zugeordnet (Altbestand)' : '–'}
+              {postfach && (!postfach.aktiv || postfach.fehler || !postfach.refreshTokenEnc) && <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">pausiert/getrennt – Follow-ups warten</span>}
             </p>
             <p>
               <span className="text-slate-500">Antwort:</span>{' '}

@@ -2,11 +2,12 @@ import type { Metadata } from 'next';
 import { eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { VideoPlayer } from '@/components/VideoPlayer';
+import { postfachFuerLead } from '@/lib/absender';
 import { getDb, schema } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import { thumbnailUrl, videoUrl } from '@/lib/media';
 import { begruessung } from '@/lib/name';
-import { getSetting, legalUrls } from '@/lib/settings';
+import { legalUrls } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,8 @@ export default async function VideoSeite({ params }: { params: Promise<{ slug: s
   if (!row) notFound();
   const { lead, ctaUrl } = row;
 
-  const absender = getEnv().SENDER_EMAIL || getSetting('gmail_email');
+  // Antworten gehen an das Postfach, das die Erstmail gesendet hat; ohne Zuordnung an SENDER_EMAIL
+  const absender = postfachFuerLead(lead)?.email || getEnv().SENDER_EMAIL;
   const betreff = encodeURIComponent(`Ihr Video für ${lead.firma}`);
   const mailto = absender ? `mailto:${absender}?subject=${betreff}` : null;
   const recht = legalUrls();

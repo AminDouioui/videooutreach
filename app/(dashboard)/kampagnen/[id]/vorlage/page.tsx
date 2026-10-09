@@ -6,7 +6,8 @@ import { TemplateEditor } from '@/components/TemplateEditor';
 import { VariantenEditor } from '@/components/VariantenEditor';
 import { kampagnenExtraSpalten } from '@/lib/campaigns';
 import { getDb, schema } from '@/lib/db';
-import { ladeFollowups, senderInfo } from '@/lib/send';
+import { ladeAbsender, postfachNichtNutzbar } from '@/lib/absender';
+import { ladeFollowups } from '@/lib/send';
 import { STANDARD_VARIANTE } from '@/lib/varianten';
 import { ladeVarianten, variantenZaehler } from '@/lib/varianten-db';
 
@@ -23,6 +24,7 @@ export default async function VorlagePage({ params }: { params: Promise<{ id: st
   const extraSpalten = kampagnenExtraSpalten(id);
   const zaehler = variantenZaehler(id);
   const zusatz = ladeVarianten(id).map((v) => ({ id: v.id, kuerzel: v.kuerzel, betreff: v.betreff, text: v.text, aktiv: v.aktiv, verwendet: zaehler[v.kuerzel] ?? 0 }));
+  const postfaecher = ladeAbsender().map((a) => ({ id: a.id, email: a.email, nutzbar: postfachNichtNutzbar(a) === null }));
   const followups = ladeFollowups(id).map((f) => ({ waitDays: f.waitDays, body: f.body }));
 
   return (
@@ -37,7 +39,7 @@ export default async function VorlagePage({ params }: { params: Promise<{ id: st
       </p>
 
       <h2 className="mb-3 text-base font-semibold">Schritt 1 · Erstmail (Variante A)</h2>
-      <TemplateEditor campaignId={id} subject={k.emailSubjectTemplate} body={k.emailBodyTemplate} senderEmail={senderInfo().email} leads={leadOptionen} mitVideo={k.mitVideo} extraSpalten={extraSpalten} />
+      <TemplateEditor campaignId={id} subject={k.emailSubjectTemplate} body={k.emailBodyTemplate} postfaecher={postfaecher} leads={leadOptionen} mitVideo={k.mitVideo} extraSpalten={extraSpalten} />
 
       <h2 className="mb-3 mt-10 text-base font-semibold">A/B-Test</h2>
       <VariantenEditor campaignId={id} initial={zusatz} extraSpalten={extraSpalten} vorschauLeadId={leads[0]?.id ?? null} />

@@ -35,7 +35,7 @@ export function TemplateEditor({
   subject: s0,
   body: b0,
   leads,
-  senderEmail,
+  postfaecher,
   mitVideo = true,
   extraSpalten = [],
 }: {
@@ -43,7 +43,8 @@ export function TemplateEditor({
   subject: string;
   body: string;
   leads: LeadOption[];
-  senderEmail: string;
+  /** Postfächer, von denen die Testmail gesendet werden kann */
+  postfaecher: { id: number; email: string; nutzbar: boolean }[];
   mitVideo?: boolean;
   /** Normalisierte Extra-Spalten der Kampagne (aus den Leads) */
   extraSpalten?: string[];
@@ -55,6 +56,7 @@ export function TemplateEditor({
   const [vorschauFehler, setVorschauFehler] = useState('');
   const [status, setStatus] = useState<{ text: string; fehler: boolean } | null>(null);
   const [tab, setTab] = useState<'html' | 'text'>('html');
+  const [absenderId, setAbsenderId] = useState<number | null>(postfaecher.find((p) => p.nutzbar)?.id ?? postfaecher[0]?.id ?? null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [gespeichert, setGespeichert] = useState({ subject: s0, body: b0 });
   const bekannt = [...STANDARD_VARIABLEN, ...extraSpalten];
@@ -114,7 +116,7 @@ export function TemplateEditor({
   async function testmail() {
     setStatus({ text: 'Testmail wird gesendet …', fehler: false });
     if (geaendert) await speichern();
-    const res = await fetch(`/api/campaigns/${campaignId}/test-mail`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadId: leadId ?? undefined }) });
+    const res = await fetch(`/api/campaigns/${campaignId}/test-mail`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadId: leadId ?? undefined, absenderId: absenderId ?? undefined }) });
     const data = await res.json().catch(() => ({}));
     setStatus(data.ok ? { text: `Testmail an ${data.to} gesendet`, fehler: false } : { text: data.error ?? 'Testmail fehlgeschlagen', fehler: true });
   }
@@ -146,12 +148,29 @@ export function TemplateEditor({
           <button onClick={speichern} disabled={!geaendert || klammerFehler.length > 0} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
             Speichern
           </button>
-          <button onClick={testmail} disabled={leadId === null} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          <button onClick={testmail} disabled={leadId === null || absenderId === null} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
             Testmail an mich senden
           </button>
           {status && <span className={`text-sm ${status.fehler ? 'text-red-600' : 'text-green-700'}`}>{status.text}</span>}
         </div>
-        <p className="text-xs text-slate-500">Testmail geht an {senderEmail || 'SENDER_EMAIL (nicht gesetzt)'} mit „[TEST]“ im Betreff.</p>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+          {postfaecher.length === 0 ? (
+            <span>Kein Postfach verbunden – bitte unter Einstellungen ein Gmail-Postfach hinzufügen.</span>
+          ) : (
+            <>
+              <label htmlFor="testpostfach">Testmail senden von</label>
+              <select id="testpostfach" value={absenderId ?? ''} onChange={(e) => setAbsenderId(Number(e.target.value))} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
+                {postfaecher.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.email}
+                    {p.nutzbar ? '' : ' (nicht verfügbar)'}
+                  </option>
+                ))}
+              </select>
+              <span>an dieses Postfach, mit „[TEST]“ im Betreff.</span>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="min-w-0">

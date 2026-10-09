@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { legePostfachAn, setzePostfaecherZurueck } from './test-postfach';
 
 // Eigene Test-DB, bevor lib/db das erste Mal geöffnet wird
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vo-zeitplan-'));
@@ -76,14 +77,15 @@ beforeAll(async () => {
     importServer: await import('./import-server'),
   };
   m.db.getDb();
+  await legePostfachAn();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   // Jeder Test startet ohne laufende Kampagnen, ohne Rampe und ohne Abstandssperre
   const { getDb, schema } = m.db;
   getDb().update(schema.campaigns).set({ status: 'pausiert' }).run();
   getDb().delete(schema.sentMessages).run();
-  m.settings.setSetting('send_state', '{}');
+  await setzePostfaecherZurueck();
   m.settings.setSetting('global_daily_limit', '100');
   m.settings.setSetting('rampe_aktiv', '0');
   m.settings.deleteSetting('rampe_beginn');

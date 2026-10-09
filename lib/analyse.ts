@@ -19,12 +19,14 @@ export type AnalyseLead = {
   antwortAt: number | null;
   /** Unix-ms des Flow-Stopps (Rückfall für ältere Antworten ohne antwortAt) */
   flowStoppAt: number | null;
+  /** Postfach der Erstmail (null/fehlt = Altbestand ohne Zuordnung) */
+  absenderId?: number | null;
 };
 
 /** Erstes Auftreten eines Event-Typs (ohne Bots) je Lead */
 export type ErstesEvent = { leadId: number; type: string; ts: number };
 
-export type VersandZeile = { leadId: number; step: number; sentAt: number };
+export type VersandZeile = { leadId: number; step: number; sentAt: number; /** Postfach, von dem gesendet wurde */ absenderId?: number | null };
 
 export type TrichterStufe = {
   key: 'leads' | 'gesendet' | 'angesehen' | 'play' | 'p50' | 'p100' | 'termin' | 'antwort';
@@ -49,6 +51,9 @@ export type Trichter = {
 };
 
 export type SchrittZeile = { step: number; label: string; gesendet: number; antworten: number; antwortRate: number };
+
+/** Gesendet und Antworten je Absender-Postfach (absenderId null = ohne Zuordnung) */
+export type PostfachZeile = { absenderId: number | null; gesendet: number; erstmails: number; antworten: number; antwortRate: number };
 
 export type TagesPunkt = { datum: string; gesendet: number; angesehen: number; antworten: number };
 
@@ -153,6 +158,29 @@ export function aggregiereSchritte(leads: AnalyseLead[], versand: VersandZeile[]
   return zeilen;
 }
 
+/**
+ * Je Postfach: alle gesendeten Mails (inkl. Follow-ups), Erstmails und Antworten auf dessen Erstmails.
+ * Die Antwortrate bezieht sich auf die Erstmails. Sortiert nach Postfach-ID, ohne Zuordnung zuletzt.
+ */
+export function aggregierePostfaecher(leads: AnalyseLead[], versand: VersandZeile[]): PostfachZeile[] {
+  const zeilen = new Map<number | null, PostfachZeile>();
+  const zeile = (id: number | null | undefined) => {
+    const key = id ?? null;
+    let z = zeilen.get(key);
+    if (!z) zeilen.set(key, (z = { absenderId: key, gesendet: 0, erstmails: 0, antworten: 0, antwortRate: 0 }));
+    return z;
+  };
+  for (const v of versand) {
+    const z = zeile(v.absenderId);
+    z.gesendet++;
+    if (v.step === 0) z.erstmails++;
+  }
+  for (const l of leads) if (l.sendStatus === 'gesendet' && hatGeantwortet(l)) zeile(l.absenderId).antworten++;
+  const liste = [...zeilen.values()];
+  for (const z of liste) z.antwortRate = rate(z.antworten, z.erstmails);
+  return liste.sort((a, b) => (a.absenderId ?? Infinity) - (b.absenderId ?? Infinity));
+}
+
 /** Datum 'YYYY-MM-DD' um `tage` Kalendertage verschieben (ohne Zeitzonen-/Sommerzeitprobleme). */
 export function datumPlus(datum: string, tage: number): string {
   const [y, m, d] = datum.split('-').map(Number);
@@ -245,6 +273,7 @@ export function ladeRohdaten(campaignId: number | null): Rohdaten {
       leadStatus: schema.leads.leadStatus,
       antwortAt: schema.leads.antwortAt,
       flowStoppAt: schema.leads.flowStoppAt,
+      absenderId: schema.leads.absenderId,
     })
     .from(schema.leads)
     .innerJoin(schema.campaigns, eq(schema.campaigns.id, schema.leads.campaignId))
@@ -269,11 +298,11 @@ export function ladeRohdaten(campaignId: number | null): Rohdaten {
     .all();
 
   const versand = db
-    .select({ leadId: schema.sentMessages.leadId, step: schema.sentMessages.step, sentAt: schema.sentMessages.sentAt })
+    .select({ leadId: schema.sentMessages.leadId, step: schema.sentMessages.step, sentAt: schema.sentMessages.sentAt, absenderId: schema.sentMessages.absenderId })
     .from(schema.sentMessages)
     .where(campaignId === null ? undefined : eq(schema.sentMessages.campaignId, campaignId))
     .all()
-    .map((r) => ({ leadId: r.leadId, step: r.step, sentAt: r.sentAt.getTime() }));
+    .map((r) => ({ leadId: r.leadId, step: r.step, sentAt: r.sentAt.getTime(), absenderId: r.absenderId }));
 
   return { leads, ereignisse, versand };
 }
@@ -282,12 +311,19 @@ export type KampagnenAnalyse = {
   trichter: Trichter;
   schritte: SchrittZeile[];
   tage: TagesPunkt[];
+  postfaecher: (PostfachZeile & { email: string | null })[];
 };
 
 /** Komplette Analyse einer Kampagne (Trichter, Schritte, 30-Tage-Verlauf). */
 export function ladeKampagnenAnalyse(campaignId: number, mindestSchritte = 1, jetzt: Date = new Date()): KampagnenAnalyse {
   const roh = ladeRohdaten(campaignId);
-  return { trichter: aggregiereTrichter(roh.leads, roh.ereignisse), schritte: aggregiereSchritte(roh.leads, roh.versand, mindestSchritte), tage: tagesverlauf(roh, 30, jetzt) };
+  const emails = new Map(getDb().select({ id: schema.absender.id, email: schema.absender.email }).from(schema.absender).all().map((a) => [a.id, a.email]));
+  return {
+    trichter: aggregiereTrichter(roh.leads, roh.ereignisse),
+    schritte: aggregiereSchritte(roh.leads, roh.versand, mindestSchritte),
+    tage: tagesverlauf(roh, 30, jetzt),
+    postfaecher: aggregierePostfaecher(roh.leads, roh.versand).map((z) => ({ ...z, email: z.absenderId !== null ? (emails.get(z.absenderId) ?? null) : null })),
+  };
 }
 
 export type Uebersicht = { kennzahlen: GlobaleKennzahlen; tage: TagesPunkt[]; ungelesen: number };

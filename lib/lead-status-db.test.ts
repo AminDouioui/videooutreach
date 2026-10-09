@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { legePostfachAn, setzePostfaecherZurueck } from './test-postfach';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vo-status-'));
 Object.assign(process.env, {
@@ -74,11 +75,12 @@ beforeAll(async () => {
     listen: await import('./lead-listen'),
   };
   m.db.getDb();
+  await legePostfachAn();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   m.db.getDb().update(m.db.schema.campaigns).set({ status: 'pausiert' }).run();
-  m.settings.setSetting('send_state', '{}');
+  await setzePostfaecherZurueck();
 });
 
 describe('Lead-Status in der Versandschleife', () => {
@@ -209,7 +211,7 @@ describe('Antwort erkennen und Firmen-Stopp', () => {
     const b = neuerLead(k.id, { email: 'b@firma-y.de', sendStatus: 'gesendet', gmailThreadId: 'tb', rfcMessageId: '<x@y>', sentAt: T0 });
     m.db.getDb().insert(m.db.schema.sentMessages).values({ leadId: b.id, campaignId: k.id, step: 0, sentAt: T0 }).run();
     const { gesendet, sender } = fakeSender();
-    m.settings.setSetting('send_state', '{}');
+    await setzePostfaecherZurueck();
     await m.send.pruefeAntwort({ ...lead(b.id), gmailThreadId: 'tb' }, async () => 'antwort', T0);
     expect(lead(a.id).sendStatus).toBe('uebersprungen');
     const r = await m.loop.runSendTick({ sender, pruefer: async () => null, now: tag(3), zufall });

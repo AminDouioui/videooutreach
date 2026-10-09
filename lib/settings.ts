@@ -5,16 +5,12 @@ import { getEnv } from './env';
 // Key/Value-Einstellungen in der Tabelle `settings`
 
 export type SettingKey =
-  | 'gmail_refresh_token'
-  | 'gmail_email'
-  // Von Google tatsächlich erteilte Berechtigungen (Leerzeichen-getrennt)
-  | 'gmail_scopes'
+  // Standard-Absendername und -Signatur für Postfächer ohne eigene Werte (die Verbindungen selbst: Tabelle `absender`)
   | 'sender_name'
   | 'signature'
   | 'global_daily_limit'
   | 'impressum_url'
   | 'datenschutz_url'
-  | 'send_state'
   // Aufwärmrampe: '1' = aktiv, Startwert, Steigerung pro Tag, erster Tag 'YYYY-MM-DD' (leer = erste gesendete Mail)
   | 'rampe_aktiv'
   | 'rampe_start'

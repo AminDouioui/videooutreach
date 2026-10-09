@@ -36,19 +36,21 @@ export function GlobalSettingsForm({ initial, heuteErlaubt }: { initial: Werte; 
 
   return (
     <form onSubmit={speichern} className="space-y-4 rounded-lg border border-slate-200 bg-white p-5">
-      <h2 className="text-base font-semibold">Absender &amp; Versand</h2>
+      <h2 className="text-base font-semibold">Standardwerte &amp; Versand</h2>
       <label className="block text-sm font-medium text-slate-700">
-        Absendername
+        Standard-Absendername
         <input value={w.senderName} onChange={(e) => set('senderName', e.target.value)} className={feld} placeholder="z. B. Amin Douioui" />
+        <span className="mt-1 block text-xs font-normal text-slate-500">Gilt für Postfächer ohne eigenen Namen (siehe oben bei „Postfächer“).</span>
       </label>
       <label className="block text-sm font-medium text-slate-700">
-        Signatur
+        Standard-Signatur
         <textarea value={w.signature} onChange={(e) => set('signature', e.target.value)} rows={6} className={`${feld} font-mono`} placeholder={'Amin Douioui\nProzessia GmbH\nTelefon …\nImpressum: https://…'} />
-        <span className="mt-1 block text-xs font-normal text-slate-500">Zeilenumbrüche bleiben erhalten. Hier gehören die Impressumsangaben hin.</span>
+        <span className="mt-1 block text-xs font-normal text-slate-500">Gilt für Postfächer ohne eigene Signatur. Zeilenumbrüche bleiben erhalten. Hier gehören die Impressumsangaben hin.</span>
       </label>
       <label className="block text-sm font-medium text-slate-700 sm:max-w-xs">
-        Globales Tageslimit (alle Kampagnen)
+        Gesamtlimit pro Tag über alle Postfächer
         <input required type="number" min={1} max={2000} value={w.globalDailyLimit} onChange={(e) => set('globalDailyLimit', Number(e.target.value))} className={feld} />
+        <span className="mt-1 block text-xs font-normal text-slate-500">Obergrenze für alle Kampagnen und Postfächer zusammen; jedes Postfach hat zusätzlich sein eigenes Tageslimit.</span>
       </label>
       <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">
         <legend className="px-1 text-sm font-medium text-slate-700">Aufwärmrampe</legend>
@@ -57,7 +59,7 @@ export function GlobalSettingsForm({ initial, heuteErlaubt }: { initial: Werte; 
           <span>
             Tageslimit langsam steigern
             <span className="block text-xs text-slate-500">
-              Startet mit dem Startwert und steigt täglich um den Schritt, höchstens bis zum globalen Tageslimit. Gut für neue Absenderadressen.
+              Startet mit dem Startwert und steigt täglich um den Schritt, höchstens bis zum Gesamtlimit. Gilt auch je Postfach (höchstens bis zu dessen Tageslimit), gerechnet ab der ersten Mail des Postfachs. Gut für neue Absenderadressen.
             </span>
           </span>
         </label>
@@ -76,7 +78,7 @@ export function GlobalSettingsForm({ initial, heuteErlaubt }: { initial: Werte; 
           </label>
         </div>
         <p className="text-xs text-slate-500">Ohne Beginn zählt der Tag der ersten gesendeten Mail (noch keine: heute). Zum Übernehmen der Änderungen speichern.</p>
-        <p className="text-sm font-medium text-slate-800">Heute erlaubt: {heuteErlaubt} {heuteErlaubt === 1 ? 'Mail' : 'Mails'}</p>
+        <p className="text-sm font-medium text-slate-800">Heute insgesamt erlaubt: {heuteErlaubt} {heuteErlaubt === 1 ? 'Mail' : 'Mails'}</p>
       </fieldset>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block text-sm font-medium text-slate-700">

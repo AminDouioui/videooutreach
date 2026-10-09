@@ -2,6 +2,7 @@ import { isWithinWindow, type FensterKampagne } from './time';
 
 // Reine Entscheidungslogik der Versandschleife (testbar ohne DB)
 
+/** Zustand der früheren globalen Versandsteuerung (heute je Postfach, siehe absender) */
 export type SendState = {
   /** Datum (Berlin), auf das sich sentToday bezieht */
   date: string;
@@ -19,7 +20,11 @@ export type PlanInput = {
   globalLimit: number;
   sentTodayGlobal: number;
   sentTodayCampaign: number;
-  state: Pick<SendState, 'nextSendAt' | 'quotaStoppedDate'>;
+  /**
+   * Nur für den Betrieb mit einem einzigen Zustand (Tests): Abstand und Quota-Stopp gelten seit den mehreren
+   * Postfächern je Postfach (absender.nextSendAt / quotaGestopptAm, siehe lib/rotation.ts). Ohne Angabe nicht geprüft.
+   */
+  state?: Pick<SendState, 'nextSendAt' | 'quotaStoppedDate'>;
 };
 
 export type PlanResult =
@@ -36,9 +41,9 @@ export function decideSend(i: PlanInput): PlanResult {
   if (i.campaign.status !== 'versendet_laufend') return { action: 'wait', reason: 'status', global: false };
   // Datum im Format YYYY-MM-DD: Textvergleich entspricht dem Datumsvergleich
   if (i.campaign.startDatum && i.today < i.campaign.startDatum) return { action: 'wait', reason: 'vor_start', global: false };
-  if (i.state.quotaStoppedDate === i.today) return { action: 'wait', reason: 'quota_gestoppt', global: true };
+  if (i.state?.quotaStoppedDate === i.today) return { action: 'wait', reason: 'quota_gestoppt', global: true };
   if (i.sentTodayGlobal >= i.globalLimit) return { action: 'wait', reason: 'limit_global', global: true };
-  if (i.state.nextSendAt !== null && i.now.getTime() < i.state.nextSendAt) return { action: 'wait', reason: 'abstand', global: true };
+  if (i.state && i.state.nextSendAt !== null && i.now.getTime() < i.state.nextSendAt) return { action: 'wait', reason: 'abstand', global: true };
   if (!isWithinWindow(i.campaign, i.now)) return { action: 'wait', reason: 'fenster_zu', global: false };
   if (i.sentTodayCampaign >= i.campaign.dailySendLimit) return { action: 'wait', reason: 'limit_kampagne', global: false };
   return { action: 'send' };

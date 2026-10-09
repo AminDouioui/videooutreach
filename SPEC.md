@@ -157,6 +157,7 @@ cta_click|email_open|unsubscribe), meta (json), ip_hash, user_agent, is_bot (boo
 `sender_name`, `signature` (Klartext/mehrzeilig), `global_daily_limit` (Standard 30),
 `impressum_url`, `datenschutz_url` (überschreiben .env wenn gesetzt), `send_state` (JSON: `{date, sentToday,
 nextSendAt, quotaStoppedDate}`).
+*Stand Paket 6:* `gmail_*` und `send_state` entfallen; Verbindungen, Abstand (`next_send_at`) und Quota-/Fehlerstatus liegen je Postfach in der Tabelle `absender`, die Zuordnung in `leads.absender_id` / `sent_messages.absender_id` (siehe README „Versandregeln“). Das alte Postfach wird beim ersten Start automatisch übernommen (`lib/absender-uebernahme.ts`).
 
 **suppression_list**: email (text pk, lowercase), reason (text), created_at.
 

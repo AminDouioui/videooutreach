@@ -1,23 +1,26 @@
 import { google } from 'googleapis';
+import { speichereVerbindung, type Absender } from './absender';
 import { decrypt, encrypt } from './crypto';
 import { getEnv } from './env';
 import { classifyGmailError, type GmailFehler } from './gmail-error';
-import { deleteSetting, getSetting, setSetting } from './settings';
+import { GMAIL_METADATA_SCOPE, GMAIL_SCOPE, OAUTH_SCOPES } from './gmail-scopes';
 
-export { classifyGmailError };
+export { classifyGmailError, GMAIL_METADATA_SCOPE, GMAIL_SCOPE };
 export type { GmailFehler };
 
-// Senden + nur Kopfzeilen lesen (für die Antwort-Erkennung der Follow-ups) – kein Zugriff auf Mail-Inhalte
-export const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
-export const GMAIL_METADATA_SCOPE = 'https://www.googleapis.com/auth/gmail.metadata';
+/** Was die Gmail-Funktionen von einem Postfach brauchen */
+export type GmailPostfach = Pick<Absender, 'id' | 'email' | 'refreshTokenEnc'>;
 
-/** Funktion, die eine fertige base64url-Nachricht versendet (für Tests austauschbar). Mit threadId als Antwort im Thread. */
-export type GmailSender = (raw: string, threadId?: string) => Promise<{ id: string; threadId: string }>;
+/**
+ * Funktion, die eine fertige base64url-Nachricht über das Postfach versendet (für Tests austauschbar). Mit threadId
+ * als Antwort im Thread. Das Postfach wird mitgegeben, damit Tests die Rotation prüfen können.
+ */
+export type GmailSender = (raw: string, threadId: string | undefined, postfach: GmailPostfach) => Promise<{ id: string; threadId: string }>;
 
 /** Ergebnis der Thread-Prüfung: Antwort des Leads, Bounce oder nichts */
 export type ThreadErgebnis = 'antwort' | 'bounce' | null;
-/** Prüft einen Thread auf Antworten (für Tests austauschbar). Wirft GmailSendError. */
-export type ThreadPruefer = (threadId: string) => Promise<ThreadErgebnis>;
+/** Prüft einen Thread im Postfach der Erstmail auf Antworten (für Tests austauschbar). Wirft GmailSendError. */
+export type ThreadPruefer = (threadId: string, postfach: GmailPostfach) => Promise<ThreadErgebnis>;
 
 /** Fehler beim Versand mit Klassifizierung. */
 export class GmailSendError extends Error {
@@ -39,71 +42,66 @@ export function oauthConfigured(): boolean {
   return !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 }
 
-/** Zustimmungs-URL (offline + consent, damit immer ein Refresh-Token zurückkommt). */
-export function buildAuthUrl(state: string): string {
+/** Zustimmungs-URL (offline + consent, damit immer ein Refresh-Token zurückkommt). `loginHint` = vorgeschlagenes Konto. */
+export function buildAuthUrl(state: string, loginHint?: string): string {
   return oauthClient().generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: [GMAIL_SCOPE, GMAIL_METADATA_SCOPE],
+    scope: OAUTH_SCOPES,
     state,
-    login_hint: getEnv().SENDER_EMAIL,
+    ...(loginHint ? { login_hint: loginHint } : {}),
   });
 }
 
-/** Tauscht den Code gegen Tokens und speichert den Refresh-Token verschlüsselt. */
-export async function handleCallbackCode(code: string): Promise<void> {
+/** Ergebnis des Code-Tauschs: was zum Speichern eines Postfachs nötig ist */
+export type CodeAustausch = { refreshToken: string; scopes: string; email: string };
+
+/** Tauscht den Code gegen Tokens und liest die Adresse aus dem ID-Token (verifyIdToken mit Client-ID). */
+async function tauscheCode(code: string): Promise<CodeAustausch> {
   const client = oauthClient();
   const { tokens } = await client.getToken(code);
   if (!tokens.refresh_token) {
     throw new Error('Google hat keinen Refresh-Token geliefert. Bitte den Zugriff unter myaccount.google.com/permissions entfernen und erneut verbinden.');
   }
-  setSetting('gmail_refresh_token', encrypt(tokens.refresh_token));
-  // Tatsächlich erteilte Berechtigungen merken (Antwort-Erkennung braucht gmail.metadata)
-  setSetting('gmail_scopes', tokens.scope ?? GMAIL_SCOPE);
-  // gmail.send erlaubt kein Profil-Lesen: Konto-Adresse kommt aus SENDER_EMAIL
-  const email = getEnv().SENDER_EMAIL;
-  if (email) setSetting('gmail_email', email);
-}
-
-export function isGmailConnected(): boolean {
-  return !!getSetting('gmail_refresh_token');
-}
-
-/** Darf die App Threads auf Antworten prüfen? (Verbindung vor der Follow-up-Funktion hat nur gmail.send) */
-export function kannAntwortenPruefen(): boolean {
-  return isGmailConnected() && (getSetting('gmail_scopes') ?? '').includes(GMAIL_METADATA_SCOPE);
-}
-
-export function connectedEmail(): string | null {
-  return getSetting('gmail_email') || getEnv().SENDER_EMAIL || null;
-}
-
-/** Trennt Gmail: Token wird (best effort) bei Google widerrufen und lokal gelöscht. */
-export async function disconnectGmail(): Promise<void> {
-  const enc = getSetting('gmail_refresh_token');
-  if (enc) {
-    try {
-      await oauthClient().revokeToken(decrypt(enc));
-    } catch {
-      // Widerruf fehlgeschlagen (z. B. offline) – lokal trotzdem löschen
-    }
+  if (!tokens.id_token) {
+    throw new Error('Google hat kein ID-Token geliefert – die Berechtigungen „openid“ und „email“ fehlen im OAuth-Zustimmungsbildschirm (siehe docs/gmail-einrichtung.md).');
   }
-  deleteSetting('gmail_refresh_token');
-  deleteSetting('gmail_email');
-  deleteSetting('gmail_scopes');
+  const ticket = await client.verifyIdToken({ idToken: tokens.id_token, audience: getEnv().GOOGLE_CLIENT_ID });
+  const email = ticket.getPayload()?.email?.trim().toLowerCase();
+  if (!email) throw new Error('Im ID-Token von Google steht keine E-Mail-Adresse. Bitte „email“ im OAuth-Zustimmungsbildschirm ergänzen und erneut verbinden.');
+  return { refreshToken: tokens.refresh_token, scopes: tokens.scope ?? GMAIL_SCOPE, email };
 }
 
-function gmailClient() {
-  const enc = getSetting('gmail_refresh_token');
-  if (!enc) throw new GmailSendError({ art: 'auth', meldung: 'Gmail nicht verbunden' });
+/**
+ * OAuth-Rückkehr: Code tauschen und Postfach speichern (Refresh-Token verschlüsselt). Dieselbe Adresse erneut
+ * verbinden aktualisiert den Token. `austausch` ersetzt den Google-Aufruf (Tests).
+ */
+export async function handleCallbackCode(code: string, austausch: (code: string) => Promise<CodeAustausch> = tauscheCode): Promise<{ email: string; neu: boolean }> {
+  const a = await austausch(code);
+  const { absender, neu } = speichereVerbindung({ email: a.email, refreshTokenEnc: encrypt(a.refreshToken), scopes: a.scopes });
+  return { email: absender.email, neu };
+}
+
+/** Widerruft den Token des Postfachs bei Google (best effort; lokal wird separat gelöscht). */
+export async function widerrufeToken(postfach: Pick<Absender, 'refreshTokenEnc'>): Promise<void> {
+  if (!postfach.refreshTokenEnc) return;
+  try {
+    await oauthClient().revokeToken(decrypt(postfach.refreshTokenEnc));
+  } catch {
+    // Widerruf fehlgeschlagen (z. B. offline) – lokal trotzdem löschen
+  }
+}
+
+function gmailClient(postfach: GmailPostfach) {
+  if (!postfach.refreshTokenEnc) throw new GmailSendError({ art: 'auth', meldung: `Postfach ${postfach.email} nicht verbunden` });
   const client = oauthClient();
-  client.setCredentials({ refresh_token: decrypt(enc) });
+  client.setCredentials({ refresh_token: decrypt(postfach.refreshTokenEnc) });
   return google.gmail({ version: 'v1', auth: client });
 }
 
-/** Standard-Sender über die Gmail-API. Wirft GmailSendError. */
-export const sendRaw: GmailSender = async (raw, threadId) => {
-  const gmail = gmailClient();
+/** Standard-Sender über die Gmail-API (im Namen des übergebenen Postfachs). Wirft GmailSendError. */
+export const sendRaw: GmailSender = async (raw, threadId, postfach) => {
+  const gmail = gmailClient(postfach);
   try {
     const res = await gmail.users.messages.send({ userId: 'me', requestBody: { raw, ...(threadId ? { threadId } : {}) } });
     return { id: res.data.id ?? '', threadId: res.data.threadId ?? '' };
@@ -132,8 +130,8 @@ export function bewerteThread(nachrichten: Array<Record<string, string>>, eigene
 }
 
 /** Prüft per gmail.metadata (nur Kopfzeilen), ob im Thread eine Antwort oder ein Bounce liegt. */
-export const pruefeThread: ThreadPruefer = async (threadId) => {
-  const gmail = gmailClient();
+export const pruefeThread: ThreadPruefer = async (threadId, postfach) => {
+  const gmail = gmailClient(postfach);
   try {
     const res = await gmail.users.threads.get({
       userId: 'me',
@@ -146,7 +144,7 @@ export const pruefeThread: ThreadPruefer = async (threadId) => {
       for (const x of m.payload?.headers ?? []) if (x.name && x.value) h[x.name.toLowerCase()] = x.value;
       return h;
     });
-    return bewerteThread(nachrichten, connectedEmail() ?? '');
+    return bewerteThread(nachrichten, postfach.email);
   } catch (e) {
     throw new GmailSendError(classifyGmailError(e));
   }

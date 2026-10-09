@@ -98,9 +98,10 @@ export function ladeLeadsSeite(f: LeadsFilter, proSeite = LEADS_PRO_SEITE) {
   const richtung = f.dir === 'asc' ? asc : desc;
   // Leads ohne Sendedatum immer ans Ende
   const zeilen = db
-    .select({ lead: schema.leads, kampagne: schema.campaigns.name })
+    .select({ lead: schema.leads, kampagne: schema.campaigns.name, postfach: schema.absender.email })
     .from(schema.leads)
     .innerJoin(schema.campaigns, eq(schema.campaigns.id, schema.leads.campaignId))
+    .leftJoin(schema.absender, eq(schema.absender.id, schema.leads.absenderId))
     .where(where)
     .orderBy(...(f.sort === 'gesendet' ? [asc(sql`${schema.leads.sentAt} is null`)] : []), richtung(spalte), desc(schema.leads.id))
     .limit(proSeite)

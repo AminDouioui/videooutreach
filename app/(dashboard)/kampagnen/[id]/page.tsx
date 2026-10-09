@@ -11,6 +11,7 @@ import { getDb, schema } from '@/lib/db';
 import { duplikatReihenfolge, FIRMEN_DUPLIKAT } from '@/lib/campaigns';
 import { getEnv } from '@/lib/env';
 import { firmenDuplikate } from '@/lib/firma';
+import { ladeAbsender } from '@/lib/absender';
 import { ladeFollowups } from '@/lib/send';
 import { ladeVariantenStatistik } from '@/lib/varianten-statistik';
 import { VariantenTabelle } from '@/components/VariantenTabelle';
@@ -27,6 +28,8 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
 
   const leads = db.select().from(schema.leads).where(eq(schema.leads.campaignId, id)).all();
   const metriken = ladeLeadMetriken(id);
+  const postfaecher = ladeAbsender();
+  const postfachMail = new Map(postfaecher.map((a) => [a.id, a.email]));
   // Je Firma gilt der zuerst angeschriebene bzw. zuerst importierte Kontakt als Original
   const duplikate = firmenDuplikate(duplikatReihenfolge(leads));
   const rows: LeadRow[] = leads.map((l) => ({
@@ -46,6 +49,7 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
     oeffnungen: metriken.get(l.id)?.oeffnungen ?? 0,
     score: l.score,
     variante: l.variante,
+    postfach: l.absenderId !== null ? (postfachMail.get(l.absenderId) ?? null) : null,
     flowSchritt: l.sendStatus === 'gesendet' ? 1 + l.followupsSent : 0,
     flowStopp: l.flowStopp,
     firmenDuplikat: duplikate.has(l.id),
@@ -91,6 +95,7 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
         mitVideo={kampagne.mitVideo}
         followupSchritte={followupSchritte}
         abTest={abTest}
+        mehrerePostfaecher={postfaecher.length > 1}
       />
     </div>
   );

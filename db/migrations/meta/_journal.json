@@ -43,6 +43,13 @@
       "when": 1791575259046,
       "tag": "0005_zeitplan_zustellbarkeit",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791575950717,
+      "tag": "0006_mehrere_absender_postfaecher",
+      "breakpoints": true
     }
   ]
 }

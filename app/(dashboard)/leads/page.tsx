@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { asc } from 'drizzle-orm';
 import { Badge, LeadStatusBadge } from '@/components/Badge';
+import { ladeAbsender } from '@/lib/absender';
 import { getDb, schema } from '@/lib/db';
 import { LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
 import { ladeLeadsSeite, LEADS_PRO_SEITE, parseLeadsFilter, SEND_STATUS_WERTE, type LeadsFilter } from '@/lib/lead-listen';
@@ -29,6 +30,7 @@ function query(f: LeadsFilter, patch: Partial<LeadsFilter> = {}): string {
 export default async function LeadsSeite({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const f = parseLeadsFilter(await searchParams);
   const { zeilen, total, seiten, seite } = ladeLeadsSeite(f);
+  const mehrerePostfaecher = ladeAbsender().length > 1;
   const kampagnen = getDb().select({ id: schema.campaigns.id, name: schema.campaigns.name }).from(schema.campaigns).orderBy(asc(schema.campaigns.name)).all();
 
   function sortLink(sort: LeadsFilter['sort'], label: string) {
@@ -99,6 +101,7 @@ export default async function LeadsSeite({ searchParams }: { searchParams: Promi
               <th className="px-3 py-2">E-Mail</th>
               <th className="px-3 py-2">Kampagne</th>
               <th className="px-3 py-2">Versand</th>
+              {mehrerePostfaecher && <th className="px-3 py-2">Postfach</th>}
               <th className="px-3 py-2">Lead-Status</th>
               <th className="px-3 py-2">Antwort</th>
               <th className="px-3 py-2">{sortLink('gesendet', 'Gesendet am')}</th>
@@ -108,7 +111,7 @@ export default async function LeadsSeite({ searchParams }: { searchParams: Promi
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {zeilen.map(({ lead: l, kampagne }) => (
+            {zeilen.map(({ lead: l, kampagne, postfach }) => (
               <tr key={l.id} className="hover:bg-slate-50">
                 <td className="px-3 py-2 font-medium">{l.firma}</td>
                 <td className="px-3 py-2">{[l.vorname, l.nachname].filter(Boolean).join(' ') || '–'}</td>
@@ -121,6 +124,7 @@ export default async function LeadsSeite({ searchParams }: { searchParams: Promi
                 <td className="px-3 py-2">
                   <Badge status={l.sendStatus} />
                 </td>
+                {mehrerePostfaecher && <td className="whitespace-nowrap px-3 py-2 text-slate-600">{postfach ?? '–'}</td>}
                 <td className="px-3 py-2">
                   <LeadStatusBadge status={l.leadStatus} />
                 </td>
@@ -137,7 +141,7 @@ export default async function LeadsSeite({ searchParams }: { searchParams: Promi
             ))}
             {zeilen.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={mehrerePostfaecher ? 12 : 11} className="px-3 py-6 text-center text-slate-500">
                   Keine Leads für diesen Filter.
                 </td>
               </tr>

@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { eq } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { legePostfachAn } from './test-postfach';
 
 // Eigene Test-DB, bevor lib/db das erste Mal geöffnet wird
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vo-ab-'));
@@ -61,6 +62,7 @@ function neueVariante(campaignId: number, kuerzel: string, aktiv = true) {
 beforeAll(async () => {
   m = { db: await import('./db'), send: await import('./send'), stat: await import('./varianten-statistik'), vdb: await import('./varianten-db') };
   m.db.getDb();
+  await legePostfachAn();
 });
 
 describe('Versand mit Varianten', () => {

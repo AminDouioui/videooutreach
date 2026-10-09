@@ -20,7 +20,7 @@ export default async function AnalysePage({ params }: { params: Promise<{ id: st
   if (!k) notFound();
 
   const followups = ladeFollowups(id).length;
-  const { trichter, schritte, tage } = ladeKampagnenAnalyse(id, 1 + followups);
+  const { trichter, schritte, tage, postfaecher } = ladeKampagnenAnalyse(id, 1 + followups);
   const stufen = trichter.stufen.filter((s) => k.mitVideo || !s.video);
   const stufe = (key: string) => trichter.stufen.find((s) => s.key === key)!;
   const varianten = ladeVariantenStatistik(id);
@@ -97,6 +97,38 @@ export default async function AnalysePage({ params }: { params: Promise<{ id: st
           </table>
         </div>
       </section>
+
+      {postfaecher.length > 1 && (
+        <section className="mb-6">
+          <h2 className="mb-2 text-base font-semibold">Postfächer</h2>
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Postfach</th>
+                  <th className={th}>Gesendet</th>
+                  <th className={th} title="Davon Erstmails (Basis der Antwortrate)">
+                    Erstmails
+                  </th>
+                  <th className={th}>Antworten</th>
+                  <th className={th}>Antwortrate</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {postfaecher.map((p) => (
+                  <tr key={p.absenderId ?? 'ohne'}>
+                    <td className="px-3 py-2 font-medium">{p.absenderId === null ? 'Ohne Zuordnung' : (p.email ?? `Postfach ${p.absenderId}`)}</td>
+                    <td className={`${th} tabular-nums`}>{p.gesendet}</td>
+                    <td className={`${th} tabular-nums`}>{p.erstmails}</td>
+                    <td className={`${th} tabular-nums`}>{p.antworten}</td>
+                    <td className={`${th} tabular-nums`}>{p.erstmails > 0 ? prozent(p.antwortRate) : '–'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <section className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="mb-3 text-base font-semibold">Letzte 30 Tage</h2>
