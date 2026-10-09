@@ -1,5 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { bundle } from '@remotion/bundler';
 import { openBrowser, renderMedia, renderStill, selectComposition, type HeadlessBrowser } from '@remotion/renderer';
@@ -114,7 +115,8 @@ async function renderLead(leadId: number): Promise<void> {
       inputProps,
       outputLocation: tmpIntro,
       overwrite: true,
-      concurrency: 2,
+      // Remotion bricht ab, wenn concurrency die erkannten Kerne übersteigt (z. B. bei CPU-Limit im Container)
+      concurrency: Math.min(2, os.availableParallelism()),
     });
     await concatIntroTeaser(tmpIntro, teaser, tmpVideo);
     fs.rmSync(tmpIntro, { force: true });

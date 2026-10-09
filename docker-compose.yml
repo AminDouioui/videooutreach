@@ -32,6 +32,7 @@ services:
     <<: *gemeinsam
     command: ["npx", "tsx", "worker/index.ts"]
     shm_size: "1gb"             # Chrome braucht ausreichend /dev/shm
+    cpus: 2                     # Render (Chrome + ffmpeg) darf den VPS nicht auslasten
     stop_grace_period: 40s      # Worker beendet laufende Jobs (max. 30 s)
     # mem_limit: 3g             # optional, Richtwert (Chrome + ffmpeg); bei RENDER_CONCURRENCY=1 reichen ~2-3 GB
     depends_on:
