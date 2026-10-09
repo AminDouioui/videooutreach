@@ -12,6 +12,8 @@ const envSchema = z.object({
   IP_HASH_SALT: z.string().min(1, 'IP_HASH_SALT fehlt'),
   DATA_DIR: z.preprocess(leer, z.string().default('./data')),
   RENDER_CONCURRENCY: z.preprocess(leer, z.coerce.number().int().min(1).max(8).default(1)),
+  // Optional: neue Render-Jobs nur in diesem Zeitfenster (Berlin) starten, z. B. "00:00-07:00". Leer = immer.
+  RENDER_WINDOW: opt(z.string().regex(/^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/, 'RENDER_WINDOW im Format HH:MM-HH:MM')),
   FFMPEG_PATH: z.preprocess(leer, z.string().default('ffmpeg')),
   REMOTION_BROWSER_EXECUTABLE: opt(z.string()),
   GOOGLE_CLIENT_ID: opt(z.string()),

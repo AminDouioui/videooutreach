@@ -3,7 +3,17 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-type Status = { total: number; wartet: number; rendert: number; fertig: number; fehler: number; angefordert: number; campaignStatus: string };
+type Status = {
+  total: number;
+  wartet: number;
+  rendert: number;
+  fertig: number;
+  fehler: number;
+  angefordert: number;
+  campaignStatus: string;
+  renderFenster: string | null;
+  renderFensterOffen: boolean;
+};
 
 /** Fortschrittsbalken „143 / 200 fertig“ mit Stoppen/Fortsetzen; pollt alle 3 s, solange Videos angefordert sind oder gerendert werden. */
 export function RenderProgress({ campaignId, initial }: { campaignId: number; initial: Status }) {
@@ -91,6 +101,9 @@ export function RenderProgress({ campaignId, initial }: { campaignId: number; in
       <div className="h-2 overflow-hidden rounded-full bg-slate-100">
         <div className="h-full bg-indigo-600 transition-all" style={{ width: `${prozent}%` }} />
       </div>
+      {aktiv && s.renderFenster && !s.renderFensterOffen && (
+        <p className="mt-1.5 text-xs text-slate-500">Gerendert wird nur zwischen {s.renderFenster.replace('-', ' und ')} Uhr – die Warteschlange läuft dann automatisch weiter.</p>
+      )}
       {meldung && <p className="mt-1.5 text-sm text-red-600">{meldung}</p>}
     </div>
   );

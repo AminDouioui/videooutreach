@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { isWeekday, isWithinWindow, startOfDayBerlinMs, todayBerlin } from './time';
+import { isInRenderWindow, isWeekday, isWithinWindow, startOfDayBerlinMs, todayBerlin } from './time';
 
 const fenster = { sendWindowStart: '08:00', sendWindowEnd: '17:00', sendWeekdaysOnly: true };
+
+describe('Render-Fenster', () => {
+  it('ohne Fenster immer offen', () => {
+    expect(isInRenderWindow(undefined, new Date('2026-07-15T12:00:00Z'))).toBe(true);
+  });
+  it('00:00-07:00 Berlin (Sommer UTC+2)', () => {
+    expect(isInRenderWindow('00:00-07:00', new Date('2026-07-14T21:59:00Z'))).toBe(false); // 23:59
+    expect(isInRenderWindow('00:00-07:00', new Date('2026-07-14T22:00:00Z'))).toBe(true); // 00:00
+    expect(isInRenderWindow('00:00-07:00', new Date('2026-07-15T04:59:00Z'))).toBe(true); // 06:59
+    expect(isInRenderWindow('00:00-07:00', new Date('2026-07-15T05:00:00Z'))).toBe(false); // 07:00
+  });
+  it('über Mitternacht 22:00-06:00', () => {
+    expect(isInRenderWindow('22:00-06:00', new Date('2026-07-15T20:30:00Z'))).toBe(true); // 22:30
+    expect(isInRenderWindow('22:00-06:00', new Date('2026-07-15T03:00:00Z'))).toBe(true); // 05:00
+    expect(isInRenderWindow('22:00-06:00', new Date('2026-07-15T10:00:00Z'))).toBe(false); // 12:00
+  });
+});
 
 describe('time (Europe/Berlin)', () => {
   it('todayBerlin berücksichtigt Zeitzone (Sommer UTC+2)', () => {

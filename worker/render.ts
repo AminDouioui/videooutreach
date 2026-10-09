@@ -8,6 +8,7 @@ import { getDb, schema } from '../lib/db';
 import { getEnv } from '../lib/env';
 import { mediaDir, thumbnailPath, videoPath } from '../lib/media';
 import { schliesseKampagneAb } from '../lib/render-queue';
+import { isInRenderWindow } from '../lib/time';
 import { concatIntroTeaser, ensureTeaserCache, teaserHash } from './assemble';
 import { outreachPropsSchema, TEASER_DATEI, type OutreachProps } from '../remotion/schema';
 
@@ -24,6 +25,7 @@ const TEASER_QUELLE = path.join(ROOT, 'remotion/public', TEASER_DATEI);
 let browser: HeadlessBrowser | null = null;
 const aktiv = new Map<number, Promise<void>>();
 let laeuft = true;
+let imFenster: boolean | null = null;
 
 function browserExecutable(): string | null {
   return getEnv().REMOTION_BROWSER_EXECUTABLE ?? null;
@@ -195,6 +197,14 @@ async function renderLead(leadId: number): Promise<void> {
 /** Ein Durchlauf: freie Plätze mit wartenden, angeforderten Leads füllen. */
 function tick(): void {
   if (!laeuft || !serveUrl) return;
+  // Außerhalb des Render-Fensters keine neuen Jobs starten; laufende Jobs laufen zu Ende
+  const fenster = getEnv().RENDER_WINDOW;
+  const offen = isInRenderWindow(fenster);
+  if (offen !== imFenster) {
+    if (fenster) console.log(`[render] Render-Fenster ${fenster} ${offen ? 'geöffnet' : 'geschlossen – warte'}`);
+    imFenster = offen;
+  }
+  if (!offen) return;
   const frei = getEnv().RENDER_CONCURRENCY - aktiv.size;
   if (frei <= 0) return;
   const db = getDb();

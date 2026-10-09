@@ -1,5 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb, schema } from './db';
+import { getEnv } from './env';
+import { isInRenderWindow } from './time';
 
 // Gemeinsame Logik für Render-Warteschlange und Fortschritt (API + Worker)
 
@@ -89,6 +91,9 @@ export type KampagnenStatus = {
   versandFehler: number;
   uebersprungen: number;
   campaignStatus: string;
+  /** Render-Fenster aus RENDER_WINDOW (null = immer) und ob es gerade offen ist */
+  renderFenster: string | null;
+  renderFensterOffen: boolean;
 };
 
 export function ladeKampagnenStatus(campaignId: number): KampagnenStatus | null {
@@ -113,5 +118,6 @@ export function ladeKampagnenStatus(campaignId: number): KampagnenStatus | null 
     .from(schema.leads)
     .where(eq(schema.leads.campaignId, campaignId))
     .get();
-  return { ...r!, campaignStatus: k.status };
+  const fenster = getEnv().RENDER_WINDOW ?? null;
+  return { ...r!, campaignStatus: k.status, renderFenster: fenster, renderFensterOffen: isInRenderWindow(fenster ?? undefined) };
 }

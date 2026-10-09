@@ -62,6 +62,21 @@ export function isWithinWindow(k: FensterKampagne, jetzt: Date = new Date()): bo
   return minuten >= start && minuten < ende;
 }
 
+/**
+ * Liegt `jetzt` im Render-Fenster „HH:MM-HH:MM“ (Berlin, Start inklusive, Ende exklusive)?
+ * Fenster über Mitternacht (z. B. 22:00-06:00) sind erlaubt. Kein Fenster = immer.
+ */
+export function isInRenderWindow(fenster: string | undefined, jetzt: Date = new Date()): boolean {
+  if (!fenster) return true;
+  const [a, b] = fenster.split('-');
+  const start = parseHHMM(a ?? '');
+  const ende = parseHHMM(b ?? '');
+  if (Number.isNaN(start) || Number.isNaN(ende)) return true;
+  const t = berlinTeile(jetzt);
+  const minuten = t.stunde * 60 + t.minute;
+  return start <= ende ? minuten >= start && minuten < ende : minuten >= start || minuten < ende;
+}
+
 /** Formatiert einen Zeitpunkt für die Anzeige („08.10.2026, 09:15“) in Berliner Zeit. */
 export function formatBerlin(d: Date): string {
   return new Intl.DateTimeFormat('de-DE', { timeZone: ZONE, dateStyle: 'short', timeStyle: 'short' }).format(d);
