@@ -5,7 +5,8 @@
 #   VPS_HOST         z.B. 72.61.80.20
 #   VPS_USER         z.B. root
 #   VPS_SSH_KEY      privater Deploy-Schlüssel (siehe README, Abschnitt „Automatisches Deployment“)
-#   VPS_KNOWN_HOSTS  Ausgabe von: ssh-keyscan -t ed25519 <VPS_HOST>
+# Den Host-Key holt der Job per ssh-keyscan und prüft ihn gegen VPS_HOSTKEY_FINGERPRINT unten
+# (ein veraltetes VPS_KNOWN_HOSTS-Secret hatte jedes Deployment scheitern lassen).
 name: Prüfen und Deployen
 
 on:
@@ -16,6 +17,11 @@ on:
 permissions:
   contents: read
   packages: write
+
+env:
+  VPS_HOST_FALLBACK: 72.61.80.20
+  # Auf dem VPS: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+  VPS_HOSTKEY_FINGERPRINT: SHA256:GHh/ich4FircL7mdODAaH6x70OL6WuDU35ZtnlFhqiE
 
 concurrency:
   group: deploy-production
@@ -64,16 +70,22 @@ jobs:
       - name: SSH einrichten
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ secrets.VPS_HOST || env.VPS_HOST_FALLBACK }}
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null || { echo "::error::Secret VPS_SSH_KEY ist kein gültiger privater Schlüssel"; exit 1; }
+          ssh-keyscan -t ed25519 "$VPS_HOST" 2>/dev/null > ~/.ssh/known_hosts
+          FP=$(ssh-keygen -lf ~/.ssh/known_hosts | awk '{print $2}')
+          if [ "$FP" != "$VPS_HOSTKEY_FINGERPRINT" ]; then
+            echo "::error::Host-Key von $VPS_HOST passt nicht (erhalten: ${FP:-keiner}, erwartet: $VPS_HOSTKEY_FINGERPRINT)"
+            exit 1
+          fi
       - name: Update auf dem VPS ausführen
         env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST || env.VPS_HOST_FALLBACK }}
+          VPS_USER: ${{ secrets.VPS_USER || 'root' }}
         # Der Schlüssel ist auf dem Server per Forced Command auf deploy/update.sh beschränkt.
         # Das kurzlebige GITHUB_TOKEN geht über stdin an den Server, damit er das Image laden kann.
         run: printf '%s' "${{ secrets.GITHUB_TOKEN }}" | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" update
