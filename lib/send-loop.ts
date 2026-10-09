@@ -4,8 +4,7 @@ import { getEnv } from './env';
 import { kannAntwortenPruefen, type GmailSender, type ThreadPruefer } from './gmail';
 import { FLOW_ENDENDE_STATUS } from './lead-status';
 import { decideSend, randomGapMs } from './send-plan';
-import { countSentToday, ladeFollowups, pruefeAntwort, readSendState, sendFollowup, sendLead, writeSendState, type SendResult } from './send';
-import { globalDailyLimit } from './settings';
+import { countSentToday, effektivesGlobalLimit, ladeFollowups, pruefeAntwort, readSendState, sendFollowup, sendLead, writeSendState, type SendResult } from './send';
 import { skipPendingFor } from './suppression';
 import { todayBerlin } from './time';
 
@@ -50,7 +49,9 @@ function laufendeFlows(campaignId: number, anzahlFollowups: number) {
   return getDb()
     .select({
       lead: schema.leads,
-      letzteMail: sql<number>`(select max(${schema.sentMessages.sentAt}) from ${schema.sentMessages} where ${schema.sentMessages.leadId} = ${schema.leads.id})`,
+      // "leads"."id" ausdrücklich qualifizieren: unqualifiziert (drizzle-Standard bei einer Tabelle) würde SQLite
+      // sent_messages.id meinen und die falsche Mail finden
+      letzteMail: sql<number>`(select max(${schema.sentMessages.sentAt}) from ${schema.sentMessages} where ${schema.sentMessages.leadId} = ${schema.leads}."id")`,
     })
     .from(schema.leads)
     .where(
@@ -128,9 +129,13 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
     const faellig = flows
       .filter((f) => f.letzteMail !== null && f.letzteMail + followups[f.lead.followupsSent].waitDays * TAG_MS <= jetzt.getTime())
       .sort((a, b) => a.letzteMail - b.letzteMail);
-    const bereit = k.mitVideo ? erstmails.filter((l) => l.renderStatus === 'fertig') : erstmails;
+    let bereit = k.mitVideo ? erstmails.filter((l) => l.renderStatus === 'fertig') : erstmails;
+    // Limit „neue Leads pro Tag“ erreicht: nur noch fällige Follow-ups (sie zählen nicht dazu)
+    const neueLeadsErreicht = k.maxNeueLeadsProTag !== null && countSentToday(k.id, jetzt, true) >= k.maxNeueLeadsProTag;
+    if (neueLeadsErreicht && bereit.length > 0) bereit = [];
     if (faellig.length === 0 && bereit.length === 0) {
-      result.waiting.push(`${k.id}:${erstmails.length > 0 ? 'nicht_gerendert' : 'followups_spaeter'}`);
+      const grund = erstmails.length === 0 ? 'followups_spaeter' : neueLeadsErreicht && (!k.mitVideo || erstmails.some((l) => l.renderStatus === 'fertig')) ? 'limit_neue_leads' : 'nicht_gerendert';
+      result.waiting.push(`${k.id}:${grund}`);
       continue;
     }
     if (result.sent > 0) continue; // höchstens eine Mail pro Durchlauf
@@ -140,7 +145,7 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
       now: jetzt,
       today: todayBerlin(jetzt),
       campaign: k,
-      globalLimit: globalDailyLimit(),
+      globalLimit: effektivesGlobalLimit(jetzt),
       sentTodayGlobal: countSentToday(undefined, jetzt),
       sentTodayCampaign: countSentToday(k.id, jetzt),
       state,

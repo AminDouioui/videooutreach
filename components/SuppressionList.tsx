@@ -40,9 +40,12 @@ export function SuppressionList({ eintraege }: { eintraege: Eintrag[] }) {
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5">
       <h2 className="mb-1 text-base font-semibold">Sperrliste</h2>
-      <p className="mb-3 text-xs text-slate-500">Diese Adressen erhalten nie E-Mails (kampagnenübergreifend) und werden beim Import abgelehnt. Abmeldungen landen automatisch hier.</p>
+      <p className="mb-3 text-xs text-slate-500">
+        Diese Adressen erhalten nie E-Mails (kampagnenübergreifend) und werden beim Import abgelehnt. Abmeldungen landen automatisch hier. Ein Eintrag mit <code>@</code> davor (z. B.{' '}
+        <code>@firma.de</code>) sperrt die ganze Domain.
+      </p>
       <form onSubmit={hinzufuegen} className="mb-4 flex flex-wrap gap-2">
-        <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@firma.de" className="min-w-0 flex-1 basis-48 rounded-md border border-slate-300 px-3 py-1.5 text-sm" />
+        <input required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@firma.de oder @firma.de" className="min-w-0 flex-1 basis-48 rounded-md border border-slate-300 px-3 py-1.5 text-sm" />
         <input value={grund} onChange={(e) => setGrund(e.target.value)} placeholder="Grund (optional)" className="min-w-0 flex-1 basis-36 rounded-md border border-slate-300 px-3 py-1.5 text-sm" />
         <button type="submit" className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">Hinzufügen</button>
       </form>
@@ -69,7 +72,10 @@ export function SuppressionList({ eintraege }: { eintraege: Eintrag[] }) {
             <tbody>
               {sortiert.map((r) => (
                 <tr key={r.email} className="border-t border-slate-100">
-                  <td className="py-1.5 pr-3 break-all">{r.email}</td>
+                  <td className="py-1.5 pr-3 break-all">
+                    {r.email}
+                    {r.email.startsWith('@') && <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">ganze Domain</span>}
+                  </td>
                   <td className="py-1.5 pr-3 text-slate-600">{r.reason ?? ''}</td>
                   <td className="py-1.5 pr-3 whitespace-nowrap text-slate-500">{fmt.format(new Date(r.createdAt))}</td>
                   <td className="py-1.5 text-right">

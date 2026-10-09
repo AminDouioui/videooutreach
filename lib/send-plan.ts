@@ -15,7 +15,7 @@ export type SendState = {
 export type PlanInput = {
   now: Date;
   today: string;
-  campaign: FensterKampagne & { status: string; dailySendLimit: number };
+  campaign: FensterKampagne & { status: string; dailySendLimit: number; startDatum?: string | null };
   globalLimit: number;
   sentTodayGlobal: number;
   sentTodayCampaign: number;
@@ -26,7 +26,7 @@ export type PlanResult =
   | { action: 'send' }
   | {
       action: 'wait';
-      reason: 'status' | 'quota_gestoppt' | 'fenster_zu' | 'limit_global' | 'limit_kampagne' | 'abstand';
+      reason: 'status' | 'vor_start' | 'quota_gestoppt' | 'fenster_zu' | 'limit_global' | 'limit_kampagne' | 'abstand';
       /** true = gilt für alle Kampagnen, Schleife kann die Runde beenden */
       global: boolean;
     };
@@ -34,6 +34,8 @@ export type PlanResult =
 /** Darf jetzt (für diese Kampagne) die nächste Mail raus? */
 export function decideSend(i: PlanInput): PlanResult {
   if (i.campaign.status !== 'versendet_laufend') return { action: 'wait', reason: 'status', global: false };
+  // Datum im Format YYYY-MM-DD: Textvergleich entspricht dem Datumsvergleich
+  if (i.campaign.startDatum && i.today < i.campaign.startDatum) return { action: 'wait', reason: 'vor_start', global: false };
   if (i.state.quotaStoppedDate === i.today) return { action: 'wait', reason: 'quota_gestoppt', global: true };
   if (i.sentTodayGlobal >= i.globalLimit) return { action: 'wait', reason: 'limit_global', global: true };
   if (i.state.nextSendAt !== null && i.now.getTime() < i.state.nextSendAt) return { action: 'wait', reason: 'abstand', global: true };

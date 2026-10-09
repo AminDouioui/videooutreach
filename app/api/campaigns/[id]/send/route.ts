@@ -4,8 +4,7 @@ import { z } from 'zod';
 import { getDb, schema } from '@/lib/db';
 import { isGmailConnected, kannAntwortenPruefen } from '@/lib/gmail';
 import { fehler, parseJson } from '@/lib/request';
-import { brecheVersandAb, countSentToday, ladeFollowups, readSendState } from '@/lib/send';
-import { globalDailyLimit } from '@/lib/settings';
+import { brecheVersandAb, countSentToday, effektivesGlobalLimit, ladeFollowups, readSendState } from '@/lib/send';
 import { isWithinWindow, todayBerlin } from '@/lib/time';
 
 export const runtime = 'nodejs';
@@ -31,7 +30,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     sentToday: countSentToday(id),
     dailyLimit: k.dailySendLimit,
     sentTodayGlobal: countSentToday(),
-    globalLimit: globalDailyLimit(),
+    globalLimit: effektivesGlobalLimit(),
     nextSendAt: state.nextSendAt,
     quotaStopped: state.quotaStoppedDate === todayBerlin(),
     windowOpen: isWithinWindow(k),

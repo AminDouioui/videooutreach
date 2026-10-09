@@ -5,7 +5,8 @@ import { GmailSendError, isGmailConnected, kannAntwortenPruefen, pruefeThread, s
 import { buildEmail, buildMime, neueMessageId, oneClickUrl, type BuiltEmail, type MailSchritt } from './mail';
 import { FIRMA_HAT_GEANTWORTET, leadStatusLabel, STATUS_SKIP_PREFIX, statusBeendetFlow } from './lead-status';
 import { stoppeFirma } from './lead-status-db';
-import { getSetting, setSetting } from './settings';
+import { rampenLimit } from './rampe';
+import { getSetting, globalDailyLimit, rampeEinstellung, setSetting } from './settings';
 import { kampagnenExtraSpalten } from './campaigns';
 import { STANDARD_VARIABLEN, verwendeteVariablen } from './vorlage';
 import type { SendState } from './send-plan';
@@ -138,10 +139,11 @@ export function writeSendState(patch: Partial<SendState>, jetzt: Date = new Date
   return neu;
 }
 
-/** Heute (Berlin) gesendete Mails inkl. Follow-ups, optional je Kampagne – gezählt über sent_messages. */
-export function countSentToday(campaignId?: number, jetzt: Date = new Date()): number {
+/** Heute (Berlin) gesendete Mails inkl. Follow-ups, optional je Kampagne (nurErstmails: nur step 0) – gezählt über sent_messages. */
+export function countSentToday(campaignId?: number, jetzt: Date = new Date(), nurErstmails = false): number {
   const von = new Date(startOfDayBerlinMs(jetzt));
   const bedingung = [gte(schema.sentMessages.sentAt, von)];
+  if (nurErstmails) bedingung.push(eq(schema.sentMessages.step, 0));
   if (campaignId !== undefined) bedingung.push(eq(schema.sentMessages.campaignId, campaignId));
   const row = getDb()
     .select({ n: sql<number>`count(*)` })
@@ -346,4 +348,27 @@ export async function sendFollowup(leadId: number, opts: SendOptions = {}): Prom
     db.update(schema.leads).set({ sendError: info.meldung.slice(0, 1000) }).where(eq(schema.leads.id, lead.id)).run();
     return { ok: false, kind: 'fehler', error: info.meldung };
   }
+}
+
+// ---------------------------------------------------------------- Aufwärmrampe
+
+/** Datum (Berlin) der ersten je gesendeten Mail oder null. */
+export function ersterVersandTag(): string | null {
+  const row = getDb()
+    .select({ erste: sql<number | null>`min(${schema.sentMessages.sentAt})` })
+    .from(schema.sentMessages)
+    .get();
+  return row?.erste ? todayBerlin(new Date(row.erste)) : null;
+}
+
+/**
+ * Effektives globales Tageslimit: ohne aktive Rampe das normale Limit, sonst
+ * min(Limit, Start + Schritt * Tage seit Beginn). Beginn: Einstellung, sonst erste gesendete Mail, sonst heute.
+ */
+export function effektivesGlobalLimit(jetzt: Date = new Date()): number {
+  const max = globalDailyLimit();
+  const r = rampeEinstellung();
+  if (!r.aktiv) return max;
+  const heute = todayBerlin(jetzt);
+  return rampenLimit({ start: r.start, schritt: r.schritt, beginn: r.beginn ?? ersterVersandTag() ?? heute, heute, max });
 }

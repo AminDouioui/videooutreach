@@ -10,4 +10,6 @@ export const importBodySchema = z.object({
   rows: z.array(z.record(z.string(), z.string())).max(MAX_ROWS),
   /** Nur einen Kontakt pro Firma importieren */
   einProFirma: z.boolean().default(false),
+  /** Leads mit Domain ohne Mail-Server (MX-Prüfung) trotzdem importieren */
+  mxTrotzdem: z.boolean().default(false),
 });

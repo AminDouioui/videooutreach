@@ -20,7 +20,8 @@ Ablauf: Excel/CSV mit Leads hochladen, pro Lead entsteht ein eigenes Video (pers
 - Firmen-Stopp (Kampagnen-Einstellung, Standard an): Antwortet ein Kontakt, werden die anderen Leads der Kampagne mit gleicher E-Mail-Domain gestoppt (`flow_stopp = 'firma_beantwortet'`, offene Erstmails übersprungen). Freemail-Domains (gmail.com, gmx.de, web.de … siehe `lib/lead-status.ts`) sind ausgenommen.
 - Leads-Seite `/leads`: kampagnenübergreifende Suche und Filter (Kampagne, Lead-Status, Versandstatus, beantwortet), Sortierung nach Score/Datum, serverseitig paginiert (100 pro Seite).
 - Analyse: je Kampagne `/kampagnen/[id]/analyse` (Kennzahlen, Trichter Leads → gesendet → Video-Seite → Play → 50 % → 100 % → Termin-Klick → Antwort, Bounces, Abmeldungen, Lead-Status, Tabelle je Schritt mit Antworten nach Schritt, Tagesverlauf 30 Tage, A/B-Vergleich); Startseite mit globalen Kennzahlen und 14-Tage-Verlauf; Kampagnenliste mit Antwortrate. Raten beziehen sich auf gesendete Erstmails, Bots sind ausgenommen. Logik in `lib/analyse.ts`.
-- Import `.xlsx`/`.csv` mit Spalten-Mapping, Validierung (ungültige E-Mails, Duplikate, Sperrliste).
+- Import `.xlsx`/`.csv` mit Spalten-Mapping, Validierung (ungültige E-Mails, Duplikate, Sperrliste inkl. Domain-Sperren) und MX-Prüfung der Domains (siehe „Versandregeln“).
+- Zeitplan: frei wählbare Versandtage (Mo–So), optionales Startdatum, „Neue Leads pro Tag“ je Kampagne, globale Aufwärmrampe (Einstellungen); Kampagne duplizieren (Vorlage, Einstellungen, Follow-ups, Varianten, ohne Leads).
 - Rendern aller Leads, nur fehlgeschlagener oder einzelner Leads neu; Fortschritt im Dashboard.
 - Öffentliche Video-Seite (mobil, ohne Cookies/Fremd-Skripte, `noindex`).
 - Versand mit Warteschlange, Versandfenster, Tageslimit, zufälligem Abstand, Pausieren/Fortsetzen.
@@ -102,8 +103,13 @@ Kurzfassung: In der Google Cloud Console ein Projekt anlegen, die Gmail API akti
 ## Versandregeln
 
 - Es werden nur fertig gerenderte, nicht gesperrte und nicht abgemeldete Leads versendet.
-- Versandfenster: Standard Montag bis Freitag, 08 bis 17 Uhr (Europe/Berlin).
-- Tageslimit: Standard 30 Mails, über alle Kampagnen hinweg.
+- Versandfenster: Standard Montag bis Freitag, 08 bis 17 Uhr (Europe/Berlin). Die Versandtage wählt man je Kampagne frei (Mo–So, `campaigns.send_days`, z. B. `1,2,3,4,5`; 1 = Montag). Die alte Spalte `send_weekdays_only` bleibt bestehen, wird aber nicht mehr ausgewertet (die Migration hat `send_days` daraus übernommen).
+- Startdatum (optional, je Kampagne): vorher wird nicht gesendet.
+- Tageslimit: Standard 30 Mails, über alle Kampagnen hinweg (inkl. Follow-ups).
+- Neue Leads pro Tag (optional, je Kampagne): begrenzt nur Erstmails. Ist das Limit erreicht, gehen heute nur noch fällige Follow-ups raus (sie haben ohnehin Vorrang und unterliegen nur dem Tageslimit).
+- Aufwärmrampe (Einstellungen, global, Standard aus): effektives Tageslimit = min(globales Limit, Startwert + Schritt x Tage seit Beginn); Standard 10 Mails am ersten Tag, plus 5 pro Tag. Beginn: eingetragenes Datum, sonst Tag der ersten gesendeten Mail, sonst heute. Die Einstellungen zeigen „Heute erlaubt: N“. Logik als reine Funktion in `lib/rampe.ts`.
+- Domain-Sperrliste: Ein Eintrag mit `@` davor (z. B. `@firma.de`) sperrt die ganze Domain (nicht Subdomains) für Import, Versand und Follow-ups; ausstehende Mails an die Domain werden übersprungen.
+- MX-Prüfung beim Import: Domains werden per DNS auf Mail-Server geprüft (MX, sonst A/AAAA als Fallback nach RFC 5321; Zeitlimit 3 s, Cache je Domain, höchstens 10 Abfragen gleichzeitig). Domains ohne beides werden als „Domain nimmt keine Mails an“ gewarnt und standardmäßig nicht importiert (Option „trotzdem importieren“). Timeout oder Netzfehler zählt als „unbekannt“ und blockiert nicht.
 - Zufälliger Abstand zwischen zwei Mails: 3 bis 9 Minuten (`SEND_MIN_GAP_MINUTES`/`SEND_MAX_GAP_MINUTES`).
 - Pausieren und Fortsetzen jederzeit; Fehler werden pro Lead gespeichert. Meldet Gmail ein Limit (Quota), stoppt der Versand für den Tag.
 - Mails: `multipart/alternative`, schlichtes HTML, kein Anhang, Signatur mit Impressumsangaben, Abmeldelink sowie `List-Unsubscribe` und `List-Unsubscribe-Post`.

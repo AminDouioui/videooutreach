@@ -6,7 +6,16 @@ import { addSuppression, listSuppression, removeSuppression } from '@/lib/suppre
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const emailSchema = z.object({ email: z.string().trim().toLowerCase().email('Ungültige E-Mail-Adresse').max(320) });
+// E-Mail-Adresse oder ganze Domain ('@firma.de')
+const DOMAIN_REGEX = /^@(?=.{4,253}$)([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
+const emailSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(320)
+    .refine((s) => (s.startsWith('@') ? DOMAIN_REGEX.test(s) : z.string().email().safeParse(s).success), 'Ungültige E-Mail-Adresse oder Domain (z. B. @firma.de)'),
+});
 const addSchema = emailSchema.extend({ reason: z.string().trim().max(200).optional() });
 
 export async function GET() {

@@ -1,5 +1,7 @@
 import { splitName } from './name';
 import { firmenSchluessel } from './firma';
+import { emailDomain } from './lead-status';
+import type { MxErgebnis } from './mx';
 
 /** Zielfelder des Imports */
 export const IMPORT_FELDER = ['name', 'vorname', 'nachname', 'anrede', 'firma', 'email', 'position', 'website'] as const;
@@ -102,7 +104,7 @@ export function applyMapping(row: Row, mapping: Mapping): MappedLead {
   };
 }
 
-export const ROW_STATUS = ['ok', 'ungueltige_email', 'duplikat_datei', 'duplikat_bestand', 'duplikat_firma', 'gesperrt', 'fehlende_pflichtfelder'] as const;
+export const ROW_STATUS = ['ok', 'ungueltige_email', 'duplikat_datei', 'duplikat_bestand', 'duplikat_firma', 'gesperrt', 'kein_mx', 'fehlende_pflichtfelder'] as const;
 export type RowStatus = (typeof ROW_STATUS)[number];
 
 export type ValidatedRow = {
@@ -110,13 +112,21 @@ export type ValidatedRow = {
   index: number;
   status: RowStatus;
   lead: MappedLead;
+  /** Hinweis, der den Import nicht verhindert (z. B. „Domain nimmt keine Mails an“, wenn trotzdem importiert wird) */
+  warnung?: string;
 };
+
+export const MX_WARNUNG = 'Domain nimmt keine Mails an';
 
 export type ValidationContext = {
   /** E-Mails (lowercase), die bereits in der Ziel-Kampagne existieren */
   existingEmails: Set<string>;
-  /** E-Mails (lowercase) der Sperrliste */
+  /** Einträge (lowercase) der Sperrliste: Adressen und Domains ('@firma.de') */
   suppressed: Set<string>;
+  /** Ergebnis der MX-Prüfung je Domain (fehlt = nicht geprüft) */
+  mx?: Map<string, MxErgebnis>;
+  /** Leads mit Domain ohne Mail-Server trotzdem importieren (nur Warnung) */
+  mxTrotzdem?: boolean;
   /** Nur einen Kontakt pro Firma importieren (weitere = 'duplikat_firma') */
   einProFirma?: boolean;
   /** Firmenschlüssel (firmenSchluessel), die in der Ziel-Kampagne schon vorkommen */
@@ -142,16 +152,21 @@ export function validateRows(rows: Row[], mapping: Mapping, ctx: ValidationConte
     if (!lead.firma || !lead.email) status = 'fehlende_pflichtfelder';
     else if (!isValidEmail(lead.email)) status = 'ungueltige_email';
     else if (gesehen.has(lead.email)) status = 'duplikat_datei';
-    else if (ctx.suppressed.has(lead.email)) status = 'gesperrt';
+    else if (ctx.suppressed.has(lead.email) || ctx.suppressed.has(`@${emailDomain(lead.email)}`)) status = 'gesperrt';
     else if (ctx.existingEmails.has(lead.email)) status = 'duplikat_bestand';
     else status = 'ok';
     if (status !== 'fehlende_pflichtfelder' && status !== 'ungueltige_email') gesehen.add(lead.email);
+    let warnung: string | undefined;
+    if (status === 'ok' && ctx.mx?.get(emailDomain(lead.email) ?? '') === 'kein_mx') {
+      warnung = MX_WARNUNG;
+      if (!ctx.mxTrotzdem) status = 'kein_mx';
+    }
     if (status === 'ok' && ctx.einProFirma) {
       const k = firmenSchluessel(lead.firma);
       if (firmen.has(k)) status = 'duplikat_firma';
       else firmen.add(k);
     }
-    return { index, status, lead };
+    return warnung ? { index, status, lead, warnung } : { index, status, lead };
   });
 }
 
@@ -162,6 +177,7 @@ export const STATUS_LABELS: Record<RowStatus, string> = {
   duplikat_bestand: 'Schon in dieser Kampagne',
   duplikat_firma: 'Gleiche Firma',
   gesperrt: 'Gesperrt',
+  kein_mx: 'Domain nimmt keine Mails an',
   fehlende_pflichtfelder: 'Pflichtfelder fehlen',
 };
 
@@ -181,6 +197,7 @@ export function summarize(rows: ValidatedRow[]): string {
   if (c.duplikat_firma) teile.push(plural(c.duplikat_firma, 'weiterer Kontakt derselben Firma', 'weitere Kontakte derselben Firma'));
   if (c.ungueltige_email) teile.push(plural(c.ungueltige_email, 'ungültige E-Mail', 'ungültige E-Mails'));
   if (c.gesperrt) teile.push(`${c.gesperrt} gesperrt`);
+  if (c.kein_mx) teile.push(`${c.kein_mx} mit Domain ohne Mail-Server`);
   if (c.fehlende_pflichtfelder) teile.push(plural(c.fehlende_pflichtfelder, 'mit fehlenden Pflichtfeldern', 'mit fehlenden Pflichtfeldern'));
   return teile.join(', ');
 }

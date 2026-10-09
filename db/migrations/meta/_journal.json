@@ -36,6 +36,13 @@
       "when": 1791574890778,
       "tag": "0004_analyse_event_index",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791575259046,
+      "tag": "0005_zeitplan_zustellbarkeit",
+      "breakpoints": true
     }
   ]
 }

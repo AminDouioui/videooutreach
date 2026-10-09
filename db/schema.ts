@@ -28,7 +28,14 @@ export const campaigns = sqliteTable('campaigns', {
   dailySendLimit: integer('daily_send_limit').notNull().default(30),
   sendWindowStart: text('send_window_start').notNull().default('08:00'),
   sendWindowEnd: text('send_window_end').notNull().default('17:00'),
+  // Veraltet: wird nicht mehr ausgewertet (ersetzt durch sendDays), bleibt nur als Spalte bestehen
   sendWeekdaysOnly: integer('send_weekdays_only', { mode: 'boolean' }).notNull().default(true),
+  // Versandtage, kommagetrennt (1 = Montag … 7 = Sonntag), z. B. '1,2,3,4,5'
+  sendDays: text('send_days').notNull().default('1,2,3,4,5'),
+  // Vor diesem Datum ('YYYY-MM-DD', Berlin) wird nicht gesendet; null = sofort
+  startDatum: text('start_datum'),
+  // Höchstens so viele neue Leads (Erstmails) pro Tag; null = unbegrenzt. Follow-ups zählen nicht.
+  maxNeueLeadsProTag: integer('max_neue_leads_pro_tag'),
   ctaUrl: text('cta_url').notNull(),
   trackingPixel: integer('tracking_pixel', { mode: 'boolean' }).notNull().default(false),
   status: text('status', { enum: KAMPAGNEN_STATUS }).notNull().default('entwurf'),

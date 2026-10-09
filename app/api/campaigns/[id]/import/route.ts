@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
-import { ladeImportKontext } from '@/lib/campaigns';
 import { getDb, schema } from '@/lib/db';
-import { summarize, validateRows } from '@/lib/import';
+import { summarize } from '@/lib/import';
+import { validiereImport } from '@/lib/import-server';
 import { importBodySchema } from '@/lib/import-schema';
 import { fehler, parseJson } from '@/lib/request';
 import { createSlug } from '@/lib/slug';
@@ -20,7 +20,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if ('response' in parsed) return parsed.response;
 
   // Serverseitig erneut validieren; importiert werden nur gültige Zeilen
-  const validiert = validateRows(parsed.data.rows, parsed.data.mapping, { ...ladeImportKontext(id), einProFirma: parsed.data.einProFirma });
+  const validiert = await validiereImport(id, parsed.data);
   const gueltig = validiert.filter((r) => r.status === 'ok');
 
   const importiert = db.transaction((tx) => {

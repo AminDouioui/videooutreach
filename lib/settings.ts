@@ -14,7 +14,12 @@ export type SettingKey =
   | 'global_daily_limit'
   | 'impressum_url'
   | 'datenschutz_url'
-  | 'send_state';
+  | 'send_state'
+  // Aufwärmrampe: '1' = aktiv, Startwert, Steigerung pro Tag, erster Tag 'YYYY-MM-DD' (leer = erste gesendete Mail)
+  | 'rampe_aktiv'
+  | 'rampe_start'
+  | 'rampe_schritt'
+  | 'rampe_beginn';
 
 export function getSetting(key: SettingKey): string | null {
   const row = getDb().select().from(schema.settings).where(eq(schema.settings.key, key)).get();
@@ -46,4 +51,24 @@ export function legalUrls(): { impressum: string | null; datenschutz: string | n
 export function globalDailyLimit(): number {
   const n = Number(getSetting('global_daily_limit'));
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 30;
+}
+
+export const RAMPE_STANDARD = { start: 10, schritt: 5 } as const;
+
+export type RampeEinstellung = { aktiv: boolean; start: number; schritt: number; beginn: string | null };
+
+function positiveZahl(s: string | null, standard: number, min: number): number {
+  const n = Number(s);
+  return s !== null && s !== '' && Number.isFinite(n) && n >= min ? Math.floor(n) : standard;
+}
+
+/** Gespeicherte Rampen-Einstellung (beginn = ausdrücklich gesetzter erster Tag, sonst null). */
+export function rampeEinstellung(): RampeEinstellung {
+  const beginn = getSetting('rampe_beginn');
+  return {
+    aktiv: getSetting('rampe_aktiv') === '1',
+    start: positiveZahl(getSetting('rampe_start'), RAMPE_STANDARD.start, 1),
+    schritt: positiveZahl(getSetting('rampe_schritt'), RAMPE_STANDARD.schritt, 0),
+    beginn: beginn && /^\d{4}-\d{2}-\d{2}$/.test(beginn) ? beginn : null,
+  };
 }

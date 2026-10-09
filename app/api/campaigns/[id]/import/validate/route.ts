@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { ladeImportKontext } from '@/lib/campaigns';
 import { getDb, schema } from '@/lib/db';
-import { summarize, validateRows, countByStatus } from '@/lib/import';
+import { summarize, countByStatus } from '@/lib/import';
+import { validiereImport } from '@/lib/import-server';
 import { importBodySchema } from '@/lib/import-schema';
 import { fehler, parseJson } from '@/lib/request';
 import { eq } from 'drizzle-orm';
@@ -17,6 +17,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const parsed = await parseJson(req, importBodySchema);
   if ('response' in parsed) return parsed.response;
 
-  const rows = validateRows(parsed.data.rows, parsed.data.mapping, { ...ladeImportKontext(id), einProFirma: parsed.data.einProFirma });
+  const rows = await validiereImport(id, parsed.data);
   return NextResponse.json({ rows, counts: countByStatus(rows), summary: summarize(rows) });
 }
