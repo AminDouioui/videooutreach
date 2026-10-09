@@ -74,6 +74,7 @@ Vorlage: `.env.example`. Die `.env` gehört nie ins Repository. Fehlende Pflicht
 | `SESSION_SECRET` | ja | Signatur der Session, min. 32 Zeichen |
 | `ENCRYPTION_KEY` | ja | 64 Hex-Zeichen (AES-256-GCM für OAuth-Tokens) |
 | `IP_HASH_SALT` | ja | Salt für gehashte IP-Adressen |
+| `APP_PORT` | nein | Lokaler Host-Port der App (nur `127.0.0.1`), Standard 3000; der Traefik-Installer wählt einen freien Port ab 3300 |
 | `DATA_DIR` | nein | Datenverzeichnis, Standard `./data`; im Docker-Betrieb `/data` (setzt Compose) |
 | `RENDER_CONCURRENCY` | nein | Parallele Render-Jobs (1–8, Standard 1) |
 | `REMOTION_BROWSER_EXECUTABLE` | nein | Eigener Chrome/headless_shell; im Docker-Image leer lassen |
@@ -198,6 +199,18 @@ Certbot erneuert automatisch (`systemctl list-timers | grep certbot`). Die Datei
 **C) Traefik (Docker)**: `deploy/traefik-compose.override.example.yml` nach `docker-compose.override.yml` kopieren, Netzwerkname, Entrypoint und Certresolver an die vorhandene Traefik-Konfiguration anpassen. Ein kleiner nginx-Container (`media`, Konfiguration `deploy/media-nginx.conf`) liefert `/media/` direkt aus.
 
 **D) Apache**: Als Reverse Proxy genügt `ProxyPass / http://127.0.0.1:3000/` mit `ProxyPreserveHost On` und `RequestHeader set X-Forwarded-Proto "https"` (Module `proxy`, `proxy_http`, `headers`), plus `Alias /media/ /srv/videooutreach/data/media/` mit `ProxyPass /media/ !` davor und `Header set Cache-Control "public, max-age=31536000, immutable"`. Zertifikat per `certbot --apache`. Eine fertige Beispieldatei liegt nicht bei; die Zeilen gehören in einen eigenen VirtualHost nur für die Subdomain.
+
+**Variante Traefik (Ein-Befehl-Installation)**
+
+Für Server, auf denen bereits ein Traefik-Container (Ports 80/443) läuft. Das Skript `deploy/install-traefik.sh` liest die Traefik-Einstellungen (Netzwerk, Entrypoint, Certresolver) nur lesend aus den Docker-Labels der laufenden Container aus und verändert weder Traefik noch andere Container. Als root ausführen, A-Record der Domain vorher anlegen:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AminDouioui/videooutreach/main/deploy/install-traefik.sh | bash -s -- email.prozessia.space
+# oder nach dem Klonen:
+bash deploy/install-traefik.sh email.prozessia.space
+```
+
+Das Skript klont nach `/srv/videooutreach` (`INSTALL_DIR`), erzeugt `.env` (Zufallswerte, fragt Google Client-ID/-Secret ab) und `docker-compose.override.yml`, startet alles, wartet auf die Health der App und richtet den Backup-Cron (täglich 03:15) ein. Erkennung übersteuern: `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT`, `TRAEFIK_CERTRESOLVER`. Trockenlauf: `DRY_RUN=1`. **Update** = Skript erneut ausführen (git pull + Rebuild, `.env` und `data/` bleiben). Danach Redirect-URI in der Google Cloud Console eintragen und unter `/einstellungen` „Gmail verbinden“.
 
 ### 7. HTTPS prüfen
 

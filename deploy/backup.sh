@@ -6,7 +6,7 @@
 #   15 3 * * * /srv/videooutreach/deploy/backup.sh >> /var/log/videooutreach-backup.log 2>&1
 set -euo pipefail
 
-PROJEKT_DIR="${PROJEKT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+PROJEKT_DIR="${PROJEKT_DIR:-${INSTALL_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}"
 DATA_DIR_HOST="${DATA_DIR_HOST:-$PROJEKT_DIR/data}"
 BACKUP_DIR="${BACKUP_DIR:-$PROJEKT_DIR/backups}"
 BEHALTEN="${BEHALTEN:-14}"
