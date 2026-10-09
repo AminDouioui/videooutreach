@@ -2,14 +2,22 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { passt, SortKopf, Suche, useSortierung } from './Tabelle';
 
 type Eintrag = { email: string; reason: string | null; createdAt: string };
+type Spalte = 'email' | 'reason' | 'createdAt';
 
 export function SuppressionList({ eintraege }: { eintraege: Eintrag[] }) {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [grund, setGrund] = useState('');
   const [fehler, setFehler] = useState('');
+  const [suche, setSuche] = useState('');
+  const { sortiert, key, asc, sortieren } = useSortierung<Eintrag, Spalte>(
+    eintraege.filter((r) => passt(suche, r.email, r.reason)),
+    (r, k) => r[k],
+    { key: 'createdAt', asc: false },
+  );
 
   async function hinzufuegen(e: React.FormEvent) {
     e.preventDefault();
@@ -43,17 +51,23 @@ export function SuppressionList({ eintraege }: { eintraege: Eintrag[] }) {
         <p className="text-sm text-slate-500">Die Sperrliste ist leer.</p>
       ) : (
         <div className="overflow-x-auto">
+          <div className="mb-2 flex flex-wrap items-center gap-3">
+            <Suche wert={suche} onChange={setSuche} platzhalter="E-Mail oder Grund suchen" />
+            <span className="text-xs text-slate-500">
+              {sortiert.length} von {eintraege.length} Einträgen
+            </span>
+          </div>
           <table className="w-full text-left text-sm">
             <thead className="text-xs text-slate-500">
               <tr>
-                <th className="py-1 pr-3 font-medium">E-Mail</th>
-                <th className="py-1 pr-3 font-medium">Grund</th>
-                <th className="py-1 pr-3 font-medium">Seit</th>
+                <SortKopf label="E-Mail" aktiv={key === 'email'} asc={asc} onClick={() => sortieren('email', true)} />
+                <SortKopf label="Grund" aktiv={key === 'reason'} asc={asc} onClick={() => sortieren('reason', true)} />
+                <SortKopf label="Seit" aktiv={key === 'createdAt'} asc={asc} onClick={() => sortieren('createdAt')} />
                 <th />
               </tr>
             </thead>
             <tbody>
-              {eintraege.map((r) => (
+              {sortiert.map((r) => (
                 <tr key={r.email} className="border-t border-slate-100">
                   <td className="py-1.5 pr-3 break-all">{r.email}</td>
                   <td className="py-1.5 pr-3 text-slate-600">{r.reason ?? ''}</td>

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { desc } from 'drizzle-orm';
-import { Badge } from '@/components/Badge';
+import { KampagnenTabelle, type KampagnenZeile } from '@/components/KampagnenTabelle';
 import { ladeKennzahlen } from '@/lib/campaigns';
 import { getDb, schema } from '@/lib/db';
 
@@ -9,6 +9,25 @@ export const dynamic = 'force-dynamic';
 export default function KampagnenUebersicht() {
   const kampagnen = getDb().select().from(schema.campaigns).orderBy(desc(schema.campaigns.createdAt)).all();
   const kennzahlen = ladeKennzahlen();
+  const zeilen: KampagnenZeile[] = kampagnen.map((k) => {
+    const z = kennzahlen.get(k.id);
+    return {
+      id: k.id,
+      name: k.name,
+      status: k.status,
+      mitVideo: k.mitVideo,
+      erstellt: k.createdAt.getTime(),
+      leads: z?.leads ?? 0,
+      gerendert: z?.gerendert ?? 0,
+      gesendet: z?.gesendet ?? 0,
+      antworten: z?.antworten ?? 0,
+      seitenaufrufe: z?.seitenaufrufe ?? 0,
+      videostarts: z?.videostarts ?? 0,
+      sehdauer: z?.sehdauer ?? null,
+      terminKlicks: z?.terminKlicks ?? 0,
+      abmeldungen: z?.abmeldungen ?? 0,
+    };
+  });
 
   return (
     <div>
@@ -24,52 +43,7 @@ export default function KampagnenUebersicht() {
           Noch keine Kampagne vorhanden. Legen Sie die erste Kampagne an.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-3 py-2">Kampagne</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2 text-right">Leads</th>
-                <th className="px-3 py-2 text-right">Gerendert</th>
-                <th className="px-3 py-2 text-right">Gesendet</th>
-                <th className="px-3 py-2 text-right">Antworten</th>
-                <th className="px-3 py-2 text-right">Seitenaufrufe</th>
-                <th className="px-3 py-2 text-right">Videostarts</th>
-                <th className="px-3 py-2 text-right">Ø Sehdauer</th>
-                <th className="px-3 py-2 text-right">Termin-Klicks</th>
-                <th className="px-3 py-2 text-right">Abmeldungen</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {kampagnen.map((k) => {
-                const z = kennzahlen.get(k.id);
-                return (
-                  <tr key={k.id} className="hover:bg-slate-50">
-                    <td className="px-3 py-2">
-                      <Link href={`/kampagnen/${k.id}`} className="font-medium text-indigo-600 hover:underline">
-                        {k.name}
-                      </Link>
-                      {!k.mitVideo && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">Nur Text</span>}
-                    </td>
-                    <td className="px-3 py-2">
-                      <Badge status={k.status} />
-                    </td>
-                    <td className="px-3 py-2 text-right">{z?.leads ?? 0}</td>
-                    <td className="px-3 py-2 text-right">{k.mitVideo ? (z?.gerendert ?? 0) : '–'}</td>
-                    <td className="px-3 py-2 text-right">{z?.gesendet ?? 0}</td>
-                    <td className="px-3 py-2 text-right">{z?.antworten ?? 0}</td>
-                    <td className="px-3 py-2 text-right">{k.mitVideo ? (z?.seitenaufrufe ?? 0) : '–'}</td>
-                    <td className="px-3 py-2 text-right">{k.mitVideo ? (z?.videostarts ?? 0) : '–'}</td>
-                    <td className="px-3 py-2 text-right">{k.mitVideo && z?.sehdauer != null ? `${z.sehdauer} %` : '–'}</td>
-                    <td className="px-3 py-2 text-right">{k.mitVideo ? (z?.terminKlicks ?? 0) : '–'}</td>
-                    <td className="px-3 py-2 text-right">{z?.abmeldungen ?? 0}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <KampagnenTabelle kampagnen={zeilen} />
       )}
     </div>
   );

@@ -78,3 +78,16 @@ describe('validateRows', () => {
     expect(summarize(validateRows(rows, mapping, leer))).toBe('8 gültig, 1 Duplikat, 1 ungültige E-Mail');
   });
 });
+
+describe('Nur ein Kontakt pro Firma', () => {
+  it('markiert weitere Kontakte derselben Firma, auch mit anderer Rechtsform', () => {
+    const rows = [zeile('A', 'Müller GmbH', 'a@m.de'), zeile('B', 'Bosch AG', 'b@b.de'), zeile('C', 'mueller gmbh & co. kg', 'c@m.de')];
+    expect(validateRows(rows, mapping, leer).map((r) => r.status)).toEqual(['ok', 'ok', 'ok']);
+    expect(validateRows(rows, mapping, { ...leer, einProFirma: true }).map((r) => r.status)).toEqual(['ok', 'ok', 'duplikat_firma']);
+  });
+  it('gleicht mit Firmen ab, die schon in der Kampagne sind', () => {
+    const res = validateRows([zeile('A', 'Bosch', 'a@b.de')], mapping, { ...leer, einProFirma: true, existingFirmen: new Set(['bosch']) });
+    expect(res[0].status).toBe('duplikat_firma');
+    expect(summarize(res)).toBe('0 gültig, 1 weiterer Kontakt derselben Firma');
+  });
+});

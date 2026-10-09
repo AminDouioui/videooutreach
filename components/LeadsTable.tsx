@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { Badge } from './Badge';
 import { CopyButton } from './CopyButton';
@@ -27,16 +28,21 @@ export type LeadRow = {
   flowSchritt: number;
   /** Flow beendet: beantwortet, bounce, abgemeldet */
   flowStopp: string | null;
+  /** Weiterer Kontakt einer Firma, die schon einen Lead in der Kampagne hat */
+  firmenDuplikat: boolean;
+  /** Als Firmen-Duplikat vom Versand ausgeschlossen */
+  duplikatAusgeschlossen: boolean;
 };
 
 type SortKey = 'firma' | 'ansprechpartner' | 'email' | 'renderStatus' | 'sendStatus' | 'flowSchritt' | 'sentAt' | 'aufrufe' | 'maxProgress' | 'terminKlicks' | 'oeffnungen' | 'score';
-type FilterKey = 'alle' | 'mit_play' | 'nicht_gesendet' | 'beantwortet' | 'fehler' | 'termin';
+type FilterKey = 'alle' | 'mit_play' | 'nicht_gesendet' | 'beantwortet' | 'duplikate' | 'fehler' | 'termin';
 
 const FILTER: { key: FilterKey; label: string }[] = [
   { key: 'alle', label: 'Alle' },
   { key: 'mit_play', label: 'Mit Play' },
   { key: 'nicht_gesendet', label: 'Nicht gesendet' },
   { key: 'beantwortet', label: 'Beantwortet' },
+  { key: 'duplikate', label: 'Firmen-Duplikate' },
   { key: 'fehler', label: 'Fehler' },
   { key: 'termin', label: 'Termin-Klick' },
 ];
@@ -66,6 +72,29 @@ export function LeadsTable({
   const [sortAsc, setSortAsc] = useState(false); // Standard: Score absteigend
   const [filter, setFilter] = useState<FilterKey>('alle');
   const [suche, setSuche] = useState('');
+  const [ohneDuplikate, setOhneDuplikate] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [meldung, setMeldung] = useState<string | null>(null);
+  const router = useRouter();
+  const duplikate = leads.filter((l) => l.firmenDuplikat);
+  const offeneDuplikate = duplikate.filter((l) => !l.duplikatAusgeschlossen && l.sendStatus !== 'gesendet' && l.sendStatus !== 'uebersprungen').length;
+  const ausgeschlossen = leads.filter((l) => l.duplikatAusgeschlossen).length;
+
+  async function duplikatAktion(action: 'ausschliessen' | 'aufheben') {
+    if (campaignId === undefined) return;
+    if (
+      action === 'ausschliessen' &&
+      !confirm(`${offeneDuplikate} weitere Kontakt(e) bereits vorhandener Firmen nicht anschreiben? Je Firma bleibt der zuerst angeschriebene bzw. zuerst importierte Kontakt. Lässt sich rückgängig machen.`)
+    )
+      return;
+    setBusy(true);
+    setMeldung(null);
+    const res = await fetch(`/api/campaigns/${campaignId}/firmen-duplikate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) });
+    const data = (await res.json().catch(() => ({}))) as { anzahl?: number; error?: string };
+    setMeldung(res.ok ? (action === 'ausschliessen' ? `${data.anzahl} Duplikat(e) ausgeschlossen.` : `${data.anzahl} Duplikat(e) wieder freigegeben.`) : (data.error ?? 'Aktion fehlgeschlagen'));
+    setBusy(false);
+    router.refresh();
+  }
 
   const spalten: { key: SortKey; label: string; rechts?: boolean }[] = [
     { key: 'firma', label: 'Firma' },
@@ -89,7 +118,9 @@ export function LeadsTable({
   const sichtbar = useMemo(() => {
     const q = suche.trim().toLowerCase();
     const gefiltert = leads.filter((l) => {
-      if (q && !l.firma.toLowerCase().includes(q) && !l.email.toLowerCase().includes(q)) return false;
+      if (q && !l.firma.toLowerCase().includes(q) && !l.email.toLowerCase().includes(q) && !l.ansprechpartner.toLowerCase().includes(q)) return false;
+      if (ohneDuplikate && l.firmenDuplikat) return false;
+      if (filter === 'duplikate') return l.firmenDuplikat;
       if (filter === 'mit_play') return l.videostarts > 0;
       if (filter === 'nicht_gesendet') return l.sendStatus === 'nicht_gesendet';
       if (filter === 'beantwortet') return l.flowStopp === 'beantwortet';
@@ -104,7 +135,7 @@ export function LeadsTable({
       const c = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb), 'de');
       return c * dir || a.firma.localeCompare(b.firma, 'de');
     });
-  }, [leads, sortKey, sortAsc, filter, suche]);
+  }, [leads, sortKey, sortAsc, filter, suche, ohneDuplikate]);
 
   function sortieren(key: SortKey) {
     if (key === sortKey) setSortAsc(!sortAsc);
@@ -129,7 +160,7 @@ export function LeadsTable({
           type="search"
           value={suche}
           onChange={(e) => setSuche(e.target.value)}
-          placeholder="Suche nach Firma oder E-Mail"
+          placeholder="Suche nach Firma, Name oder E-Mail"
           className="w-64 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
         />
         <div className="flex flex-wrap gap-1">
@@ -143,6 +174,12 @@ export function LeadsTable({
             </button>
           ))}
         </div>
+        {duplikate.length > 0 && (
+          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+            <input type="checkbox" checked={ohneDuplikate} onChange={(e) => setOhneDuplikate(e.target.checked)} />
+            Firmen-Duplikate ausblenden ({duplikate.length})
+          </label>
+        )}
         <span className="text-xs text-slate-500">
           {sichtbar.length} von {leads.length} Leads
         </span>
@@ -155,6 +192,30 @@ export function LeadsTable({
           </a>
         )}
       </div>
+
+      {campaignId !== undefined && (offeneDuplikate > 0 || ausgeschlossen > 0 || meldung) && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {offeneDuplikate > 0 && (
+            <>
+              <span>
+                {offeneDuplikate} weitere Kontakt(e) von Firmen, die schon in der Kampagne sind.
+              </span>
+              <button onClick={() => duplikatAktion('ausschliessen')} disabled={busy} className="rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-60">
+                Duplikate nicht anschreiben
+              </button>
+            </>
+          )}
+          {ausgeschlossen > 0 && (
+            <>
+              <span>{ausgeschlossen} Firmen-Duplikat(e) ausgeschlossen.</span>
+              <button onClick={() => duplikatAktion('aufheben')} disabled={busy} className="rounded-md border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60">
+                Ausschluss aufheben
+              </button>
+            </>
+          )}
+          {meldung && <span className="text-xs">{meldung}</span>}
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-sm">
@@ -170,7 +231,14 @@ export function LeadsTable({
           <tbody className="divide-y divide-slate-100">
             {sichtbar.map((l) => (
               <tr key={l.id} className="hover:bg-slate-50">
-                <td className="px-3 py-2 font-medium">{l.firma}</td>
+                <td className="px-3 py-2 font-medium">
+                  {l.firma}
+                  {l.firmenDuplikat && (
+                    <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-800" title="Weiterer Kontakt einer Firma, die schon in der Kampagne ist">
+                      Duplikat
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-2">{l.ansprechpartner || '–'}</td>
                 <td className="px-3 py-2">{l.email}</td>
                 {mitVideo && (

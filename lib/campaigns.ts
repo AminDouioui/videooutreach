@@ -1,7 +1,8 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb, schema } from './db';
+import { firmenDuplikate, firmenSchluessel } from './firma';
 import { deleteMedia } from './media';
-import { stoppeRender } from './render-queue';
+import { schliesseKampagneAb, stoppeRender } from './render-queue';
 
 export const STANDARD_BETREFF = 'Kurzes Video für {{firma}}';
 export const STANDARD_TEXT = `{{begruessung}},
@@ -48,6 +49,44 @@ export function loescheKampagne(campaignId: number): { leads: number } | null {
   return { leads: slugs.length };
 }
 
+export const FIRMEN_DUPLIKAT = 'Firmen-Duplikat';
+
+/** Reihenfolge, in der je Firma der „behaltene“ Kontakt gewählt wird: bereits angeschriebene zuerst, dann nach Import. */
+export function duplikatReihenfolge<T extends { id: number; sendStatus: string }>(leads: T[]): T[] {
+  return [...leads].sort((a, b) => (a.sendStatus === 'gesendet' ? 0 : 1) - (b.sendStatus === 'gesendet' ? 0 : 1) || a.id - b.id);
+}
+
+/**
+ * Weitere Kontakte derselben Firma vom Versand ausschließen (Status „übersprungen“, Grund „Firmen-Duplikat“)
+ * und aus der Render-Warteschlange nehmen. Bereits gesendete Leads bleiben unverändert.
+ */
+export function schliesseFirmenDuplikateAus(campaignId: number): number {
+  const db = getDb();
+  const leads = db
+    .select({ id: schema.leads.id, firma: schema.leads.firma, sendStatus: schema.leads.sendStatus })
+    .from(schema.leads)
+    .where(eq(schema.leads.campaignId, campaignId))
+    .all();
+  const duplikate = firmenDuplikate(duplikatReihenfolge(leads));
+  const ids = leads.filter((l) => duplikate.has(l.id) && ['nicht_gesendet', 'geplant', 'fehler'].includes(l.sendStatus)).map((l) => l.id);
+  if (ids.length === 0) return 0;
+  db.update(schema.leads)
+    .set({ sendStatus: 'uebersprungen', sendError: FIRMEN_DUPLIKAT, renderRequested: false })
+    .where(inArray(schema.leads.id, ids))
+    .run();
+  schliesseKampagneAb(campaignId);
+  return ids.length;
+}
+
+/** Ausschluss der Firmen-Duplikate aufheben (sie werden wieder normal versendet). */
+export function hebeFirmenDuplikateAuf(campaignId: number): number {
+  return getDb()
+    .update(schema.leads)
+    .set({ sendStatus: 'nicht_gesendet', sendError: null })
+    .where(and(eq(schema.leads.campaignId, campaignId), eq(schema.leads.sendStatus, 'uebersprungen'), eq(schema.leads.sendError, FIRMEN_DUPLIKAT)))
+    .run().changes;
+}
+
 export const KAMPAGNEN_STATUS_LABEL: Record<string, string> = {
   entwurf: 'Entwurf',
   rendert: 'Rendert',
@@ -58,13 +97,15 @@ export const KAMPAGNEN_STATUS_LABEL: Record<string, string> = {
 };
 
 /** E-Mails aller Leads (kampagnenübergreifend) und der Sperrliste für die Import-Validierung */
-export function ladeImportKontext() {
+export function ladeImportKontext(campaignId?: number) {
   const db = getDb();
-  const vorhanden = db.select({ email: schema.leads.email }).from(schema.leads).all();
+  const vorhanden = db.select({ email: schema.leads.email, firma: schema.leads.firma, campaignId: schema.leads.campaignId }).from(schema.leads).all();
   const gesperrt = db.select({ email: schema.suppressionList.email }).from(schema.suppressionList).all();
   return {
     existingEmails: new Set(vorhanden.map((r) => r.email.toLowerCase())),
     suppressed: new Set(gesperrt.map((r) => r.email.toLowerCase())),
+    // Firmen, die in der Ziel-Kampagne schon vorkommen (für „ein Kontakt pro Firma“)
+    existingFirmen: new Set(vorhanden.filter((r) => r.campaignId === campaignId).map((r) => firmenSchluessel(r.firma))),
   };
 }
 

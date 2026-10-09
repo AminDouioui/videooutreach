@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { getDb, schema } from './db';
 import { getEnv } from './env';
 import { isInRenderWindow } from './time';
@@ -18,7 +18,8 @@ export function fordereRenderAn(campaignId: number, modus: RenderModus): number 
     const res = tx
       .update(schema.leads)
       .set({ renderStatus: 'wartet', renderRequested: true, renderError: null })
-      .where(and(eq(schema.leads.campaignId, campaignId), inArray(schema.leads.renderStatus, [...stati])))
+      // Vom Versand ausgeschlossene Leads (Sperrliste, Firmen-Duplikate) nicht rendern
+      .where(and(eq(schema.leads.campaignId, campaignId), inArray(schema.leads.renderStatus, [...stati]), ne(schema.leads.sendStatus, 'uebersprungen')))
       .run();
     // Ein gerade gestoppter, noch laufender Job soll weiterlaufen statt abgebrochen zu werden
     tx.update(schema.leads)

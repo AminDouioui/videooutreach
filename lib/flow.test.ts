@@ -209,3 +209,21 @@ describe('Kampagne löschen', () => {
     expect(m.campaigns.loescheKampagne(k.id)).toBeNull();
   });
 });
+
+describe('Firmen-Duplikate in der Kampagne', () => {
+  it('schließt weitere Kontakte je Firma aus und kann das rückgängig machen; Angeschriebene bleiben Original', () => {
+    const k = neueKampagne();
+    const a = neuerLead(k.id, { firma: 'Rittal GmbH', sendStatus: 'nicht_gesendet' });
+    const b = neuerLead(k.id, { firma: 'Rittal GmbH & Co. KG', sendStatus: 'gesendet' });
+    const c = neuerLead(k.id, { firma: 'Bosch AG', sendStatus: 'nicht_gesendet' });
+
+    expect(m.campaigns.schliesseFirmenDuplikateAus(k.id)).toBe(1);
+    // b wurde schon angeschrieben -> b ist das Original, a wird ausgeschlossen
+    expect(lead(a.id)).toMatchObject({ sendStatus: 'uebersprungen', sendError: 'Firmen-Duplikat' });
+    expect(lead(b.id).sendStatus).toBe('gesendet');
+    expect(lead(c.id).sendStatus).toBe('nicht_gesendet');
+
+    expect(m.campaigns.hebeFirmenDuplikateAuf(k.id)).toBe(1);
+    expect(lead(a.id)).toMatchObject({ sendStatus: 'nicht_gesendet', sendError: null });
+  });
+});

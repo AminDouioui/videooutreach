@@ -17,6 +17,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const parsed = await parseJson(req, importBodySchema);
   if ('response' in parsed) return parsed.response;
 
-  const rows = validateRows(parsed.data.rows, parsed.data.mapping, ladeImportKontext());
+  const rows = validateRows(parsed.data.rows, parsed.data.mapping, { ...ladeImportKontext(id), einProFirma: parsed.data.einProFirma });
   return NextResponse.json({ rows, counts: countByStatus(rows), summary: summarize(rows) });
 }

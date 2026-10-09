@@ -2,7 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
-import { FELD_LABELS, IMPORT_FELDER, STATUS_LABELS, type ImportFeld, type Mapping, type Row, type RowStatus, type ValidatedRow } from '@/lib/import';
+import { FELD_LABELS, IMPORT_FELDER, ROW_STATUS, STATUS_LABELS, type ImportFeld, type Mapping, type Row, type RowStatus, type ValidatedRow } from '@/lib/import';
+import { FilterChips, passt, SortKopf, Suche, useSortierung } from './Tabelle';
+
+type ErgebnisSpalte = 'index' | 'status' | 'firma' | 'name' | 'email';
 
 type Parsed = { headers: string[]; rows: Row[]; guessedMapping: Mapping };
 type Validierung = { rows: ValidatedRow[]; counts: Record<RowStatus, number>; summary: string };
@@ -12,6 +15,7 @@ const STATUS_FARBE: Record<RowStatus, string> = {
   ungueltige_email: 'bg-red-100 text-red-800',
   duplikat_datei: 'bg-amber-100 text-amber-800',
   duplikat_bestand: 'bg-amber-100 text-amber-800',
+  duplikat_firma: 'bg-amber-100 text-amber-800',
   gesperrt: 'bg-red-100 text-red-800',
   fehlende_pflichtfelder: 'bg-red-100 text-red-800',
 };
@@ -31,6 +35,19 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState('');
+  const [einProFirma, setEinProFirma] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<RowStatus | 'alle'>('alle');
+  const [suche, setSuche] = useState('');
+
+  const gefiltert = (validierung?.rows ?? []).filter(
+    (r) => (statusFilter === 'alle' || r.status === statusFilter) && passt(suche, r.lead.firma, r.lead.email, r.lead.vorname, r.lead.nachname),
+  );
+  const { sortiert, key: sortKey, asc: sortAsc, sortieren } = useSortierung<ValidatedRow, ErgebnisSpalte>(
+    gefiltert,
+    (r, k) =>
+      k === 'index' ? r.index : k === 'status' ? STATUS_LABELS[r.status] : k === 'name' ? [r.lead.vorname, r.lead.nachname].filter(Boolean).join(' ') : r.lead[k],
+    { key: 'index', asc: true },
+  );
 
   async function hochladen(datei: File) {
     setFehler('');
@@ -63,7 +80,7 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
     if (inputRef.current) inputRef.current.value = '';
   }
 
-  async function pruefen() {
+  async function pruefen(proFirma = einProFirma) {
     if (!parsed || !mapping) return;
     setFehler('');
     setBusy(true);
@@ -71,7 +88,7 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
       const res = await fetch(`/api/campaigns/${campaignId}/import/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mapping, rows: parsed.rows }),
+        body: JSON.stringify({ mapping, rows: parsed.rows, einProFirma: proFirma }),
       });
       if (!res.ok) setFehler(await fehlerText(res));
       else setValidierung(await res.json());
@@ -88,7 +105,7 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
       const res = await fetch(`/api/campaigns/${campaignId}/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mapping, rows: parsed.rows }),
+        body: JSON.stringify({ mapping, rows: parsed.rows, einProFirma }),
       });
       if (!res.ok) {
         setFehler(await fehlerText(res));
@@ -209,9 +226,26 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
           </table>
         </div>
 
+        <label className="mt-4 flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={einProFirma}
+            onChange={(e) => {
+              setEinProFirma(e.target.checked);
+              // Bereits geprüft: mit der neuen Einstellung direkt neu prüfen
+              if (validierung) void pruefen(e.target.checked);
+            }}
+            className="mt-0.5"
+          />
+          <span>
+            <strong>Nur einen Kontakt pro Firma</strong> – weitere Kontakte derselben Firma (auch „Müller GmbH“ vs. „Müller GmbH &amp; Co. KG“) und Firmen, die schon in
+            dieser Kampagne sind, werden nicht importiert.
+          </span>
+        </label>
+
         <div className="mt-4">
           <button
-            onClick={pruefen}
+            onClick={() => pruefen()}
             disabled={busy || !mapping.firma || !mapping.email}
             className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
           >
@@ -227,19 +261,39 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="mb-1 font-semibold">Ergebnis der Prüfung</h2>
           <p className="mb-3 text-sm text-slate-700">{validierung.summary}</p>
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <Suche wert={suche} onChange={setSuche} platzhalter="Suche nach Firma, Name oder E-Mail" />
+            <FilterChips
+              optionen={[
+                { key: 'alle' as const, label: 'Alle', anzahl: validierung.rows.length },
+                ...ROW_STATUS.filter((st) => validierung.counts[st] > 0).map((st) => ({ key: st, label: STATUS_LABELS[st], anzahl: validierung.counts[st] })),
+              ]}
+              aktiv={statusFilter}
+              onChange={setStatusFilter}
+            />
+            <span className="text-xs text-slate-500">
+              {sortiert.length} von {validierung.rows.length} Zeilen
+            </span>
+          </div>
           <div className="max-h-96 overflow-auto rounded border border-slate-100">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-slate-50 text-left text-slate-500">
                 <tr>
-                  <th className="px-2 py-1">#</th>
-                  <th className="px-2 py-1">Status</th>
-                  <th className="px-2 py-1">Firma</th>
-                  <th className="px-2 py-1">Ansprechpartner</th>
-                  <th className="px-2 py-1">E-Mail</th>
+                  {(
+                    [
+                      ['index', '#'],
+                      ['status', 'Status'],
+                      ['firma', 'Firma'],
+                      ['name', 'Ansprechpartner'],
+                      ['email', 'E-Mail'],
+                    ] as [ErgebnisSpalte, string][]
+                  ).map(([k, label]) => (
+                    <SortKopf key={k} label={label} aktiv={sortKey === k} asc={sortAsc} onClick={() => sortieren(k, k !== 'index')} />
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {validierung.rows.map((r) => (
+                {sortiert.map((r) => (
                   <tr key={r.index}>
                     <td className="px-2 py-1 text-slate-400">{r.index + 1}</td>
                     <td className="px-2 py-1">

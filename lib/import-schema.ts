@@ -8,4 +8,6 @@ const mappingShape = Object.fromEntries(IMPORT_FELDER.map((f) => [f, z.string().
 export const importBodySchema = z.object({
   mapping: z.object(mappingShape),
   rows: z.array(z.record(z.string(), z.string())).max(MAX_ROWS),
+  /** Nur einen Kontakt pro Firma importieren */
+  einProFirma: z.boolean().default(false),
 });

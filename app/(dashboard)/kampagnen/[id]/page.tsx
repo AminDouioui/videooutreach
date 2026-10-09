@@ -8,7 +8,9 @@ import { ladeKampagnenStatus } from '@/lib/render-queue';
 import { LeadsTable, type LeadRow } from '@/components/LeadsTable';
 import { SendControls } from '@/components/SendControls';
 import { getDb, schema } from '@/lib/db';
+import { duplikatReihenfolge, FIRMEN_DUPLIKAT } from '@/lib/campaigns';
 import { getEnv } from '@/lib/env';
+import { firmenDuplikate } from '@/lib/firma';
 import { ladeFollowups } from '@/lib/send';
 import { ladeLeadMetriken } from '@/lib/tracking';
 
@@ -23,6 +25,8 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
 
   const leads = db.select().from(schema.leads).where(eq(schema.leads.campaignId, id)).all();
   const metriken = ladeLeadMetriken(id);
+  // Je Firma gilt der zuerst angeschriebene bzw. zuerst importierte Kontakt als Original
+  const duplikate = firmenDuplikate(duplikatReihenfolge(leads));
   const rows: LeadRow[] = leads.map((l) => ({
     id: l.id,
     firma: l.firma,
@@ -40,6 +44,8 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
     score: l.score,
     flowSchritt: l.sendStatus === 'gesendet' ? 1 + l.followupsSent : 0,
     flowStopp: l.flowStopp,
+    firmenDuplikat: duplikate.has(l.id),
+    duplikatAusgeschlossen: l.sendStatus === 'uebersprungen' && l.sendError === FIRMEN_DUPLIKAT,
   }));
   const gerendert = leads.filter((l) => l.renderStatus === 'fertig').length;
   const followupSchritte = ladeFollowups(id).length;

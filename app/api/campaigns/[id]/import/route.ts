@@ -20,7 +20,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if ('response' in parsed) return parsed.response;
 
   // Serverseitig erneut validieren; importiert werden nur gültige Zeilen
-  const validiert = validateRows(parsed.data.rows, parsed.data.mapping, ladeImportKontext());
+  const validiert = validateRows(parsed.data.rows, parsed.data.mapping, { ...ladeImportKontext(id), einProFirma: parsed.data.einProFirma });
   const gueltig = validiert.filter((r) => r.status === 'ok');
 
   const importiert = db.transaction((tx) => {

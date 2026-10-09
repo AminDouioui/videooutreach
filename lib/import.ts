@@ -1,4 +1,5 @@
 import { splitName } from './name';
+import { firmenSchluessel } from './firma';
 
 /** Zielfelder des Imports */
 export const IMPORT_FELDER = ['name', 'vorname', 'nachname', 'anrede', 'firma', 'email', 'position', 'website'] as const;
@@ -101,7 +102,7 @@ export function applyMapping(row: Row, mapping: Mapping): MappedLead {
   };
 }
 
-export const ROW_STATUS = ['ok', 'ungueltige_email', 'duplikat_datei', 'duplikat_bestand', 'gesperrt', 'fehlende_pflichtfelder'] as const;
+export const ROW_STATUS = ['ok', 'ungueltige_email', 'duplikat_datei', 'duplikat_bestand', 'duplikat_firma', 'gesperrt', 'fehlende_pflichtfelder'] as const;
 export type RowStatus = (typeof ROW_STATUS)[number];
 
 export type ValidatedRow = {
@@ -116,6 +117,10 @@ export type ValidationContext = {
   existingEmails: Set<string>;
   /** E-Mails (lowercase) der Sperrliste */
   suppressed: Set<string>;
+  /** Nur einen Kontakt pro Firma importieren (weitere = 'duplikat_firma') */
+  einProFirma?: boolean;
+  /** Firmenschlüssel (firmenSchluessel), die in der Ziel-Kampagne schon vorkommen */
+  existingFirmen?: Set<string>;
 };
 
 const EMAIL_REGEX = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:".]{2,}$/;
@@ -124,9 +129,13 @@ export function isValidEmail(email: string): boolean {
   return email.length <= 254 && EMAIL_REGEX.test(email);
 }
 
-/** Validiert alle Zeilen. Erstes Vorkommen einer E-Mail in der Datei ist ok, weitere sind Duplikate. */
+/**
+ * Validiert alle Zeilen. Erstes Vorkommen einer E-Mail in der Datei ist ok, weitere sind Duplikate.
+ * Mit `einProFirma` ist außerdem nur der erste gültige Kontakt je Firma ok (Abgleich auch mit der Kampagne).
+ */
 export function validateRows(rows: Row[], mapping: Mapping, ctx: ValidationContext): ValidatedRow[] {
   const gesehen = new Set<string>();
+  const firmen = new Set<string>(ctx.existingFirmen ?? []);
   return rows.map((row, index) => {
     const lead = applyMapping(row, mapping);
     let status: RowStatus;
@@ -137,6 +146,11 @@ export function validateRows(rows: Row[], mapping: Mapping, ctx: ValidationConte
     else if (ctx.existingEmails.has(lead.email)) status = 'duplikat_bestand';
     else status = 'ok';
     if (status !== 'fehlende_pflichtfelder' && status !== 'ungueltige_email') gesehen.add(lead.email);
+    if (status === 'ok' && ctx.einProFirma) {
+      const k = firmenSchluessel(lead.firma);
+      if (firmen.has(k)) status = 'duplikat_firma';
+      else firmen.add(k);
+    }
     return { index, status, lead };
   });
 }
@@ -146,6 +160,7 @@ export const STATUS_LABELS: Record<RowStatus, string> = {
   ungueltige_email: 'Ungültige E-Mail',
   duplikat_datei: 'Duplikat in Datei',
   duplikat_bestand: 'Bereits vorhanden',
+  duplikat_firma: 'Gleiche Firma',
   gesperrt: 'Gesperrt',
   fehlende_pflichtfelder: 'Pflichtfelder fehlen',
 };
@@ -163,6 +178,7 @@ export function summarize(rows: ValidatedRow[]): string {
   const plural = (n: number, e: string, m: string) => `${n} ${n === 1 ? e : m}`;
   if (c.duplikat_datei) teile.push(plural(c.duplikat_datei, 'Duplikat', 'Duplikate'));
   if (c.duplikat_bestand) teile.push(plural(c.duplikat_bestand, 'bereits vorhanden', 'bereits vorhanden'));
+  if (c.duplikat_firma) teile.push(plural(c.duplikat_firma, 'weiterer Kontakt derselben Firma', 'weitere Kontakte derselben Firma'));
   if (c.ungueltige_email) teile.push(plural(c.ungueltige_email, 'ungültige E-Mail', 'ungültige E-Mails'));
   if (c.gesperrt) teile.push(`${c.gesperrt} gesperrt`);
   if (c.fehlende_pflichtfelder) teile.push(plural(c.fehlende_pflichtfelder, 'mit fehlenden Pflichtfeldern', 'mit fehlenden Pflichtfeldern'));
