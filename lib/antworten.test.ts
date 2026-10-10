@@ -156,7 +156,7 @@ describe('Fehlertexte', () => {
     expect(m.a.fehlerText(G('auth', 'Gmail-Berechtigung fehlt: Request had insufficient authentication scopes'))).toMatch(/Lesezugriff erteilen/);
     expect(m.a.fehlerText(G('sonstig', 'Requested entity was not found.'))).toMatch(/nicht gefunden/);
     expect(m.a.fehlerText(new m.gmail.GmailSendError(m.gmail.classifyGmailError(Object.assign(new Error('getaddrinfo ENOTFOUND gmail.googleapis.com'), { code: 'ENOTFOUND' }))))).toMatch(/Keine Verbindung/);
-    expect(m.a.fehlerText(new Error('GOOGLE_CLIENT_ID und GOOGLE_CLIENT_SECRET sind nicht gesetzt (siehe docs/gmail-einrichtung.md)'))).toMatch(/^GOOGLE_CLIENT_ID/);
+    expect(m.a.fehlerText(new Error('GOOGLE_CLIENT_ID und GOOGLE_CLIENT_SECRET sind nicht gesetzt (siehe docs/gmail-einrichtung.md)'))).toMatch(/^Die Google-Zugangsdaten fehlen/);
     expect(m.a.fehlerText(new Error('kaputt'))).toBe('Unerwarteter Fehler: kaputt');
     expect(m.gmail.classifyGmailError({ code: 403, errors: [{ reason: 'insufficientPermissions' }], message: 'Insufficient Permission' }).art).toBe('auth');
   });

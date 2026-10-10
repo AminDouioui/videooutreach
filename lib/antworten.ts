@@ -41,7 +41,7 @@ export function fehlerText(e: unknown): string {
     return m;
   }
   const m = e instanceof Error ? e.message : String(e);
-  return /^GOOGLE_CLIENT_ID/.test(m) ? m : `Unerwarteter Fehler: ${m.slice(0, 300)}`;
+  return /^GOOGLE_CLIENT_ID/.test(m) ? 'Die Google-Zugangsdaten fehlen in der Server-Konfiguration (GOOGLE_CLIENT_ID und GOOGLE_CLIENT_SECRET, siehe docs/gmail-einrichtung.md).' : `Unerwarteter Fehler: ${m.slice(0, 300)}`;
 }
 
 // ---------------------------------------------------------------- Thread lesen (mit kurzem Cache)
