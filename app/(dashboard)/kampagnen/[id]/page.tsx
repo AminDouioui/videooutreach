@@ -12,6 +12,7 @@ import { duplikatReihenfolge, FIRMEN_DUPLIKAT } from '@/lib/campaigns';
 import { getEnv } from '@/lib/env';
 import { firmenDuplikate } from '@/lib/firma';
 import { ladeAbsender } from '@/lib/absender';
+import { leadZeitzone } from '@/lib/time';
 import { ladeFollowups } from '@/lib/send';
 import { ladeVariantenStatistik } from '@/lib/varianten-statistik';
 import { VariantenTabelle } from '@/components/VariantenTabelle';
@@ -54,6 +55,7 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
     flowStopp: l.flowStopp,
     abwesendAt: l.abwesendAt ? l.abwesendAt.getTime() : null,
     abwesendBis: l.abwesendBis ? l.abwesendBis.getTime() : null,
+    zeitzone: leadZeitzone(l, kampagne),
     firmenDuplikat: duplikate.has(l.id),
     duplikatAusgeschlossen: l.sendStatus === 'uebersprungen' && l.sendError === FIRMEN_DUPLIKAT,
   }));
@@ -103,6 +105,7 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
         followupSchritte={followupSchritte}
         abTest={abTest}
         mehrerePostfaecher={postfaecher.length > 1}
+        mehrereZeitzonen={rows.some((r) => r.zeitzone !== leadZeitzone({}, kampagne))}
       />
     </div>
   );

@@ -6,6 +6,7 @@ import { LEAD_STATUS } from '@/lib/lead-status';
 import { setzeAntwortGelesen, setzeLeadStatus } from '@/lib/lead-status-db';
 import { deleteMedia } from '@/lib/media';
 import { fehler, parseJson } from '@/lib/request';
+import { kanonischeZeitzone } from '@/lib/time';
 
 export const runtime = 'nodejs';
 
@@ -15,8 +16,10 @@ const patchSchema = z
     sendStatus: z.literal('uebersprungen').optional(),
     leadStatus: z.enum(LEAD_STATUS).optional(),
     antwortGelesen: z.boolean().optional(),
+    // IANA-Zeitzone; null/leer = Zeitzone der Kampagne
+    zeitzone: z.string().trim().max(64).nullable().optional(),
   })
-  .refine((v) => v.notizen !== undefined || v.sendStatus !== undefined || v.leadStatus !== undefined || v.antwortGelesen !== undefined, 'Nichts zu ändern');
+  .refine((v) => v.notizen !== undefined || v.sendStatus !== undefined || v.leadStatus !== undefined || v.antwortGelesen !== undefined || v.zeitzone !== undefined, 'Nichts zu ändern');
 
 async function ladeId(params: Promise<{ id: string }>) {
   const id = Number((await params).id);
@@ -32,9 +35,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const db = getDb();
   const lead = db.select({ id: schema.leads.id }).from(schema.leads).where(eq(schema.leads.id, id)).get();
   if (!lead) return fehler('Lead nicht gefunden', 404);
+  if (parsed.data.zeitzone !== undefined && parsed.data.zeitzone) {
+    if (!kanonischeZeitzone(parsed.data.zeitzone)) return fehler('Unbekannte Zeitzone (z. B. Europe/London, America/New_York)');
+  }
 
   const set: Partial<typeof schema.leads.$inferInsert> = {};
   if (parsed.data.notizen !== undefined) set.notizen = parsed.data.notizen.trim() || null;
+  if (parsed.data.zeitzone !== undefined) set.zeitzone = parsed.data.zeitzone ? kanonischeZeitzone(parsed.data.zeitzone) : null;
   if (parsed.data.sendStatus) {
     set.sendStatus = 'uebersprungen';
     set.sendError = null;

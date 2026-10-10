@@ -4,11 +4,12 @@ import { notFound } from 'next/navigation';
 import { AbwesendBadge, Badge, LeadStatusBadge } from '@/components/Badge';
 import { LeadStatusSelect } from '@/components/LeadStatusSelect';
 import { CopyButton } from '@/components/CopyButton';
-import { LeadActions, MailVorschau, NotizFeld } from '@/components/LeadDetailPanel';
+import { LeadActions, MailVorschau, NotizFeld, ZeitzoneFeld } from '@/components/LeadDetailPanel';
 import { ladeAbsenderMitId } from '@/lib/absender';
 import { getDb, schema } from '@/lib/db';
 import { gmailThreadUrl } from '@/lib/lead-status';
 import { setzeAntwortGelesen } from '@/lib/lead-status-db';
+import { zeitzoneOderStandard } from '@/lib/time';
 import { leadPageUrl, thumbnailUrl, videoUrl } from '@/lib/media';
 
 export const dynamic = 'force-dynamic';
@@ -129,6 +130,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               {lead.leadStatusAt && <span className="text-xs text-slate-500">gesetzt am {zeit.format(lead.leadStatusAt)}</span>}
             </div>
             <p className="text-xs text-slate-500">Nicht interessiert, falscher Ansprechpartner, Termin gebucht, Gewonnen und Verloren beenden den Flow (keine Follow-ups mehr).</p>
+            <ZeitzoneFeld leadId={lead.id} initial={lead.zeitzone ?? ''} kampagneZone={zeitzoneOderStandard(kampagne.zeitzone)} />
             <p>
               <span className="text-slate-500">Erstmail-Variante:</span> {lead.variante ?? '–'}
             </p>

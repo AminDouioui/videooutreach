@@ -3,9 +3,10 @@
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { FELD_LABELS, IMPORT_FELDER, ROW_STATUS, STATUS_LABELS, type ImportFeld, type Mapping, type Row, type RowStatus, type ValidatedRow } from '@/lib/import';
+import { ZEITZONE_QUELLE_LABEL } from '@/lib/zeitzone';
 import { FilterChips, passt, SortKopf, Suche, useSortierung } from './Tabelle';
 
-type ErgebnisSpalte = 'index' | 'status' | 'firma' | 'name' | 'email';
+type ErgebnisSpalte = 'index' | 'status' | 'firma' | 'name' | 'email' | 'zeitzone';
 
 type Parsed = { headers: string[]; rows: Row[]; guessedMapping: Mapping };
 type Validierung = { rows: ValidatedRow[]; counts: Record<RowStatus, number>; summary: string };
@@ -202,7 +203,7 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
             </label>
           ))}
         </div>
-        <p className="mt-3 text-xs text-slate-500">Nicht zugeordnete Spalten werden als Zusatzdaten gespeichert. Ist nur „Name“ zugeordnet, wird er in Vor- und Nachname geteilt.</p>
+        <p className="mt-3 text-xs text-slate-500">Zeitzone/Land (optional): ohne Angabe wird die Zeitzone aus der Länder-Endung der Website bzw. E-Mail geschätzt (.at, .ch, .co.uk …); .com/.de/.net und alles Unbekannte nutzt die Zeitzone der Kampagne. Nicht zugeordnete Spalten werden als Zusatzdaten gespeichert. Ist nur „Name“ zugeordnet, wird er in Vor- und Nachname geteilt.</p>
 
         <h3 className="mb-2 mt-5 text-sm font-semibold">Vorschau (erste {vorschau.length} Zeilen)</h3>
         <div className="overflow-x-auto">
@@ -307,6 +308,7 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
                       ['firma', 'Firma'],
                       ['name', 'Ansprechpartner'],
                       ['email', 'E-Mail'],
+                      ['zeitzone', 'Zeitzone'],
                     ] as [ErgebnisSpalte, string][]
                   ).map(([k, label]) => (
                     <SortKopf key={k} label={label} aktiv={sortKey === k} asc={sortAsc} onClick={() => sortieren(k, k !== 'index')} />
@@ -324,6 +326,21 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
                     <td className="px-2 py-1">{r.lead.firma}</td>
                     <td className="px-2 py-1">{[r.lead.vorname, r.lead.nachname].filter(Boolean).join(' ')}</td>
                     <td className="px-2 py-1">{r.lead.email}</td>
+                    <td className="whitespace-nowrap px-2 py-1">
+                      {r.lead.zeitzone ? (
+                        <>
+                          {r.lead.zeitzone}
+                          {r.lead.zeitzoneQuelle && <span className="ml-1 text-slate-400">({ZEITZONE_QUELLE_LABEL[r.lead.zeitzoneQuelle]})</span>}
+                        </>
+                      ) : (
+                        <span className="text-slate-400">Kampagne</span>
+                      )}
+                      {r.lead.zeitzoneUngueltig && (
+                        <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800" title="Diese Zeitzone ist unbekannt und wird ignoriert">
+                          „{r.lead.zeitzoneUngueltig}“ ungültig
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

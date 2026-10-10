@@ -63,6 +63,8 @@ export const campaigns = sqliteTable('campaigns', {
   sendDays: text('send_days').notNull().default('1,2,3,4,5'),
   // Vor diesem Datum ('YYYY-MM-DD', Berlin) wird nicht gesendet; null = sofort
   startDatum: text('start_datum'),
+  // IANA-Zeitzone der Kampagne (Versandfenster, Versandtage, Startdatum); Leads ohne eigene Zone folgen ihr
+  zeitzone: text('zeitzone').notNull().default('Europe/Berlin'),
   // Höchstens so viele neue Leads (Erstmails) pro Tag; null = unbegrenzt. Follow-ups zählen nicht.
   maxNeueLeadsProTag: integer('max_neue_leads_pro_tag'),
   ctaUrl: text('cta_url').notNull(),
@@ -159,6 +161,8 @@ export const leads = sqliteTable(
     email: text('email').notNull(),
     position: text('position'),
     website: text('website'),
+    // IANA-Zeitzone des Leads (Versandfenster/-tage gelten dort); null = Zeitzone der Kampagne
+    zeitzone: text('zeitzone'),
     extra: text('extra', { mode: 'json' }).$type<Record<string, string>>(),
     slug: text('slug').notNull().unique(),
     renderStatus: text('render_status', { enum: RENDER_STATUS }).notNull().default('wartet'),

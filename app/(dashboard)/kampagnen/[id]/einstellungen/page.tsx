@@ -29,6 +29,7 @@ export default async function KampagnenEinstellungen({ params }: { params: Promi
           sendWindowStart: k.sendWindowStart,
           sendWindowEnd: k.sendWindowEnd,
           sendDays: parseSendDays(k.sendDays),
+          zeitzone: k.zeitzone,
           startDatum: k.startDatum ?? '',
           maxNeueLeadsProTag: k.maxNeueLeadsProTag,
           trackingPixel: k.trackingPixel,

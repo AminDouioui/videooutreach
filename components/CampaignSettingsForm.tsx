@@ -2,7 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { ALLE_WOCHENTAGE, WOCHENTAG_KURZ } from '@/lib/time';
+import { ALLE_WOCHENTAGE, istGueltigeZeitzone, WOCHENTAG_KURZ } from '@/lib/time';
+import { GAENGIGE_ZEITZONEN } from '@/lib/zeitzone';
 
 type Werte = {
   name: string;
@@ -11,6 +12,7 @@ type Werte = {
   sendWindowStart: string;
   sendWindowEnd: string;
   sendDays: number[];
+  zeitzone: string;
   startDatum: string;
   maxNeueLeadsProTag: number | null;
   trackingPixel: boolean;
@@ -32,6 +34,10 @@ export function CampaignSettingsForm({ campaignId, initial }: { campaignId: numb
   async function speichern(e: React.FormEvent) {
     e.preventDefault();
     setStatus(null);
+    if (!istGueltigeZeitzone(w.zeitzone)) {
+      setStatus({ text: 'Unbekannte Zeitzone (z. B. Europe/Berlin, America/New_York)', fehler: true });
+      return;
+    }
     const res = await fetch(`/api/campaigns/${campaignId}/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -68,7 +74,34 @@ export function CampaignSettingsForm({ campaignId, initial }: { campaignId: numb
           <input required type="time" value={w.sendWindowEnd} onChange={(e) => set('sendWindowEnd', e.target.value)} className={feld} />
         </label>
       </div>
-      <p className="-mt-2 text-xs text-slate-500">Zeiten in Europe/Berlin. Zusätzlich gilt das globale Tageslimit aus den Einstellungen.</p>
+      <label className="block text-sm font-medium text-slate-700">
+        Zeitzone
+        <select
+          value={(GAENGIGE_ZEITZONEN as readonly string[]).includes(w.zeitzone) ? w.zeitzone : ''}
+          onChange={(e) => e.target.value && set('zeitzone', e.target.value)}
+          className={`${feld} bg-white sm:w-72`}
+          aria-label="Gängige Zeitzone wählen"
+        >
+          <option value="">– andere (Freitext) –</option>
+          {GAENGIGE_ZEITZONEN.map((z) => (
+            <option key={z} value={z}>
+              {z}
+            </option>
+          ))}
+        </select>
+        <input
+          value={w.zeitzone}
+          onChange={(e) => set('zeitzone', e.target.value)}
+          placeholder="IANA-Zeitzone, z. B. Europe/Berlin"
+          aria-label="Zeitzone (Freitext)"
+          aria-invalid={!istGueltigeZeitzone(w.zeitzone)}
+          className={`${feld} sm:w-72 ${istGueltigeZeitzone(w.zeitzone) ? '' : 'border-red-500'}`}
+        />
+        {!istGueltigeZeitzone(w.zeitzone) && <span className="mt-1 block text-xs font-normal text-red-600">Unbekannte Zeitzone.</span>}
+      </label>
+      <p className="-mt-2 text-xs text-slate-500">
+        Fenster, Versandtage und Startdatum gelten in dieser Zeitzone – für Leads mit eigener Zeitzone (Import, Lead-Detail) in deren Ortszeit. Tageslimits zählen nach Berliner Tag. Zusätzlich gilt das globale Tageslimit aus den Einstellungen.
+      </p>
       <fieldset>
         <legend className="text-sm font-medium text-slate-700">Versandtage</legend>
         <div className="mt-1 flex flex-wrap gap-2">

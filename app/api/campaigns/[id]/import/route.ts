@@ -39,6 +39,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           email: lead.email,
           position: lead.position || null,
           website: lead.website || null,
+          zeitzone: lead.zeitzone || null,
           extra: Object.keys(lead.extra).length ? lead.extra : null,
           slug,
         })

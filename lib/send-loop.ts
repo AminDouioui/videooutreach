@@ -8,7 +8,7 @@ import { blockiertDurch, waehlePostfach, type PostfachBlock } from './rotation';
 import { decideSend, randomGapMs } from './send-plan';
 import { countSentToday, effektivesGlobalLimit, ladeFollowups, pruefeAntwort, sendFollowup, sendLead, wartetWegenAbwesenheit, type SendResult } from './send';
 import { skipPendingFor } from './suppression';
-import { todayBerlin } from './time';
+import { isWithinWindow, leadZeitzone, todayBerlin, zonenTeile } from './time';
 
 // Ein Durchlauf der Versandschleife (ohne Timer, damit testbar)
 
@@ -183,12 +183,20 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
     }
     if (result.sent > 0) continue; // höchstens eine Mail pro Durchlauf
 
+    // Versandfenster und -tage gelten in der Zeitzone des Leads (sonst der Kampagne): nur Kandidaten, deren Lead
+    // gerade im Fenster ist, kommen infrage
+    const imFenster = (l: { zeitzone: string | null }) => isWithinWindow(k, jetzt, leadZeitzone(l, k));
+    const faelligOffen = faellig.filter((f) => imFenster(f.lead));
+    const bereitOffen = bereit.filter(imFenster);
+
     // Kampagnen- und Gesamtgrenzen (Status, Startdatum, Fenster, Kampagnen-Limit, Gesamtlimit über alle Postfächer);
     // Abstand und Quota-Stopp gelten je Postfach (unten)
     const plan = decideSend({
       now: jetzt,
-      today: heute,
+      // Startdatum der Kampagne gilt in ihrer Zeitzone
+      today: zonenTeile(k.zeitzone, jetzt).datum,
       campaign: k,
+      fensterOffen: faelligOffen.length > 0 || bereitOffen.length > 0,
       globalLimit: effektivesGlobalLimit(jetzt),
       sentTodayGlobal: countSentToday(undefined, jetzt),
       sentTodayCampaign: countSentToday(k.id, jetzt),
@@ -202,7 +210,7 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
     let res: SendResult | null = null;
     let ziel = '';
     const wartend = new Set<string>();
-    for (const f of faellig) {
+    for (const f of faelligOffen) {
       // Follow-ups gehen immer über das Postfach der Erstmail; ist es nicht bereit, wartet das Follow-up
       const pf = postfachFuerLead(f.lead);
       const z = pf ? postfaecher().find((x) => x.absender.id === pf.id)?.zustand : undefined;
@@ -227,12 +235,12 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
       }
       break;
     }
-    if (!res && bereit.length > 0) {
+    if (!res && bereitOffen.length > 0) {
       const wahl = waehlePostfach(postfaecher().map((x) => x.zustand), jetzt.getTime(), heute);
       if (wahl.art === 'warten') wartend.add(wahl.grund);
       else {
-        ziel = `Mail an Lead ${bereit[0].id}`;
-        res = await sendLead(bereit[0].id, { sender: deps.sender, now: jetzt, absenderId: wahl.id });
+        ziel = `Mail an Lead ${bereitOffen[0].id}`;
+        res = await sendLead(bereitOffen[0].id, { sender: deps.sender, now: jetzt, absenderId: wahl.id });
       }
     }
     if (!res) {

@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getDb, schema } from '@/lib/db';
 import { fehler, parseJson } from '@/lib/request';
-import { formatSendDays, parseHHMM } from '@/lib/time';
+import { formatSendDays, kanonischeZeitzone, parseHHMM } from '@/lib/time';
 
 export const runtime = 'nodejs';
 
@@ -21,6 +21,14 @@ const bodySchema = z
     dailySendLimit: z.coerce.number().int().min(1).max(500),
     sendWindowStart: hhmm,
     sendWindowEnd: hhmm,
+    zeitzone: z
+      .string()
+      .trim()
+      .transform((v, ctx) => {
+        const z = kanonischeZeitzone(v);
+        if (!z) ctx.addIssue({ code: 'custom', message: 'Unbekannte Zeitzone (z. B. Europe/Berlin, America/New_York)' });
+        return z ?? v;
+      }),
     sendDays: z.array(z.number().int().min(1).max(7)).min(1, 'Mindestens einen Versandtag wählen'),
     startDatum: z.union([datum, z.literal('')]).nullable(),
     maxNeueLeadsProTag: z.coerce.number().int().min(1).max(500).nullable(),
