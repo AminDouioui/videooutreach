@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { asc, eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
-import { Badge, LeadStatusBadge } from '@/components/Badge';
+import { AbwesendBadge, Badge, LeadStatusBadge } from '@/components/Badge';
 import { LeadStatusSelect } from '@/components/LeadStatusSelect';
 import { CopyButton } from '@/components/CopyButton';
 import { LeadActions, MailVorschau, NotizFeld } from '@/components/LeadDetailPanel';
@@ -23,6 +23,7 @@ const EVENT_LABEL: Record<string, string> = {
   cta_click: 'Termin-Link geklickt',
   email_open: 'E-Mail geöffnet',
   unsubscribe: 'Abgemeldet',
+  abwesenheit: 'Abwesenheitsnotiz erhalten',
 };
 
 const zeit = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'medium' });
@@ -72,6 +73,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
             <LeadStatusBadge status={lead.leadStatus} />
             {lead.variante && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700" title="Variante der Erstmail">Variante {lead.variante}</span>}
             {lead.flowStopp && <Badge status={lead.flowStopp} />}
+            {lead.abwesendAt && <AbwesendBadge bis={lead.abwesendBis?.getTime()} />}
             {lead.unsubscribed && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">Abgemeldet</span>}
             <a href={`/v/${lead.slug}`} target="_blank" rel="noopener noreferrer" className="font-mono text-xs text-indigo-600 hover:underline">
               {link}
@@ -111,6 +113,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
                   <span className="w-44 shrink-0 tabular-nums text-xs">{zeit.format(e.createdAt)}</span>
                   <span className={e.isBot ? '' : 'font-medium'}>{EVENT_LABEL[e.type] ?? e.type}</span>
                   {e.isBot && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">Bot</span>}
+                  {e.type === 'abwesenheit' && typeof e.meta?.bis === 'number' && <span className="text-xs text-slate-500">Follow-ups warten bis {zeit.format(new Date(e.meta.bis))}</span>}
                   {e.type === 'email_open' && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">unzuverlässig</span>}
                 </li>
               ))}
@@ -137,6 +140,12 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               <span className="text-slate-500">Antwort:</span>{' '}
               {lead.flowStopp === 'beantwortet' ? (lead.antwortAt ?? lead.flowStoppAt ? `erkannt am ${zeit.format((lead.antwortAt ?? lead.flowStoppAt)!)}` : 'erkannt') : lead.flowStopp === 'firma_beantwortet' ? 'Kollege aus derselben Firma hat geantwortet' : 'keine'}
             </p>
+            {lead.abwesendAt && (
+              <p>
+                <span className="text-slate-500">Abwesenheit:</span> Notiz erkannt am {zeit.format(lead.abwesendAt)}
+                {lead.abwesendBis ? `, Follow-ups warten bis ${zeit.format(lead.abwesendBis)}` : ' (Follow-ups nicht verschoben)'}. Zählt nicht als Antwort.
+              </p>
+            )}
             {lead.gmailThreadId && (
               <a href={gmailThreadUrl(lead.gmailThreadId)} target="_blank" rel="noopener noreferrer" className="inline-block rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
                 In Gmail öffnen

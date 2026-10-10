@@ -49,6 +49,7 @@ export default async function AnalysePage({ params }: { params: Promise<{ id: st
         {k.mitVideo && <Kachel label="Video-Seite angesehen" wert={stufe('angesehen').anzahl} hinweis={prozent(stufe('angesehen').rate ?? 0)} />}
         {k.mitVideo && <Kachel label="Termin-Klicks" wert={stufe('termin').anzahl} hinweis={prozent(stufe('termin').rate ?? 0)} />}
         <Kachel label="Bounces" wert={trichter.bounces} hinweis={prozent(trichter.bounceRate)} />
+        <Kachel label="Abwesenheiten" wert={trichter.abwesenheiten} hinweis="zählen nicht als Antwort" />
         <Kachel label="Abmeldungen" wert={trichter.abmeldungen} hinweis={prozent(trichter.abmeldeRate)} />
       </div>
 

@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { desc } from 'drizzle-orm';
+import { ladeAbsender } from '@/lib/absender';
+import { istBounceFehler } from '@/lib/bounce-schutz';
 import { Kachel, TagesDiagramm } from '@/components/AnalyseDiagramme';
 import { KampagnenTabelle, type KampagnenZeile } from '@/components/KampagnenTabelle';
 import { ladeUebersicht } from '@/lib/analyse';
@@ -35,8 +37,34 @@ export default function KampagnenUebersicht() {
     };
   });
 
+  // Hinweise des Bounce-Schutzes: automatisch pausierte Kampagnen und Postfächer
+  const pausiert = kampagnen.filter((k) => k.status === 'pausiert' && k.pausiertGrund);
+  const bouncePostfaecher = ladeAbsender().filter((a) => !a.aktiv && istBounceFehler(a.fehler));
+
   return (
     <div>
+      {(pausiert.length > 0 || bouncePostfaecher.length > 0) && (
+        <div role="alert" className="mb-4 space-y-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          {pausiert.map((k) => (
+            <p key={`k${k.id}`}>
+              <strong>Kampagne pausiert:</strong>{' '}
+              <Link href={`/kampagnen/${k.id}`} className="underline">
+                {k.name}
+              </Link>{' '}
+              – {k.pausiertGrund}
+            </p>
+          ))}
+          {bouncePostfaecher.map((a) => (
+            <p key={`p${a.id}`}>
+              <strong>Postfach pausiert:</strong>{' '}
+              <Link href="/einstellungen" className="underline">
+                {a.email}
+              </Link>{' '}
+              – {a.fehler}
+            </p>
+          ))}
+        </div>
+      )}
       <section className="mb-6">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
           <Kachel label="Gesendet heute" wert={u.gesendetHeute} />

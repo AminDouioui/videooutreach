@@ -3,7 +3,7 @@ import { getEnv } from './env';
 import { oauthConfigured } from './gmail';
 import { postfachStatus, type PostfachStatus } from './rotation';
 import { effektivesGlobalLimit } from './send';
-import { getSetting, globalDailyLimit, rampeEinstellung } from './settings';
+import { bounceSchwellePostfach, getSetting, globalDailyLimit, rampeEinstellung } from './settings';
 import { todayBerlin } from './time';
 
 export type PostfachAnzeige = {
@@ -60,6 +60,7 @@ export function ladeEinstellungen() {
     rampeSchritt: rampe.schritt,
     // Leer = automatisch (erste gesendete Mail)
     rampeBeginn: rampe.beginn ?? '',
+    bounceSchwellePostfach: bounceSchwellePostfach(),
     heuteErlaubt: effektivesGlobalLimit(),
     impressumUrl: getSetting('impressum_url') ?? env.IMPRESSUM_URL ?? '',
     datenschutzUrl: getSetting('datenschutz_url') ?? env.DATENSCHUTZ_URL ?? '',

@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { bewerteNachrichten, klassifiziereNachricht, type NachrichtenArt } from './autoreply';
 import { speichereVerbindung, type Absender } from './absender';
 import { decrypt, encrypt } from './crypto';
 import { getEnv } from './env';
@@ -17,8 +18,8 @@ export type GmailPostfach = Pick<Absender, 'id' | 'email' | 'refreshTokenEnc'>;
  */
 export type GmailSender = (raw: string, threadId: string | undefined, postfach: GmailPostfach) => Promise<{ id: string; threadId: string }>;
 
-/** Ergebnis der Thread-Prüfung: Antwort des Leads, Bounce oder nichts */
-export type ThreadErgebnis = 'antwort' | 'bounce' | null;
+/** Ergebnis der Thread-Prüfung: Antwort des Leads, Bounce, Abwesenheitsnotiz (zählt nicht als Antwort) oder nichts */
+export type ThreadErgebnis = 'antwort' | 'bounce' | 'abwesenheit' | null;
 /** Prüft einen Thread im Postfach der Erstmail auf Antworten (für Tests austauschbar). Wirft GmailSendError. */
 export type ThreadPruefer = (threadId: string, postfach: GmailPostfach) => Promise<ThreadErgebnis>;
 
@@ -110,23 +111,19 @@ export const sendRaw: GmailSender = async (raw, threadId, postfach) => {
   }
 };
 
-/** Bewertet die Kopfzeilen der Thread-Nachrichten (rein, testbar). Eigene Mails und Auto-Replies zählen nicht. */
+/**
+ * Bewertet die Kopfzeilen der Thread-Nachrichten (rein, testbar). Eigene Mails zählen nicht. Echte Antwort,
+ * Bounce und Abwesenheitsnotiz unterscheidet lib/autoreply.ts; irgendeine echte Antwort entscheidet immer.
+ */
 export function bewerteThread(nachrichten: Array<Record<string, string>>, eigeneAdresse: string): ThreadErgebnis {
   const eigen = eigeneAdresse.trim().toLowerCase();
-  let ergebnis: ThreadErgebnis = null;
+  const arten: NachrichtenArt[] = [];
   for (const h of nachrichten) {
     const von = (h['from'] ?? '').toLowerCase();
     if (!von || (eigen && von.includes(eigen))) continue;
-    if (/mailer-daemon|postmaster/.test(von)) {
-      ergebnis ??= 'bounce';
-      continue;
-    }
-    // Abwesenheitsnotizen u. ä. (RFC 3834) beenden den Flow nicht
-    const auto = (h['auto-submitted'] ?? 'no').toLowerCase();
-    if (auto !== 'no' || h['x-autoreply'] || h['x-autorespond']) continue;
-    return 'antwort';
+    arten.push(klassifiziereNachricht(h));
   }
-  return ergebnis;
+  return bewerteNachrichten(arten);
 }
 
 /** Prüft per gmail.metadata (nur Kopfzeilen), ob im Thread eine Antwort oder ein Bounce liegt. */
@@ -137,7 +134,7 @@ export const pruefeThread: ThreadPruefer = async (threadId, postfach) => {
       userId: 'me',
       id: threadId,
       format: 'metadata',
-      metadataHeaders: ['From', 'Auto-Submitted', 'X-Autoreply', 'X-Autorespond'],
+      metadataHeaders: ['From', 'Subject', 'Auto-Submitted', 'X-Autoreply', 'X-Autorespond', 'X-Auto-Response-Suppress', 'Precedence'],
     });
     const nachrichten = (res.data.messages ?? []).map((m) => {
       const h: Record<string, string> = {};

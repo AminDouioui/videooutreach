@@ -6,7 +6,7 @@ import { GmailSendError, type GmailSender, type ThreadPruefer } from './gmail';
 import { FLOW_ENDENDE_STATUS } from './lead-status';
 import { blockiertDurch, waehlePostfach, type PostfachBlock } from './rotation';
 import { decideSend, randomGapMs } from './send-plan';
-import { countSentToday, effektivesGlobalLimit, ladeFollowups, pruefeAntwort, sendFollowup, sendLead, type SendResult } from './send';
+import { countSentToday, effektivesGlobalLimit, ladeFollowups, pruefeAntwort, sendFollowup, sendLead, wartetWegenAbwesenheit, type SendResult } from './send';
 import { skipPendingFor } from './suppression';
 import { todayBerlin } from './time';
 
@@ -169,6 +169,8 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
     // Fällig: Wartezeit des nächsten Schritts seit der letzten Mail abgelaufen
     const faellig = flows
       .filter((f) => f.letzteMail !== null && f.letzteMail + followups[f.lead.followupsSent].waitDays * TAG_MS <= jetzt.getTime())
+      // Abwesenheitsnotiz erkannt: Follow-up wartet bis zum Ende der Abwesenheit
+      .filter((f) => !wartetWegenAbwesenheit(f.lead, jetzt))
       .sort((a, b) => a.letzteMail - b.letzteMail);
     let bereit = k.mitVideo ? erstmails.filter((l) => l.renderStatus === 'fertig') : erstmails;
     // Limit „neue Leads pro Tag“ erreicht: nur noch fällige Follow-ups (sie zählen nicht dazu)
@@ -212,7 +214,7 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
       ziel = `Follow-up ${f.lead.followupsSent + 1} an Lead ${f.lead.id}`;
       res = await sendFollowup(f.lead.id, { sender: deps.sender, pruefer: deps.pruefer, now: jetzt });
       // Beendeter Flow (Antwort/Bounce) kostet keinen Versand-Slot: nächsten Kandidaten nehmen
-      if (!res.ok && (res.kind === 'flow_beendet' || res.kind === 'uebersprungen')) {
+      if (!res.ok && (res.kind === 'flow_beendet' || res.kind === 'uebersprungen' || res.kind === 'abwesend')) {
         log(`${ziel}: ${res.error}`);
         res = null;
         continue;

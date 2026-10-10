@@ -102,7 +102,8 @@ export function TemplateEditor({
     });
   }
 
-  async function speichern() {
+  /** true = gespeichert (oder nichts zu speichern); false = Speichern fehlgeschlagen */
+  async function speichern(): Promise<boolean> {
     setStatus(null);
     const res = await fetch(`/api/campaigns/${campaignId}/template`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subject, body }) });
     const data = await res.json().catch(() => ({}));
@@ -110,12 +111,16 @@ export function TemplateEditor({
       const w: string[] = data.warnungen ?? [];
       setStatus({ text: w.length ? `Gespeichert (${w.join(', ')})` : 'Gespeichert', fehler: false });
       setGespeichert({ subject, body });
-    } else setStatus({ text: data.error ?? 'Speichern fehlgeschlagen', fehler: true });
+      return true;
+    }
+    setStatus({ text: data.error ?? 'Speichern fehlgeschlagen', fehler: true });
+    return false;
   }
 
   async function testmail() {
     setStatus({ text: 'Testmail wird gesendet …', fehler: false });
-    if (geaendert) await speichern();
+    // Schlägt das Speichern fehl (z. B. Klammerfehler), geht keine Testmail raus – sie würde die alte Vorlage zeigen
+    if (geaendert && !(await speichern())) return;
     const res = await fetch(`/api/campaigns/${campaignId}/test-mail`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadId: leadId ?? undefined, absenderId: absenderId ?? undefined }) });
     const data = await res.json().catch(() => ({}));
     setStatus(data.ok ? { text: `Testmail an ${data.to} gesendet`, fehler: false } : { text: data.error ?? 'Testmail fehlgeschlagen', fehler: true });
@@ -145,7 +150,7 @@ export function TemplateEditor({
           <p className="mt-2 text-xs text-slate-500">Signatur (Einstellungen) und Abmeldelink werden automatisch angehängt.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={speichern} disabled={!geaendert || klammerFehler.length > 0} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+          <button onClick={() => void speichern()} disabled={!geaendert || klammerFehler.length > 0} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
             Speichern
           </button>
           <button onClick={testmail} disabled={leadId === null || absenderId === null} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">

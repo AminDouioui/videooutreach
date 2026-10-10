@@ -182,8 +182,14 @@ describe('Antwort-Erkennung', () => {
   const eigen = 'amin@prozessia.de';
   it('erkennt Antworten, ignoriert eigene Mails und Abwesenheitsnotizen', () => {
     expect(m.gmail.bewerteThread([{ from: 'Amin <amin@prozessia.de>' }], eigen)).toBeNull();
-    expect(m.gmail.bewerteThread([{ from: eigen }, { from: 'Kunde <k@kunde.de>', 'auto-submitted': 'auto-replied' }], eigen)).toBeNull();
+    expect(m.gmail.bewerteThread([{ from: eigen }, { from: 'Kunde <k@kunde.de>', 'auto-submitted': 'auto-replied' }], eigen)).toBe('abwesenheit');
     expect(m.gmail.bewerteThread([{ from: eigen }, { from: 'Kunde <k@kunde.de>' }], eigen)).toBe('antwort');
+  });
+  it('unterscheidet Abwesenheitsnotizen von echten Antworten (auch nachträglich im selben Thread)', () => {
+    const abw = { from: 'Kunde <k@kunde.de>', subject: 'Automatische Antwort: Hallo', 'auto-submitted': 'auto-replied' };
+    expect(m.gmail.bewerteThread([{ from: eigen }, abw], eigen)).toBe('abwesenheit');
+    expect(m.gmail.bewerteThread([{ from: eigen }, { from: 'Kunde <k@kunde.de>', subject: 'Out of Office' }], eigen)).toBe('abwesenheit');
+    expect(m.gmail.bewerteThread([{ from: eigen }, abw, { from: 'Kunde <k@kunde.de>', subject: 'Re: Hallo' }], eigen)).toBe('antwort');
   });
   it('erkennt Bounces', () => {
     expect(m.gmail.bewerteThread([{ from: eigen }, { from: 'Mail Delivery Subsystem <mailer-daemon@googlemail.com>' }], eigen)).toBe('bounce');

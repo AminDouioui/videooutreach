@@ -21,6 +21,7 @@ const bodySchema = z.object({
   rampeStart: z.coerce.number().int().min(1).max(2000),
   rampeSchritt: z.coerce.number().int().min(0).max(500),
   rampeBeginn: z.union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT')]),
+  bounceSchwellePostfach: z.coerce.number().int().min(1).max(100),
   impressumUrl: urlOderLeer,
   datenschutzUrl: urlOderLeer,
 });
@@ -41,6 +42,7 @@ export async function PUT(req: Request) {
   setSetting('rampe_start', String(d.rampeStart));
   setSetting('rampe_schritt', String(d.rampeSchritt));
   setOrDelete('rampe_beginn', d.rampeBeginn);
+  setSetting('bounce_schwelle_postfach', String(d.bounceSchwellePostfach));
   setOrDelete('impressum_url', d.impressumUrl);
   setOrDelete('datenschutz_url', d.datenschutzUrl);
   return NextResponse.json({ ok: true });

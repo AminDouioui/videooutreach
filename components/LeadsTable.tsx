@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
-import { Badge, LeadStatusBadge } from './Badge';
+import { AbwesendBadge, Badge, LeadStatusBadge } from './Badge';
 import { CopyButton } from './CopyButton';
 
 export type LeadRow = {
@@ -35,6 +35,10 @@ export type LeadRow = {
   flowSchritt: number;
   /** Flow beendet: beantwortet, bounce, abgemeldet */
   flowStopp: string | null;
+  /** Abwesenheitsnotiz erkannt (Unix-ms des Erkennens) oder null */
+  abwesendAt: number | null;
+  /** Follow-ups warten bis (Unix-ms) oder null */
+  abwesendBis: number | null;
   /** Weiterer Kontakt einer Firma, die schon einen Lead in der Kampagne hat */
   firmenDuplikat: boolean;
   /** Als Firmen-Duplikat vom Versand ausgeschlossen */
@@ -285,6 +289,11 @@ export function LeadsTable({
                 </td>
                 <td className="px-3 py-2">
                   <LeadStatusBadge status={l.leadStatus} />
+                  {l.abwesendAt !== null && (
+                    <span className="ml-1.5">
+                      <AbwesendBadge bis={l.abwesendBis} />
+                    </span>
+                  )}
                 </td>
                 {followupSchritte > 0 && (
                   <td className="whitespace-nowrap px-3 py-2">

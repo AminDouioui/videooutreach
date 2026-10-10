@@ -1,4 +1,5 @@
 import { and, asc, eq, gte, sql } from 'drizzle-orm';
+import { istBounceFehler } from './bounce-schutz';
 import { getDb, schema } from './db';
 import { getEnv } from './env';
 import { GMAIL_METADATA_SCOPE } from './gmail-scopes';
@@ -157,7 +158,11 @@ export function aktualisiereAbsender(id: number, a: AbsenderAenderung): Absender
   if (a.name !== undefined) set.name = a.name?.trim() ? a.name.trim() : null;
   if (a.tageslimit !== undefined) set.tageslimit = Math.max(1, Math.floor(a.tageslimit));
   if (a.signatur !== undefined) set.signatur = a.signatur !== null && a.signatur.trim() !== '' ? a.signatur : null;
-  if (a.aktiv !== undefined) set.aktiv = a.aktiv;
+  if (a.aktiv !== undefined) {
+    set.aktiv = a.aktiv;
+    // Fortsetzen nach dem Bounce-Schutz löscht dessen Grund (andere Fehler, z. B. Auth, bleiben)
+    if (a.aktiv && istBounceFehler(ladeAbsenderMitId(id)?.fehler)) set.fehler = null;
+  }
   if (a.rampeBeginn !== undefined) set.rampeBeginn = a.rampeBeginn && /^\d{4}-\d{2}-\d{2}$/.test(a.rampeBeginn) ? a.rampeBeginn : null;
   if (Object.keys(set).length === 0) return ladeAbsenderMitId(id);
   return getDb().update(schema.absender).set(set).where(eq(schema.absender.id, id)).returning().get() ?? null;

@@ -33,6 +33,10 @@ export default async function KampagnenEinstellungen({ params }: { params: Promi
           maxNeueLeadsProTag: k.maxNeueLeadsProTag,
           trackingPixel: k.trackingPixel,
           stoppBeiFirmenAntwort: k.stoppBeiFirmenAntwort,
+          abwesenheitVerschiebenTage: k.abwesenheitVerschiebenTage,
+          bounceSchutz: k.bounceSchutz,
+          bounceSchwelleProzent: k.bounceSchwelleProzent,
+          bounceFenster: k.bounceFenster,
         }}
       />
     </div>

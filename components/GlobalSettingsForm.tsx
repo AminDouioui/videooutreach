@@ -11,6 +11,7 @@ type Werte = {
   rampeStart: number;
   rampeSchritt: number;
   rampeBeginn: string;
+  bounceSchwellePostfach: number;
   impressumUrl: string;
   datenschutzUrl: string;
 };
@@ -26,7 +27,7 @@ export function GlobalSettingsForm({ initial, heuteErlaubt }: { initial: Werte; 
   async function speichern(e: React.FormEvent) {
     e.preventDefault();
     setStatus(null);
-    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt) }) });
+    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt), bounceSchwellePostfach: Number(w.bounceSchwellePostfach) }) });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setStatus({ text: 'Gespeichert', fehler: false });
@@ -80,6 +81,13 @@ export function GlobalSettingsForm({ initial, heuteErlaubt }: { initial: Werte; 
         <p className="text-xs text-slate-500">Ohne Beginn zählt der Tag der ersten gesendeten Mail (noch keine: heute). Zum Übernehmen der Änderungen speichern.</p>
         <p className="text-sm font-medium text-slate-800">Heute insgesamt erlaubt: {heuteErlaubt} {heuteErlaubt === 1 ? 'Mail' : 'Mails'}</p>
       </fieldset>
+      <label className="block text-sm font-medium text-slate-700 sm:max-w-xs">
+        Bounce-Schwelle je Postfach (%)
+        <input required type="number" min={1} max={100} value={w.bounceSchwellePostfach} onChange={(e) => set('bounceSchwellePostfach', Number(e.target.value))} className={feld} />
+        <span className="mt-1 block text-xs font-normal text-slate-500">
+          Liegt die Bounce-Quote der letzten 50 Erstmails eines Postfachs darüber (ab 20 gesendeten), wird das Postfach pausiert. Wieder aktivieren unter „Postfächer“.
+        </span>
+      </label>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block text-sm font-medium text-slate-700">
           Impressum-URL

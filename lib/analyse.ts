@@ -21,6 +21,8 @@ export type AnalyseLead = {
   flowStoppAt: number | null;
   /** Postfach der Erstmail (null/fehlt = Altbestand ohne Zuordnung) */
   absenderId?: number | null;
+  /** Unix-ms, an dem eine Abwesenheitsnotiz erkannt wurde (zählt nicht als Antwort) */
+  abwesendAt?: number | null;
 };
 
 /** Erstes Auftreten eines Event-Typs (ohne Bots) je Lead */
@@ -42,6 +44,8 @@ export type Trichter = {
   bounces: number;
   abmeldungen: number;
   bounceRate: number;
+  /** Gesendete Leads mit erkannter Abwesenheitsnotiz (keine Antworten) */
+  abwesenheiten: number;
   abmeldeRate: number;
   gesendet: number;
   antworten: number;
@@ -107,11 +111,13 @@ export function aggregiereTrichter(leads: AnalyseLead[], ereignisse: ErstesEvent
   ];
   const bounces = gesendet.filter((l) => l.flowStopp === 'bounce').length;
   const abmeldungen = gesendet.filter((l) => l.unsubscribed).length;
+  const abwesenheiten = gesendet.filter((l) => l.abwesendAt != null).length;
   return {
     stufen,
     bounces,
     abmeldungen,
     bounceRate: rate(bounces, n),
+    abwesenheiten,
     abmeldeRate: rate(abmeldungen, n),
     gesendet: n,
     antworten,
@@ -274,6 +280,7 @@ export function ladeRohdaten(campaignId: number | null): Rohdaten {
       antwortAt: schema.leads.antwortAt,
       flowStoppAt: schema.leads.flowStoppAt,
       absenderId: schema.leads.absenderId,
+      abwesendAt: schema.leads.abwesendAt,
     })
     .from(schema.leads)
     .innerJoin(schema.campaigns, eq(schema.campaigns.id, schema.leads.campaignId))
@@ -283,6 +290,7 @@ export function ladeRohdaten(campaignId: number | null): Rohdaten {
     ...r,
     antwortAt: r.antwortAt ? r.antwortAt.getTime() : null,
     flowStoppAt: r.flowStoppAt ? r.flowStoppAt.getTime() : null,
+    abwesendAt: r.abwesendAt ? r.abwesendAt.getTime() : null,
   }));
 
   const ereignisse = db

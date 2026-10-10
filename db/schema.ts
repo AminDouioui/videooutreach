@@ -17,6 +17,7 @@ export const EVENT_TYPEN = [
   'cta_click',
   'email_open',
   'unsubscribe',
+  'abwesenheit',
 ] as const;
 
 /**
@@ -71,6 +72,14 @@ export const campaigns = sqliteTable('campaigns', {
   mitVideo: integer('mit_video', { mode: 'boolean' }).notNull().default(true),
   // Antwortet jemand einer Firma, werden die Flows aller anderen Leads mit derselben Domain gestoppt
   stoppBeiFirmenAntwort: integer('stopp_bei_firmen_antwort', { mode: 'boolean' }).notNull().default(true),
+  // Follow-ups eines Leads mit erkannter Abwesenheitsnotiz um so viele Tage verschieben (0 = nicht verschieben)
+  abwesenheitVerschiebenTage: integer('abwesenheit_verschieben_tage').notNull().default(7),
+  // Bounce-Schutz: Kampagne pausiert, wenn die Bounce-Quote der letzten `bounceFenster` Erstmails über der Schwelle liegt
+  bounceSchutz: integer('bounce_schutz', { mode: 'boolean' }).notNull().default(true),
+  bounceSchwelleProzent: integer('bounce_schwelle_prozent').notNull().default(5),
+  bounceFenster: integer('bounce_fenster').notNull().default(50),
+  // Warum die Kampagne automatisch pausiert wurde (Bounce-Schutz); null = nicht automatisch pausiert
+  pausiertGrund: text('pausiert_grund'),
 });
 
 /** Follow-up-Schritte einer Kampagne (Schritt 1 ist die Erstmail aus campaigns). Gesendet im selben Thread. */
@@ -158,6 +167,9 @@ export const leads = sqliteTable(
     // Zeitpunkt, an dem die Antwort erkannt wurde
     antwortAt: ts('antwort_at'),
     antwortGelesen: integer('antwort_gelesen', { mode: 'boolean' }).notNull().default(false),
+    // Abwesenheitsnotiz erkannt (zählt nicht als Antwort); Follow-ups warten bis abwesendBis (null = nicht verschoben)
+    abwesendAt: ts('abwesend_at'),
+    abwesendBis: ts('abwesend_bis'),
     // Manueller Vertriebsstatus (wie „Lead Status“ bei Instantly)
     leadStatus: text('lead_status', { enum: LEAD_STATUS }).notNull().default('offen'),
     leadStatusAt: ts('lead_status_at'),

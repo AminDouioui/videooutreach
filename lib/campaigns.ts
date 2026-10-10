@@ -64,7 +64,7 @@ export function dupliziereKampagne(campaignId: number): typeof schema.campaigns.
     delete einstellungen.createdAt;
     const [kopie] = tx
       .insert(schema.campaigns)
-      .values({ ...(einstellungen as Omit<typeof quelle, 'id' | 'createdAt'>), name: `${quelle.name} (Kopie)`.slice(0, 220), status: 'entwurf' })
+      .values({ ...(einstellungen as Omit<typeof quelle, 'id' | 'createdAt'>), name: `${quelle.name} (Kopie)`.slice(0, 220), status: 'entwurf', pausiertGrund: null })
       .returning()
       .all();
     const followups = tx.select().from(schema.followups).where(eq(schema.followups.campaignId, campaignId)).orderBy(schema.followups.position).all();

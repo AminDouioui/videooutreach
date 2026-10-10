@@ -15,7 +15,9 @@ export type SettingKey =
   | 'rampe_aktiv'
   | 'rampe_start'
   | 'rampe_schritt'
-  | 'rampe_beginn';
+  | 'rampe_beginn'
+  // Bounce-Schutz je Postfach: Schwelle in Prozent (letzte 50 Erstmails des Postfachs)
+  | 'bounce_schwelle_postfach';
 
 export function getSetting(key: SettingKey): string | null {
   const row = getDb().select().from(schema.settings).where(eq(schema.settings.key, key)).get();
@@ -67,4 +69,10 @@ export function rampeEinstellung(): RampeEinstellung {
     schritt: positiveZahl(getSetting('rampe_schritt'), RAMPE_STANDARD.schritt, 0),
     beginn: beginn && /^\d{4}-\d{2}-\d{2}$/.test(beginn) ? beginn : null,
   };
+}
+
+/** Bounce-Schwelle je Postfach in Prozent (Standard 5). */
+export function bounceSchwellePostfach(): number {
+  const n = Number(getSetting('bounce_schwelle_postfach'));
+  return Number.isFinite(n) && n >= 1 && n <= 100 ? n : 5;
 }

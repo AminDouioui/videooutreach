@@ -3,6 +3,7 @@ import { getDb, schema } from './db';
 import { getEnv } from './env';
 import { absenderName, absenderSignatur, kannAntwortenPruefen, ladeAbsenderMitId, ladePostfachZustaende, markiereAuthFehler, postfachFuerLead, postfachNichtNutzbar, stoppeQuota, type Absender } from './absender';
 import { GmailSendError, pruefeThread, sendRaw, type GmailSender, type ThreadPruefer } from './gmail';
+import { pruefeBounceSchutz } from './bounce-schutz-db';
 import { buildEmail, buildMime, neueMessageId, oneClickUrl, type BuiltEmail, type MailSchritt } from './mail';
 import { FIRMA_HAT_GEANTWORTET, leadStatusLabel, STATUS_SKIP_PREFIX, statusBeendetFlow } from './lead-status';
 import { stoppeFirma } from './lead-status-db';
@@ -167,6 +168,7 @@ export type SendResult =
         | 'auth'
         | 'fehler'
         | 'flow_beendet'
+        | 'abwesend'
         | 'antwort_pruefung_fehlt';
       error: string;
     };
@@ -309,6 +311,26 @@ export function stoppeFlow(leadId: number, grund: (typeof schema.FLOW_STOPP)[num
 }
 
 /**
+ * Hält eine erkannte Abwesenheitsnotiz fest (einmal je Lead): Zeitpunkt, Event für die Zeitleiste und – falls die
+ * Kampagne es vorsieht – `abwesendBis` = jetzt + N Tage, bis dahin warten die Follow-ups.
+ */
+export function merkeAbwesenheit(lead: Pick<typeof schema.leads.$inferSelect, 'id' | 'campaignId' | 'abwesendAt'>, jetzt: Date = new Date()): void {
+  if (lead.abwesendAt) return;
+  const db = getDb();
+  const tage = db.select({ t: schema.campaigns.abwesenheitVerschiebenTage }).from(schema.campaigns).where(eq(schema.campaigns.id, lead.campaignId)).get()?.t ?? 0;
+  const bis = tage > 0 ? new Date(jetzt.getTime() + tage * 24 * 3600_000) : null;
+  db.transaction((tx) => {
+    tx.update(schema.leads).set({ abwesendAt: jetzt, abwesendBis: bis }).where(eq(schema.leads.id, lead.id)).run();
+    tx.insert(schema.events).values({ leadId: lead.id, type: 'abwesenheit', meta: { bis: bis ? bis.getTime() : null, tage }, isBot: false, createdAt: jetzt }).run();
+  });
+}
+
+/** Wartet das Follow-up dieses Leads wegen einer Abwesenheitsnotiz noch? */
+export function wartetWegenAbwesenheit(lead: Pick<typeof schema.leads.$inferSelect, 'abwesendBis'>, jetzt: Date): boolean {
+  return !!lead.abwesendBis && lead.abwesendBis.getTime() > jetzt.getTime();
+}
+
+/**
  * Prüft den Thread eines Leads auf Antwort/Bounce und beendet ggf. den Flow.
  * Liefert true, wenn der Flow (jetzt oder schon vorher) beendet ist. Wirft GmailSendError.
  */
@@ -328,8 +350,15 @@ export async function pruefeAntwort(
     getDb().update(schema.leads).set({ antwortAt: jetzt, antwortGelesen: false }).where(eq(schema.leads.id, lead.id)).run();
     stoppeFirma(lead.id, jetzt);
   }
-  else if (ergebnis === 'bounce') stoppeFlow(lead.id, 'bounce', jetzt);
-  else getDb().update(schema.leads).set({ replyCheckedAt: jetzt }).where(eq(schema.leads.id, lead.id)).run();
+  else if (ergebnis === 'bounce') {
+    stoppeFlow(lead.id, 'bounce', jetzt);
+    pruefeBounceSchutz(lead);
+  } else if (ergebnis === 'abwesenheit') {
+    // Abwesenheit stoppt den Flow nicht und zählt nicht als Antwort; Follow-ups warten nur
+    merkeAbwesenheit(lead, jetzt);
+    getDb().update(schema.leads).set({ replyCheckedAt: jetzt }).where(eq(schema.leads.id, lead.id)).run();
+    return false;
+  } else getDb().update(schema.leads).set({ replyCheckedAt: jetzt }).where(eq(schema.leads.id, lead.id)).run();
   return ergebnis !== null;
 }
 
@@ -368,6 +397,11 @@ export async function sendFollowup(leadId: number, opts: SendOptions = {}): Prom
 
   try {
     if (await pruefeAntwort(lead, opts.pruefer, jetzt, postfach)) return { ok: false, kind: 'flow_beendet', error: 'Lead hat geantwortet' };
+    // Die Prüfung kann eine Abwesenheitsnotiz neu erkannt haben: dann wartet das Follow-up
+    if (!opts.force) {
+      const aktuell = db.select({ abwesendBis: schema.leads.abwesendBis }).from(schema.leads).where(eq(schema.leads.id, lead.id)).get();
+      if (aktuell && wartetWegenAbwesenheit(aktuell, jetzt)) return { ok: false, kind: 'abwesend', error: 'Abwesenheitsnotiz erkannt – Follow-up wartet' };
+    }
     const { raw } = buildLeadMimeMitId(lead, kampagne, { schritt: { ...schritt, nr: lead.followupsSent + 1 }, inReplyTo: lead.rfcMessageId ?? undefined, absender: postfach });
     const res = await sender(raw, lead.gmailThreadId, postfach);
     db.transaction((tx) => {

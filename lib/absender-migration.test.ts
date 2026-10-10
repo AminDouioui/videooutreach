@@ -37,7 +37,7 @@ function altesMigrationsverzeichnis(): string {
   const ziel = fs.mkdtempSync(path.join(os.tmpdir(), 'vo-mig-alt-'));
   fs.mkdirSync(path.join(ziel, 'meta'));
   const journal = JSON.parse(fs.readFileSync(path.join(quelle, 'meta/_journal.json'), 'utf8')) as { entries: { tag: string }[] };
-  journal.entries = journal.entries.filter((e) => !e.tag.startsWith('0006_'));
+  journal.entries = journal.entries.filter((e) => Number(e.tag.slice(0, 4)) < 6);
   expect(journal.entries.length).toBeGreaterThan(0);
   fs.writeFileSync(path.join(ziel, 'meta/_journal.json'), JSON.stringify(journal));
   for (const e of journal.entries) fs.copyFileSync(path.join(quelle, `${e.tag}.sql`), path.join(ziel, `${e.tag}.sql`));

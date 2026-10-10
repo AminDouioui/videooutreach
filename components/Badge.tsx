@@ -43,3 +43,13 @@ export function LeadStatusBadge({ status }: { status: string }) {
   const info = istLeadStatus(status) ? LEAD_STATUS_INFO[status] : { label: status, farbe: 'grau' as const };
   return <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${FARBEN[info.farbe]}`}>{info.label}</span>;
 }
+
+/** Abwesenheitsnotiz erkannt (zählt nicht als Antwort); `bis` = Unix-ms, bis dahin warten Follow-ups */
+export function AbwesendBadge({ bis }: { bis?: number | null }) {
+  const titel = bis ? `Abwesenheitsnotiz erkannt – Follow-ups warten bis ${new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short' }).format(bis)}` : 'Abwesenheitsnotiz erkannt';
+  return (
+    <span title={titel} className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${FARBEN.gelb}`}>
+      Abwesend
+    </span>
+  );
+}

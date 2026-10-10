@@ -50,6 +50,13 @@
       "when": 1791575950717,
       "tag": "0006_mehrere_absender_postfaecher",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791671043132,
+      "tag": "0007_abwesenheit_bounce_schutz",
+      "breakpoints": true
     }
   ]
 }

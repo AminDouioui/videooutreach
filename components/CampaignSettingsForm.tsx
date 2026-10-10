@@ -15,6 +15,10 @@ type Werte = {
   maxNeueLeadsProTag: number | null;
   trackingPixel: boolean;
   stoppBeiFirmenAntwort: boolean;
+  abwesenheitVerschiebenTage: number;
+  bounceSchutz: boolean;
+  bounceSchwelleProzent: number;
+  bounceFenster: number;
 };
 
 const feld = 'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600';
@@ -31,7 +35,7 @@ export function CampaignSettingsForm({ campaignId, initial }: { campaignId: numb
     const res = await fetch(`/api/campaigns/${campaignId}/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...w, dailySendLimit: Number(w.dailySendLimit), startDatum: w.startDatum || null }),
+      body: JSON.stringify({ ...w, dailySendLimit: Number(w.dailySendLimit), startDatum: w.startDatum || null, abwesenheitVerschiebenTage: Number(w.abwesenheitVerschiebenTage), bounceSchwelleProzent: Number(w.bounceSchwelleProzent), bounceFenster: Number(w.bounceFenster) }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
@@ -116,6 +120,33 @@ export function CampaignSettingsForm({ campaignId, initial }: { campaignId: numb
           </span>
         </span>
       </label>
+      <label className="block text-sm font-medium text-slate-700">
+        Bei Abwesenheitsnotiz Follow-ups verschieben um (Tage)
+        <input type="number" min={0} max={60} value={w.abwesenheitVerschiebenTage} onChange={(e) => set('abwesenheitVerschiebenTage', Number(e.target.value))} className={`${feld} sm:w-40`} />
+        <span className="mt-1 block text-xs font-normal text-slate-500">
+          Antwortet ein Lead automatisch (Abwesenheit, „Out of Office“), stoppt das den Flow nicht und zählt nicht als Antwort; weitere Mails an ihn warten so viele Tage ab Erkennung. 0 = nicht verschieben.
+        </span>
+      </label>
+      <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">
+        <legend className="px-1 text-sm font-medium text-slate-700">Bounce-Schutz</legend>
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input type="checkbox" className="mt-1" checked={w.bounceSchutz} onChange={(e) => set('bounceSchutz', e.target.checked)} />
+          <span>
+            Kampagne automatisch pausieren, wenn zu viele Mails gebounct sind
+            <span className="block text-xs text-slate-500">Geprüft nach jedem erkannten Bounce, sobald mindestens 20 Erstmails gesendet wurden. Der Grund erscheint als Hinweis; „Fortsetzen“ hebt die Pause auf.</span>
+          </span>
+        </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-slate-700">
+            Schwelle (% Bounces)
+            <input type="number" min={1} max={100} disabled={!w.bounceSchutz} value={w.bounceSchwelleProzent} onChange={(e) => set('bounceSchwelleProzent', Number(e.target.value))} className={`${feld} disabled:opacity-50`} />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Fenster (letzte N Erstmails)
+            <input type="number" min={20} max={1000} disabled={!w.bounceSchutz} value={w.bounceFenster} onChange={(e) => set('bounceFenster', Number(e.target.value))} className={`${feld} disabled:opacity-50`} />
+          </label>
+        </div>
+      </fieldset>
       <div className="flex items-center gap-3">
         <button type="submit" className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
           Speichern

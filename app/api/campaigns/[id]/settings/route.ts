@@ -26,6 +26,10 @@ const bodySchema = z
     maxNeueLeadsProTag: z.coerce.number().int().min(1).max(500).nullable(),
     trackingPixel: z.boolean(),
     stoppBeiFirmenAntwort: z.boolean(),
+    abwesenheitVerschiebenTage: z.coerce.number().int().min(0).max(60),
+    bounceSchutz: z.boolean(),
+    bounceSchwelleProzent: z.coerce.number().int().min(1).max(100),
+    bounceFenster: z.coerce.number().int().min(20).max(1000),
   })
   .refine((v) => parseHHMM(v.sendWindowStart) < parseHHMM(v.sendWindowEnd), { message: 'Fensterbeginn muss vor dem Fensterende liegen', path: ['sendWindowEnd'] });
 

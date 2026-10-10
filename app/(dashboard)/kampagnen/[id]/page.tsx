@@ -52,6 +52,8 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
     postfach: l.absenderId !== null ? (postfachMail.get(l.absenderId) ?? null) : null,
     flowSchritt: l.sendStatus === 'gesendet' ? 1 + l.followupsSent : 0,
     flowStopp: l.flowStopp,
+    abwesendAt: l.abwesendAt ? l.abwesendAt.getTime() : null,
+    abwesendBis: l.abwesendBis ? l.abwesendBis.getTime() : null,
     firmenDuplikat: duplikate.has(l.id),
     duplikatAusgeschlossen: l.sendStatus === 'uebersprungen' && l.sendError === FIRMEN_DUPLIKAT,
   }));
@@ -82,6 +84,11 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
         </div>
         <CampaignActions campaignId={kampagne.id} campaignName={kampagne.name} leadCount={leads.length} mitVideo={kampagne.mitVideo} />
       </div>
+      {kampagne.status === 'pausiert' && kampagne.pausiertGrund && (
+        <div role="alert" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <strong>Automatisch pausiert.</strong> {kampagne.pausiertGrund}
+        </div>
+      )}
       {kampagne.mitVideo && <RenderProgress campaignId={kampagne.id} initial={ladeKampagnenStatus(kampagne.id)!} />}
       <div className="mb-4">
         <SendControls campaignId={kampagne.id} readyCount={versandbereit} />

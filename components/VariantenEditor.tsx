@@ -128,7 +128,8 @@ function VarianteKarte({
     };
   }, [zeigeVorschau, vorschauLeadId, betreff, text]);
 
-  async function speichern() {
+  /** true = gespeichert (oder nichts zu speichern); false = Speichern fehlgeschlagen */
+  async function speichern(): Promise<boolean> {
     setStatus(null);
     const res = await fetch(`/api/campaigns/${campaignId}/varianten/${start.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ betreff, text, aktiv }) });
     const data = await res.json().catch(() => ({}));
@@ -137,12 +138,15 @@ function VarianteKarte({
       setStatus({ text: w.length ? `Gespeichert (${w.join(', ')})` : 'Gespeichert', fehler: false });
       setGespeichert({ betreff, text, aktiv });
       onGeaendert();
-    } else setStatus({ text: data.error ?? 'Speichern fehlgeschlagen', fehler: true });
+      return true;
+    }
+    setStatus({ text: data.error ?? 'Speichern fehlgeschlagen', fehler: true });
+    return false;
   }
 
   async function testmail() {
     setStatus({ text: 'Testmail wird gesendet …', fehler: false });
-    if (geaendert) await speichern();
+    if (geaendert && !(await speichern())) return;
     const res = await fetch(`/api/campaigns/${campaignId}/test-mail`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -197,7 +201,7 @@ function VarianteKarte({
         </div>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button type="button" onClick={speichern} disabled={!geaendert || klammerFehler.length > 0} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+        <button type="button" onClick={() => void speichern()} disabled={!geaendert || klammerFehler.length > 0} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
           Speichern
         </button>
         <button type="button" onClick={testmail} disabled={vorschauLeadId === null || klammerFehler.length > 0} className={`${knopf} px-4 py-2 text-sm`}>
