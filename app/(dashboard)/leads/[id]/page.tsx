@@ -110,14 +110,14 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           ) : (
             <ol className="max-h-[32rem] space-y-2 overflow-y-auto pr-1">
               {events.map((e) => (
-                <li key={e.id} className={`flex items-center gap-3 text-sm ${e.isBot ? 'text-slate-400' : ''}`}>
+                <li key={e.id} className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-sm ${e.isBot ? 'text-slate-400' : ''}`}>
                   <span className={`h-2 w-2 shrink-0 rounded-full ${e.isBot ? 'bg-slate-300' : e.type === 'cta_click' ? 'bg-green-500' : 'bg-indigo-500'}`} />
                   <span className="w-44 shrink-0 tabular-nums text-xs">{zeit.format(e.createdAt)}</span>
                   <span className={e.isBot ? '' : 'font-medium'}>{EVENT_LABEL[e.type] ?? e.type}</span>
                   {e.isBot && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">Bot</span>}
                   {e.type === 'abwesenheit' && typeof e.meta?.bis === 'number' && <span className="text-xs text-slate-500">Follow-ups warten bis {zeit.format(new Date(e.meta.bis))}</span>}
                   {e.type === 'link_click' && typeof e.meta?.url === 'string' && (
-                    <span className="min-w-0 truncate text-xs text-slate-500" title={e.meta.url}>
+                    <span className="min-w-0 break-all text-xs text-slate-500">
                       {e.meta.url}
                     </span>
                   )}
