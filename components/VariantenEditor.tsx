@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { MAX_VARIANTEN, naechstesKuerzel } from '@/lib/varianten';
 import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
+import { KiVorschlag } from './KiKomponenten';
 import { VorlagenHinweise } from './VorlagenHilfe';
 
 export type VarianteEintrag = { id: number; kuerzel: string; betreff: string; text: string; aktiv: boolean; verwendet: number };
@@ -22,11 +23,13 @@ export function VariantenEditor({
   initial,
   extraSpalten,
   vorschauLeadId,
+  kiAktiv = false,
 }: {
   campaignId: number;
   initial: VarianteEintrag[];
   extraSpalten: string[];
   vorschauLeadId: number | null;
+  kiAktiv?: boolean;
 }) {
   const router = useRouter();
   const [liste, setListe] = useState(initial);
@@ -59,6 +62,7 @@ export function VariantenEditor({
           start={v}
           extraSpalten={extraSpalten}
           vorschauLeadId={vorschauLeadId}
+          kiAktiv={kiAktiv}
           onGeloescht={() => {
             setListe((l) => l.filter((x) => x.id !== v.id));
             router.refresh();
@@ -81,6 +85,7 @@ function VarianteKarte({
   start,
   extraSpalten,
   vorschauLeadId,
+  kiAktiv,
   onGeloescht,
   onGeaendert,
 }: {
@@ -88,6 +93,7 @@ function VarianteKarte({
   start: VarianteEintrag;
   extraSpalten: string[];
   vorschauLeadId: number | null;
+  kiAktiv: boolean;
   onGeloescht: () => void;
   onGeaendert: () => void;
 }) {
@@ -182,6 +188,15 @@ function VarianteKarte({
           </button>
         </span>
       </div>
+      <KiVorschlag
+        aktiv={kiAktiv}
+        campaignId={campaignId}
+        art="erstmail"
+        onUebernehmen={(v) => {
+          setBetreff(v.betreff);
+          setText(v.text);
+        }}
+      />
       <label className="block text-sm font-medium text-slate-700">
         Betreff
         <input value={betreff} onChange={(e) => setBetreff(e.target.value)} className={feld} />

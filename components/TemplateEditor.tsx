@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
+import { KiVorschlag } from './KiKomponenten';
 import { VorlagenHinweise } from './VorlagenHilfe';
 
 type LeadOption = { id: number; label: string };
@@ -38,6 +39,7 @@ export function TemplateEditor({
   postfaecher,
   mitVideo = true,
   extraSpalten = [],
+  kiAktiv = false,
 }: {
   campaignId: number;
   subject: string;
@@ -48,6 +50,8 @@ export function TemplateEditor({
   mitVideo?: boolean;
   /** Normalisierte Extra-Spalten der Kampagne (aus den Leads) */
   extraSpalten?: string[];
+  /** KI-Schreibhilfe verfügbar (ANTHROPIC_API_KEY gesetzt) */
+  kiAktiv?: boolean;
 }) {
   const [subject, setSubject] = useState(s0);
   const [body, setBody] = useState(b0);
@@ -129,6 +133,15 @@ export function TemplateEditor({
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <div className="space-y-4">
+        <KiVorschlag
+          aktiv={kiAktiv}
+          campaignId={campaignId}
+          art="erstmail"
+          onUebernehmen={(v) => {
+            setSubject(v.betreff);
+            setBody(v.text);
+          }}
+        />
         <label className="block text-sm font-medium text-slate-700">
           Betreff
           <input value={subject} onChange={(e) => setSubject(e.target.value)} className={feld} />

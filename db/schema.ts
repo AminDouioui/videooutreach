@@ -205,6 +205,11 @@ export const leads = sqliteTable(
     variante: text('variante'),
     // Thread, in dem die Antwort erkannt wurde (null = Thread der Erstmail; abweichend bei Follow-ups als neuer Thread)
     antwortThreadId: text('antwort_thread_id'),
+    // KI-Einordnung der Antwort (optional, nur mit ANTHROPIC_API_KEY): kategorie, konfidenz, begruendung, at, angewendet
+    kiEinordnung: text('ki_einordnung', { mode: 'json' }).$type<{ kategorie: string; konfidenz: number; begruendung: string; at: number; angewendet?: boolean }>(),
+    // Fehlversuche der automatischen Einordnung (höchstens 3) und Zeitpunkt des letzten Versuchs
+    kiVersuche: integer('ki_versuche').notNull().default(0),
+    kiVersuchAt: ts('ki_versuch_at'),
     // Postfach, über das die Erstmail ging (Follow-ups und Antwortprüfung laufen über dasselbe); null = Altbestand
     absenderId: integer('absender_id').references(() => absender.id, { onDelete: 'set null' }),
     createdAt: ts('created_at').notNull().default(jetzt),

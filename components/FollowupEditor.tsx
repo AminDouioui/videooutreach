@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { MAX_VARIANTEN, naechstesKuerzel, STANDARD_VARIANTE } from '@/lib/varianten';
 import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
+import { KiVorschlag } from './KiKomponenten';
 import { platzhalterFuer } from './TemplateEditor';
 import { VorlagenHinweise } from './VorlagenHilfe';
 
@@ -34,6 +35,7 @@ export function FollowupEditor({
   varianten = [],
   mitVideo,
   extraSpalten = [],
+  kiAktiv = false,
 }: {
   campaignId: number;
   initial: Schritt[];
@@ -42,6 +44,7 @@ export function FollowupEditor({
   varianten?: string[];
   mitVideo: boolean;
   extraSpalten?: string[];
+  kiAktiv?: boolean;
 }) {
   const [schritte, setSchritte] = useState<Schritt[]>(initial);
   const [gespeichert, setGespeichert] = useState(JSON.stringify(initial));
@@ -239,6 +242,14 @@ export function FollowupEditor({
                       </button>
                     </div>
                   )}
+                  <KiVorschlag
+                    aktiv={kiAktiv}
+                    campaignId={campaignId}
+                    art="followup"
+                    nr={i + 1}
+                    betreffNoetig={betreff.trim() !== ''}
+                    onUebernehmen={(v) => varianteAendern(i, kuerzel, { text: v.text, ...(betreff.trim() !== '' ? { betreff: v.betreff } : {}) })}
+                  />
                   <label className="mt-2 block text-xs font-medium text-slate-700">
                     Eigener Betreff (optional)
                     <input

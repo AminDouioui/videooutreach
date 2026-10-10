@@ -2,7 +2,9 @@ import { and, asc, eq, inArray, isNull, lt, notInArray, or, sql } from 'drizzle-
 import { kannAntwortenPruefen, ladeAbsender, ladePostfachZustaende, markiereAuthFehler, postfachFuerLead, setzeNaechstenVersand } from './absender';
 import { getDb, schema } from './db';
 import { getEnv } from './env';
-import { GmailSendError, type GmailSender, type ThreadPruefer } from './gmail';
+import { GmailSendError, type GmailSender, type ThreadLader, type ThreadPruefer } from './gmail';
+import { verarbeiteKiWarteschlange } from './ki-einordnung';
+import type { KiClient } from './ki';
 import { FLOW_ENDENDE_STATUS } from './lead-status';
 import { blockiertDurch, waehlePostfach, type PostfachBlock } from './rotation';
 import { decideSend, randomGapMs } from './send-plan';
@@ -18,6 +20,9 @@ export type TickDeps = {
   now?: Date;
   zufall?: () => number;
   log?: (msg: string) => void;
+  /** Tests: KI-Client und Thread-Leser für die automatische Einordnung von Antworten */
+  ki?: KiClient;
+  lader?: ThreadLader;
 };
 
 export type TickResult = { sent: number; completed: number[]; waiting: string[]; error?: string };
@@ -268,6 +273,10 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
     }
   }
 
-  if (result.sent === 0) await pruefeEinenThread(jetzt, deps);
+  if (result.sent === 0) {
+    await pruefeEinenThread(jetzt, deps);
+    // Optional (nur mit ANTHROPIC_API_KEY): neue Antworten einordnen. Fängt alle Fehler selbst ab.
+    await verarbeiteKiWarteschlange({ ki: deps.ki, lader: deps.lader, jetzt, log });
+  }
   return result;
 }

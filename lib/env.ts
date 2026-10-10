@@ -29,6 +29,10 @@ const envSchema = z.object({
   DATENSCHUTZ_URL: opt(z.string()),
   SEND_MIN_GAP_MINUTES: z.preprocess(leer, z.coerce.number().min(0).default(3)),
   SEND_MAX_GAP_MINUTES: z.preprocess(leer, z.coerce.number().min(0).default(9)),
+  // Optional: KI-Funktionen (Antworten einordnen, Schreibhilfe, Antwort-Entwurf). Ohne Schlüssel ist alles aus und unsichtbar.
+  ANTHROPIC_API_KEY: opt(z.string()),
+  ANTHROPIC_MODEL_SCHREIBEN: z.preprocess(leer, z.string().default('claude-sonnet-5-5')),
+  ANTHROPIC_MODEL_KLASSIFIZIEREN: z.preprocess(leer, z.string().default('claude-haiku-5-5')),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -27,7 +27,9 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           bounceSchwellePostfach: e.bounceSchwellePostfach,
           impressumUrl: e.impressumUrl,
           datenschutzUrl: e.datenschutzUrl,
+          kiAutoStatus: e.kiAutoStatus,
         }}
+        kiAktiv={e.kiAktiv}
         heuteErlaubt={e.heuteErlaubt}
       />
       <SuppressionList eintraege={sperrliste} />

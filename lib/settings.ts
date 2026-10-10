@@ -17,7 +17,9 @@ export type SettingKey =
   | 'rampe_schritt'
   | 'rampe_beginn'
   // Bounce-Schutz je Postfach: Schwelle in Prozent (letzte 50 Erstmails des Postfachs)
-  | 'bounce_schwelle_postfach';
+  | 'bounce_schwelle_postfach'
+  // KI-Einordnung von Antworten: 'aus' | 'vorschlagen' (Standard) | 'automatisch'
+  | 'ki_auto_status';
 
 export function getSetting(key: SettingKey): string | null {
   const row = getDb().select().from(schema.settings).where(eq(schema.settings.key, key)).get();
@@ -75,4 +77,13 @@ export function rampeEinstellung(): RampeEinstellung {
 export function bounceSchwellePostfach(): number {
   const n = Number(getSetting('bounce_schwelle_postfach'));
   return Number.isFinite(n) && n >= 1 && n <= 100 ? n : 5;
+}
+
+export const KI_AUTO_STATUS = ['aus', 'vorschlagen', 'automatisch'] as const;
+export type KiAutoStatus = (typeof KI_AUTO_STATUS)[number];
+
+/** Umgang mit der KI-Einordnung neuer Antworten (Standard: vorschlagen). */
+export function kiAutoStatus(): KiAutoStatus {
+  const v = getSetting('ki_auto_status');
+  return (KI_AUTO_STATUS as readonly string[]).includes(v ?? '') ? (v as KiAutoStatus) : 'vorschlagen';
 }

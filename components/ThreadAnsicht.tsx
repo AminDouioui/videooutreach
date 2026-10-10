@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ThreadNachricht } from '@/lib/mail-parse';
+import { KiEntwurfKnopf } from './KiKomponenten';
 
 const zeit = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' });
 
@@ -19,6 +20,7 @@ export function ThreadAnsicht({
   antwortenErlaubt,
   postfachEmail,
   gmailUrl,
+  kiAktiv = false,
 }: {
   leadId: number;
   threads: string[];
@@ -27,6 +29,8 @@ export function ThreadAnsicht({
   postfachEmail: string;
   /** Fallback-Link in Gmail (bei Fehlern) */
   gmailUrl: string | null;
+  /** KI-Funktionen verfügbar (ANTHROPIC_API_KEY gesetzt) */
+  kiAktiv?: boolean;
 }) {
   const [index, setIndex] = useState(Math.min(start, Math.max(threads.length - 1, 0)));
   const [nachrichten, setNachrichten] = useState<ThreadNachricht[] | null>(null);
@@ -176,6 +180,7 @@ export function ThreadAnsicht({
             <button type="submit" disabled={sendet || !text.trim()} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">
               {sendet ? 'Wird gesendet …' : 'Antwort senden'}
             </button>
+            <KiEntwurfKnopf aktiv={kiAktiv} leadId={leadId} vorhandenerText={text} onEntwurf={setText} />
             <span className="text-xs text-slate-500">Geht im selben Thread über {postfachEmail} raus, mit der Signatur des Postfachs (ohne Abmeldelink).</span>
           </div>
           {sendFehler && (

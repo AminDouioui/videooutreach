@@ -3,7 +3,8 @@ import { getEnv } from './env';
 import { oauthConfigured } from './gmail';
 import { postfachStatus, type PostfachStatus } from './rotation';
 import { effektivesGlobalLimit } from './send';
-import { bounceSchwellePostfach, getSetting, globalDailyLimit, rampeEinstellung } from './settings';
+import { kiAktiv } from './ki';
+import { bounceSchwellePostfach, getSetting, globalDailyLimit, kiAutoStatus, rampeEinstellung } from './settings';
 import { todayBerlin } from './time';
 
 export type PostfachAnzeige = {
@@ -68,6 +69,9 @@ export function ladeEinstellungen() {
     impressumUrl: getSetting('impressum_url') ?? env.IMPRESSUM_URL ?? '',
     datenschutzUrl: getSetting('datenschutz_url') ?? env.DATENSCHUTZ_URL ?? '',
     gmailKonfiguriert: oauthConfigured(),
+    // KI-Funktionen (optional): ohne Schlüssel ist alles aus und unsichtbar
+    kiAktiv: kiAktiv(),
+    kiAutoStatus: kiAutoStatus(),
     postfaecher: ladePostfachListe(),
   };
 }

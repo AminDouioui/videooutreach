@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { asc, eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { AbwesendBadge, Badge, LeadStatusBadge } from '@/components/Badge';
+import { KiEinordnung } from '@/components/KiKomponenten';
 import { LeadStatusSelect } from '@/components/LeadStatusSelect';
 import { CopyButton } from '@/components/CopyButton';
 import { ThreadAnsicht } from '@/components/ThreadAnsicht';
@@ -9,6 +10,7 @@ import { LeadActions, MailVorschau, NotizFeld, ZeitzoneFeld } from '@/components
 import { ladeAbsenderMitId } from '@/lib/absender';
 import { leadThreads } from '@/lib/antworten';
 import { getDb, schema } from '@/lib/db';
+import { kiAktiv } from '@/lib/ki';
 import { gmailThreadUrl } from '@/lib/lead-status';
 import { setzeAntwortGelesen } from '@/lib/lead-status-db';
 import { zeitzoneOderStandard } from '@/lib/time';
@@ -50,6 +52,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const name = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
   const link = leadPageUrl(lead.slug);
   const fertig = lead.renderStatus === 'fertig';
+  const ki = kiAktiv();
 
   return (
     <div>
@@ -157,6 +160,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
                 {lead.abwesendBis ? `, Follow-ups warten bis ${zeit.format(lead.abwesendBis)}` : ' (Follow-ups nicht verschoben)'}. Zählt nicht als Antwort.
               </p>
             )}
+            {ki && (lead.flowStopp === 'beantwortet' || lead.kiEinordnung) && <KiEinordnung key={lead.id} aktiv leadId={lead.id} einordnung={lead.kiEinordnung ?? null} />}
             {lead.gmailThreadId && (
               <a href={gmailThreadUrl(lead.antwortThreadId ?? lead.gmailThreadId)} target="_blank" rel="noopener noreferrer" className="inline-block rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
                 In Gmail öffnen
@@ -175,6 +179,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               antwortenErlaubt={lead.flowStopp === 'beantwortet'}
               postfachEmail={verlauf.postfach.email}
               gmailUrl={lead.gmailThreadId ? gmailThreadUrl(lead.antwortThreadId ?? lead.gmailThreadId) : null}
+              kiAktiv={ki}
             />
           </section>
         )}
