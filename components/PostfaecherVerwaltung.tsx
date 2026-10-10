@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { istBounceFehler } from '@/lib/bounce-schutz';
 import type { PostfachAnzeige } from '@/lib/settings-view';
 import { POSTFACH_STATUS_LABEL, type PostfachStatus } from '@/lib/rotation';
 
@@ -128,7 +129,12 @@ function PostfachZeile({ p }: { p: PostfachAnzeige }) {
           </button>
         </div>
       </div>
-      {p.fehler && <p className="mt-2 text-sm text-red-700">Pausiert wegen Fehler (bitte neu verbinden): {p.fehler}</p>}
+      {p.fehler && istBounceFehler(p.fehler) && (
+        <p className="mt-2 text-sm text-amber-800">
+          Automatisch pausiert (Bounce-Schutz): {p.fehler}. Nach Prüfung der Adressliste mit „Aktivieren“ wieder freigeben.
+        </p>
+      )}
+      {p.fehler && !istBounceFehler(p.fehler) && <p className="mt-2 text-sm text-red-700">Pausiert wegen Fehler (bitte neu verbinden): {p.fehler}</p>}
       {!p.verbunden && <p className="mt-2 text-sm text-slate-500">Nicht verbunden{p.leads > 0 ? ` – ${p.leads} Lead(s) hängen noch an diesem Postfach, ihre Follow-ups warten.` : '.'}</p>}
       {p.verbunden && !p.antwortPruefung && (
         <p className="mt-2 text-sm text-amber-800">Für Follow-ups dieses Postfachs bitte „Neu verbinden“: Die Antwort-Erkennung braucht eine zusätzliche Berechtigung.</p>
