@@ -7,6 +7,7 @@ import { VariantenEditor } from '@/components/VariantenEditor';
 import { kampagnenExtraSpalten } from '@/lib/campaigns';
 import { getDb, schema } from '@/lib/db';
 import { ladeAbsender, postfachNichtNutzbar } from '@/lib/absender';
+import { ladeFollowupVarianten } from '@/lib/followup-varianten-db';
 import { ladeFollowups } from '@/lib/send';
 import { STANDARD_VARIANTE } from '@/lib/varianten';
 import { ladeVarianten, variantenZaehler } from '@/lib/varianten-db';
@@ -25,7 +26,12 @@ export default async function VorlagePage({ params }: { params: Promise<{ id: st
   const zaehler = variantenZaehler(id);
   const zusatz = ladeVarianten(id).map((v) => ({ id: v.id, kuerzel: v.kuerzel, betreff: v.betreff, text: v.text, aktiv: v.aktiv, verwendet: zaehler[v.kuerzel] ?? 0 }));
   const postfaecher = ladeAbsender().map((a) => ({ id: a.id, email: a.email, nutzbar: postfachNichtNutzbar(a) === null }));
-  const followups = ladeFollowups(id).map((f) => ({ waitDays: f.waitDays, body: f.body }));
+  const followups = ladeFollowups(id).map((f) => ({
+    waitDays: f.waitDays,
+    body: f.body,
+    betreff: f.betreff ?? '',
+    varianten: ladeFollowupVarianten(f.id).map((v) => ({ kuerzel: v.kuerzel, text: v.text, betreff: v.betreff ?? '', aktiv: v.aktiv })),
+  }));
 
   return (
     <div>

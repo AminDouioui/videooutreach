@@ -28,7 +28,7 @@ export type AnalyseLead = {
 /** Erstes Auftreten eines Event-Typs (ohne Bots) je Lead */
 export type ErstesEvent = { leadId: number; type: string; ts: number };
 
-export type VersandZeile = { leadId: number; step: number; sentAt: number; /** Postfach, von dem gesendet wurde */ absenderId?: number | null };
+export type VersandZeile = { leadId: number; step: number; sentAt: number; /** Kürzel der Variante (null/fehlt = A) */ variante?: string | null; /** Postfach, von dem gesendet wurde */ absenderId?: number | null };
 
 export type TrichterStufe = {
   key: 'leads' | 'gesendet' | 'angesehen' | 'play' | 'p50' | 'p100' | 'termin' | 'antwort';
@@ -54,7 +54,18 @@ export type Trichter = {
   statusVerteilung: { status: LeadStatus; anzahl: number }[];
 };
 
-export type SchrittZeile = { step: number; label: string; gesendet: number; antworten: number; antwortRate: number };
+/** Gesendet und Antworten danach je Variante eines Schritts */
+export type SchrittVarianteZeile = { kuerzel: string; gesendet: number; antworten: number; antwortRate: number };
+
+export type SchrittZeile = {
+  step: number;
+  label: string;
+  gesendet: number;
+  antworten: number;
+  antwortRate: number;
+  /** Je Variante (A zuerst); enthält auch konfigurierte Varianten ohne Versand */
+  varianten: SchrittVarianteZeile[];
+};
 
 /** Gesendet und Antworten je Absender-Postfach (absenderId null = ohne Zuordnung) */
 export type PostfachZeile = { absenderId: number | null; gesendet: number; erstmails: number; antworten: number; antwortRate: number };
@@ -135,11 +146,21 @@ export function schrittLabel(step: number): string {
  * gesendet wurde (Rückfall: erster gesendeter Schritt, falls die Antwortzeit vor allen Mails liegt oder fehlt).
  * Schritte ohne Versand erscheinen nicht; `mindestSchritte` füllt Lücken (z. B. konfigurierte Follow-ups) mit 0 auf.
  */
-export function aggregiereSchritte(leads: AnalyseLead[], versand: VersandZeile[], mindestSchritte = 1): SchrittZeile[] {
+export function aggregiereSchritte(leads: AnalyseLead[], versand: VersandZeile[], mindestSchritte = 1, konfigurierteVarianten: Record<number, string[]> = {}): SchrittZeile[] {
   const proLead = new Map<number, VersandZeile[]>();
   const gesendet = new Map<number, number>();
+  // Schritt → Kürzel → [gesendet, antworten]
+  const proVariante = new Map<number, Map<string, [number, number]>>();
+  const zelle = (step: number, kuerzel: string) => {
+    let m = proVariante.get(step);
+    if (!m) proVariante.set(step, (m = new Map()));
+    let z = m.get(kuerzel);
+    if (!z) m.set(kuerzel, (z = [0, 0]));
+    return z;
+  };
   for (const v of versand) {
     gesendet.set(v.step, (gesendet.get(v.step) ?? 0) + 1);
+    zelle(v.step, v.variante || 'A')[0]++;
     let l = proLead.get(v.leadId);
     if (!l) proLead.set(v.leadId, (l = []));
     l.push(v);
@@ -153,13 +174,18 @@ export function aggregiereSchritte(leads: AnalyseLead[], versand: VersandZeile[]
     let ziel = mails[0];
     if (zeit != null) for (const m of mails) if (m.sentAt <= zeit) ziel = m;
     antworten.set(ziel.step, (antworten.get(ziel.step) ?? 0) + 1);
+    zelle(ziel.step, ziel.variante || 'A')[1]++;
   }
   const maxStep = Math.max(mindestSchritte - 1, ...gesendet.keys());
   const zeilen: SchrittZeile[] = [];
   for (let step = 0; step <= maxStep; step++) {
     const g = gesendet.get(step) ?? 0;
     const a = antworten.get(step) ?? 0;
-    zeilen.push({ step, label: schrittLabel(step), gesendet: g, antworten: a, antwortRate: rate(a, g) });
+    for (const k of ['A', ...(konfigurierteVarianten[step] ?? [])]) zelle(step, k);
+    const varianten = [...(proVariante.get(step) ?? [])]
+      .sort(([x], [y]) => x.localeCompare(y))
+      .map(([kuerzel, [vg, va]]) => ({ kuerzel, gesendet: vg, antworten: va, antwortRate: rate(va, vg) }));
+    zeilen.push({ step, label: schrittLabel(step), gesendet: g, antworten: a, antwortRate: rate(a, g), varianten });
   }
   return zeilen;
 }
@@ -306,11 +332,11 @@ export function ladeRohdaten(campaignId: number | null): Rohdaten {
     .all();
 
   const versand = db
-    .select({ leadId: schema.sentMessages.leadId, step: schema.sentMessages.step, sentAt: schema.sentMessages.sentAt, absenderId: schema.sentMessages.absenderId })
+    .select({ leadId: schema.sentMessages.leadId, step: schema.sentMessages.step, sentAt: schema.sentMessages.sentAt, absenderId: schema.sentMessages.absenderId, variante: schema.sentMessages.variante })
     .from(schema.sentMessages)
     .where(campaignId === null ? undefined : eq(schema.sentMessages.campaignId, campaignId))
     .all()
-    .map((r) => ({ leadId: r.leadId, step: r.step, sentAt: r.sentAt.getTime(), absenderId: r.absenderId }));
+    .map((r) => ({ leadId: r.leadId, step: r.step, sentAt: r.sentAt.getTime(), absenderId: r.absenderId, variante: r.variante }));
 
   return { leads, ereignisse, versand };
 }
@@ -325,10 +351,20 @@ export type KampagnenAnalyse = {
 /** Komplette Analyse einer Kampagne (Trichter, Schritte, 30-Tage-Verlauf). */
 export function ladeKampagnenAnalyse(campaignId: number, mindestSchritte = 1, jetzt: Date = new Date()): KampagnenAnalyse {
   const roh = ladeRohdaten(campaignId);
+  // Konfigurierte Varianten je Schritt (Erstmail = 0, Follow-up n = n), damit auch noch nie gesendete erscheinen
+  const konfiguriert: Record<number, string[]> = {};
+  konfiguriert[0] = getDb().select({ k: schema.varianten.kuerzel }).from(schema.varianten).where(eq(schema.varianten.campaignId, campaignId)).all().map((r) => r.k);
+  getDb()
+    .select({ pos: schema.followups.position, k: schema.followupVarianten.kuerzel })
+    .from(schema.followupVarianten)
+    .innerJoin(schema.followups, eq(schema.followups.id, schema.followupVarianten.followupId))
+    .where(eq(schema.followups.campaignId, campaignId))
+    .all()
+    .forEach((r) => (konfiguriert[r.pos] ??= []).push(r.k));
   const emails = new Map(getDb().select({ id: schema.absender.id, email: schema.absender.email }).from(schema.absender).all().map((a) => [a.id, a.email]));
   return {
     trichter: aggregiereTrichter(roh.leads, roh.ereignisse),
-    schritte: aggregiereSchritte(roh.leads, roh.versand, mindestSchritte),
+    schritte: aggregiereSchritte(roh.leads, roh.versand, mindestSchritte, konfiguriert),
     tage: tagesverlauf(roh, 30, jetzt),
     postfaecher: aggregierePostfaecher(roh.leads, roh.versand).map((z) => ({ ...z, email: z.absenderId !== null ? (emails.get(z.absenderId) ?? null) : null })),
   };

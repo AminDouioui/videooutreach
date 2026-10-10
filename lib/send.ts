@@ -4,7 +4,7 @@ import { getEnv } from './env';
 import { absenderName, absenderSignatur, kannAntwortenPruefen, ladeAbsenderMitId, ladePostfachZustaende, markiereAuthFehler, postfachFuerLead, postfachNichtNutzbar, stoppeQuota, type Absender } from './absender';
 import { GmailSendError, pruefeThread, sendRaw, type GmailSender, type ThreadPruefer } from './gmail';
 import { pruefeBounceSchutz } from './bounce-schutz-db';
-import { buildEmail, buildMime, neueMessageId, oneClickUrl, type BuiltEmail, type MailSchritt } from './mail';
+import { buildEmail, buildMime, istNeuerThread, neueMessageId, oneClickUrl, type BuiltEmail, type MailSchritt } from './mail';
 import { FIRMA_HAT_GEANTWORTET, leadStatusLabel, STATUS_SKIP_PREFIX, statusBeendetFlow } from './lead-status';
 import { stoppeFirma } from './lead-status-db';
 import { rampenLimit } from './rampe';
@@ -15,6 +15,9 @@ import { STANDARD_VARIABLEN, verwendeteVariablen } from './vorlage';
 import { isSuppressed } from './suppression';
 import { startOfDayBerlinMs, todayBerlin } from './time';
 import { kampagneMitVariante, waehleVarianteFuerKampagne } from './varianten-db';
+import { staerkeresErgebnis } from './followup-varianten';
+import { threadsDesLeads, waehleFollowupVariante } from './followup-varianten-db';
+import type { ThreadErgebnis } from './gmail';
 
 // Gemeinsame Sendefunktion für Worker-Schleife und „Jetzt senden“-API
 
@@ -117,7 +120,8 @@ export function buildLeadMimeMitId(lead: typeof schema.leads.$inferSelect, campa
     text: mail.text,
     listUnsubscribeUrl: oneClickUrl(appUrl, lead.slug),
     listUnsubscribeMailto: `mailto:${from.email}?subject=Abmelden`,
-    inReplyTo: opts.inReplyTo,
+    // Follow-up mit eigenem Betreff = neuer Thread: weder In-Reply-To noch References
+    inReplyTo: istNeuerThread(opts.schritt) ? undefined : opts.inReplyTo,
     messageId,
   });
   return { raw, messageId };
@@ -263,7 +267,7 @@ export async function sendLead(leadId: number, opts: SendOptions = {}): Promise<
         .where(eq(schema.leads.id, lead.id))
         .run();
       tx.insert(schema.sentMessages)
-        .values({ leadId: lead.id, campaignId: lead.campaignId, step: 0, gmailMessageId: res.id, gmailThreadId: res.threadId, absenderId: postfach.id, sentAt: jetzt })
+        .values({ leadId: lead.id, campaignId: lead.campaignId, step: 0, variante, gmailMessageId: res.id, gmailThreadId: res.threadId, absenderId: postfach.id, sentAt: jetzt })
         .run();
     });
     return { ok: true, messageId: res.id, threadId: res.threadId, absenderId: postfach.id };
@@ -331,7 +335,8 @@ export function wartetWegenAbwesenheit(lead: Pick<typeof schema.leads.$inferSele
 }
 
 /**
- * Prüft den Thread eines Leads auf Antwort/Bounce und beendet ggf. den Flow.
+ * Prüft alle Threads eines Leads (Erstmail und Follow-ups mit eigenem Betreff = neuer Thread) auf Antwort/Bounce und
+ * beendet ggf. den Flow. Eine echte Antwort in irgendeinem Thread entscheidet, danach Bounce, dann Abwesenheit.
  * Liefert true, wenn der Flow (jetzt oder schon vorher) beendet ist. Wirft GmailSendError.
  */
 export async function pruefeAntwort(
@@ -342,12 +347,22 @@ export async function pruefeAntwort(
 ): Promise<boolean> {
   if (lead.flowStopp) return true;
   if (!lead.gmailThreadId) return false;
-  // Der Thread liegt im Postfach der Erstmail: nur dort kann geprüft werden
+  // Die Threads liegen im Postfach der Erstmail: nur dort kann geprüft werden
   if (!postfach) throw new GmailSendError({ art: 'sonstig', meldung: 'Postfach der Erstmail nicht gefunden' });
-  const ergebnis = await pruefer(lead.gmailThreadId, postfach);
+  let ergebnis: ThreadErgebnis = null;
+  let antwortThread: string | null = null;
+  for (const threadId of threadsDesLeads(lead)) {
+    const e = await pruefer(threadId, postfach);
+    if (e === 'antwort') {
+      ergebnis = e;
+      antwortThread = threadId;
+      break;
+    }
+    ergebnis = staerkeresErgebnis(ergebnis, e);
+  }
   if (ergebnis === 'antwort') {
     stoppeFlow(lead.id, 'beantwortet', jetzt);
-    getDb().update(schema.leads).set({ antwortAt: jetzt, antwortGelesen: false }).where(eq(schema.leads.id, lead.id)).run();
+    getDb().update(schema.leads).set({ antwortAt: jetzt, antwortGelesen: false, antwortThreadId: antwortThread !== lead.gmailThreadId ? antwortThread : null }).where(eq(schema.leads.id, lead.id)).run();
     stoppeFirma(lead.id, jetzt);
   }
   else if (ergebnis === 'bounce') {
@@ -363,7 +378,7 @@ export async function pruefeAntwort(
 }
 
 /**
- * Sendet das nächste Follow-up eines Leads als Antwort im Thread der Erstmail.
+ * Sendet das nächste Follow-up eines Leads als Antwort im Thread der Erstmail (mit eigenem Betreff als neuer Thread).
  * Vorher wird der Thread auf Antworten geprüft: Hat der Lead geantwortet (oder ist die Mail gebounct), endet der Flow.
  * Ohne Lese-Berechtigung wird nichts gesendet (lieber kein Follow-up als eins an jemanden, der schon geantwortet hat).
  */
@@ -402,15 +417,19 @@ export async function sendFollowup(leadId: number, opts: SendOptions = {}): Prom
       const aktuell = db.select({ abwesendBis: schema.leads.abwesendBis }).from(schema.leads).where(eq(schema.leads.id, lead.id)).get();
       if (aktuell && wartetWegenAbwesenheit(aktuell, jetzt)) return { ok: false, kind: 'abwesend', error: 'Abwesenheitsnotiz erkannt – Follow-up wartet' };
     }
-    const { raw } = buildLeadMimeMitId(lead, kampagne, { schritt: { ...schritt, nr: lead.followupsSent + 1 }, inReplyTo: lead.rfcMessageId ?? undefined, absender: postfach });
-    const res = await sender(raw, lead.gmailThreadId, postfach);
+    // Variante rotierend (wenigste Versendungen dieses Schritts); eigener Betreff = neuer Thread
+    const wahl = waehleFollowupVariante(schritt, lead.followupsSent + 1);
+    const mailSchritt = { body: wahl.body, betreff: wahl.betreff, nr: lead.followupsSent + 1 };
+    const { raw } = buildLeadMimeMitId(lead, kampagne, { schritt: mailSchritt, inReplyTo: lead.rfcMessageId ?? undefined, absender: postfach });
+    // Neuer Thread: ohne threadId senden. lead.gmailThreadId bleibt die der Erstmail, die neue Thread-ID steht in sent_messages
+    const res = await sender(raw, istNeuerThread(mailSchritt) ? undefined : lead.gmailThreadId, postfach);
     db.transaction((tx) => {
       tx.update(schema.leads)
         .set({ followupsSent: lead.followupsSent + 1, sendError: null })
         .where(eq(schema.leads.id, lead.id))
         .run();
       tx.insert(schema.sentMessages)
-        .values({ leadId: lead.id, campaignId: lead.campaignId, step: lead.followupsSent + 1, gmailMessageId: res.id, gmailThreadId: res.threadId, absenderId: postfach.id, sentAt: jetzt })
+        .values({ leadId: lead.id, campaignId: lead.campaignId, step: lead.followupsSent + 1, variante: wahl.kuerzel, gmailMessageId: res.id, gmailThreadId: res.threadId, absenderId: postfach.id, sentAt: jetzt })
         .run();
     });
     return { ok: true, messageId: res.id, threadId: res.threadId, absenderId: postfach.id };

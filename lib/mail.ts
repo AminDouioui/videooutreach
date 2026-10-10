@@ -32,8 +32,22 @@ export type MailCampaign = {
   extraSpalten?: string[];
 };
 
-/** Für Follow-ups: eigener Text, Betreff „Re: …“ der Erstmail. `nr` = Nummer des Follow-ups (ab 1, Spintax-Seed). */
-export type MailSchritt = { body: string; nr?: number };
+/**
+ * Für Follow-ups: eigener Text; Betreff „Re: …“ der Erstmail, außer `betreff` ist gesetzt (dann eigener Betreff und
+ * neuer Thread). `nr` = Nummer des Follow-ups (ab 1, Spintax-Seed).
+ */
+export type MailSchritt = { body: string; nr?: number; betreff?: string | null };
+
+/** Eigener Betreff eines Follow-ups (getrimmt) oder null, wenn leer. */
+export function eigenerBetreff(schritt?: Pick<MailSchritt, 'betreff'> | null): string | null {
+  const b = (schritt?.betreff ?? '').trim();
+  return b ? b : null;
+}
+
+/** Geht dieses Follow-up als neuer Thread raus (eigener Betreff gesetzt)? Dann ohne In-Reply-To/References und ohne Gmail-threadId. */
+export function istNeuerThread(schritt?: Pick<MailSchritt, 'betreff'> | null): boolean {
+  return eigenerBetreff(schritt) !== null;
+}
 
 export type MailSettings = {
   /** Basis-URL der App ohne Slash am Ende, z. B. https://video.example.de */
@@ -140,13 +154,15 @@ export function buildEmail(lead: MailLead, campaign: MailCampaign, settings: Mai
   // Spintax gelesen. Seed = Slug + Schritt + Feld; der Betreff nutzt immer Schritt 0, damit „Re: …“ der
   // Follow-ups exakt dem Betreff der Erstmail entspricht.
   const vorlage = loeseSpintax(schritt ? schritt.body : campaign.emailBodyTemplate, `${lead.slug}:${schritt ? (schritt.nr ?? 1) : 0}:text`);
-  const betreffVorlage = loeseSpintax(campaign.emailSubjectTemplate, `${lead.slug}:0:betreff`);
+  // Eigener Betreff eines Follow-ups: neuer Thread, Seed je Schritt; sonst Betreff der Erstmail (Seed 0)
+  const eigen = eigenerBetreff(schritt);
+  const betreffVorlage = eigen ? loeseSpintax(eigen, `${lead.slug}:${schritt?.nr ?? 1}:betreff`) : loeseSpintax(campaign.emailSubjectTemplate, `${lead.slug}:0:betreff`);
 
   // Betreff: Klartext, ohne Zeilenumbrüche (Header-Injection verhindern)
   const ersterBetreff = renderTemplate(betreffVorlage, { ...vars, vorschaubild: '' })
     .replace(/[\r\n]+/g, ' ')
     .trim();
-  const subject = schritt ? antwortBetreff(ersterBetreff) : ersterBetreff;
+  const subject = schritt && !eigen ? antwortBetreff(ersterBetreff) : ersterBetreff;
 
   // Klartext
   const textVars = { ...vars, vorschaubild: mitVideo ? `Video ansehen: ${link}` : '' };

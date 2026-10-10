@@ -95,8 +95,29 @@ export const followups = sqliteTable(
     // Wartezeit nach der vorherigen Mail in Tagen
     waitDays: integer('wait_days').notNull().default(3),
     body: text('body').notNull(),
+    // Eigener Betreff von Variante A; gesetzt = Mail als neuer Thread, leer/null = „Re: …“ im Thread der Erstmail
+    betreff: text('betreff'),
   },
   (t) => [index('followups_campaign_idx').on(t.campaignId)],
+);
+
+/**
+ * Zusätzliche Varianten (B–E) eines Follow-up-Schritts. Variante A ist followups.body/betreff selbst.
+ * `betreff` gesetzt = diese Variante geht als neuer Thread raus.
+ */
+export const followupVarianten = sqliteTable(
+  'followup_varianten',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    followupId: integer('followup_id')
+      .notNull()
+      .references(() => followups.id, { onDelete: 'cascade' }),
+    kuerzel: text('kuerzel').notNull(),
+    text: text('text').notNull(),
+    betreff: text('betreff'),
+    aktiv: integer('aktiv', { mode: 'boolean' }).notNull().default(true),
+  },
+  (t) => [index('followup_varianten_followup_idx').on(t.followupId), uniqueIndex('followup_varianten_kuerzel_idx').on(t.followupId, t.kuerzel)],
 );
 
 /**
@@ -175,6 +196,8 @@ export const leads = sqliteTable(
     leadStatusAt: ts('lead_status_at'),
     // Kürzel der beim Versand der Erstmail genutzten Variante (A = Kampagnen-Vorlage); null = noch nicht gesendet
     variante: text('variante'),
+    // Thread, in dem die Antwort erkannt wurde (null = Thread der Erstmail; abweichend bei Follow-ups als neuer Thread)
+    antwortThreadId: text('antwort_thread_id'),
     // Postfach, über das die Erstmail ging (Follow-ups und Antwortprüfung laufen über dasselbe); null = Altbestand
     absenderId: integer('absender_id').references(() => absender.id, { onDelete: 'set null' }),
     createdAt: ts('created_at').notNull().default(jetzt),
@@ -201,6 +224,8 @@ export const sentMessages = sqliteTable(
     step: integer('step').notNull(),
     gmailMessageId: text('gmail_message_id'),
     gmailThreadId: text('gmail_thread_id'),
+    // Kürzel der genutzten Variante (Erstmail und Follow-ups); null = Altbestand (zählt als A)
+    variante: text('variante'),
     // Postfach, von dem die Mail gesendet wurde (Grundlage des Tageslimits je Postfach)
     absenderId: integer('absender_id').references(() => absender.id, { onDelete: 'set null' }),
     sentAt: ts('sent_at').notNull().default(jetzt),
@@ -240,6 +265,7 @@ export type Absender = typeof absender.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type Variante = typeof varianten.$inferSelect;
 export type Followup = typeof followups.$inferSelect;
+export type FollowupVariante = typeof followupVarianten.$inferSelect;
 export type Lead = typeof leads.$inferSelect;
 export type NewLead = typeof leads.$inferInsert;
 export type EventRow = typeof events.$inferSelect;

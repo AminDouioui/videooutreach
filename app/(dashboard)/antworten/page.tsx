@@ -82,7 +82,7 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
                   {lead.gmailThreadId && (
                     <a
-                      href={gmailThreadUrl(lead.gmailThreadId)}
+                      href={gmailThreadUrl(lead.antwortThreadId ?? lead.gmailThreadId)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="rounded-md bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-700"

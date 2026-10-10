@@ -147,7 +147,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               </p>
             )}
             {lead.gmailThreadId && (
-              <a href={gmailThreadUrl(lead.gmailThreadId)} target="_blank" rel="noopener noreferrer" className="inline-block rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
+              <a href={gmailThreadUrl(lead.antwortThreadId ?? lead.gmailThreadId)} target="_blank" rel="noopener noreferrer" className="inline-block rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
                 In Gmail öffnen
               </a>
             )}

@@ -33,7 +33,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   return NextResponse.json({ ...mail, variante });
 }
 
-/** Vorschau mit noch nicht gespeicherter Vorlage: Body { subject, body, followupBody?, variante? } (mit followupBody: Follow-up im Thread; ohne subject/body gilt die Vorlage der Variante) */
+/** Vorschau mit noch nicht gespeicherter Vorlage: Body { subject, body, followupBody?, followupBetreff?, variante? } (mit followupBody: Follow-up im Thread, mit followupBetreff als neuer Thread; ohne subject/body gilt die Vorlage der Variante) */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültiger Lead', 404);
@@ -42,7 +42,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!lead) return fehler('Lead nicht gefunden', 404);
   const kampagne = db.select().from(schema.campaigns).where(eq(schema.campaigns.id, lead.campaignId)).get();
   if (!kampagne) return fehler('Kampagne nicht gefunden', 404);
-  let body: { subject?: unknown; body?: unknown; followupBody?: unknown; followupNr?: unknown; variante?: unknown } = {};
+  let body: { subject?: unknown; body?: unknown; followupBody?: unknown; followupBetreff?: unknown; followupNr?: unknown; variante?: unknown } = {};
   try {
     body = await req.json();
   } catch {
@@ -57,7 +57,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       emailSubjectTemplate: typeof body.subject === 'string' ? body.subject.slice(0, 500) : basis.emailSubjectTemplate,
       emailBodyTemplate: typeof body.body === 'string' ? body.body.slice(0, 20000) : basis.emailBodyTemplate,
     },
-    typeof body.followupBody === 'string' ? { body: body.followupBody.slice(0, 20000), nr: typeof body.followupNr === 'number' && body.followupNr >= 1 ? Math.floor(body.followupNr) : 1 } : undefined,
+    typeof body.followupBody === 'string' ? { body: body.followupBody.slice(0, 20000), betreff: typeof body.followupBetreff === 'string' ? body.followupBetreff.slice(0, 500) : null, nr: typeof body.followupNr === 'number' && body.followupNr >= 1 ? Math.floor(body.followupNr) : 1 } : undefined,
     STANDARD_VARIANTE, // Vorlage der Variante steckt bereits in `basis`
   );
   return NextResponse.json({ ...mail, variante });

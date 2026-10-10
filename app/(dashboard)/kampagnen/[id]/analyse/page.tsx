@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
@@ -87,12 +88,23 @@ export default async function AnalysePage({ params }: { params: Promise<{ id: st
             </thead>
             <tbody className="divide-y divide-slate-100">
               {schritte.map((s) => (
-                <tr key={s.step}>
-                  <td className="px-3 py-2 font-medium">{s.label}</td>
-                  <td className={`${th} tabular-nums`}>{s.gesendet}</td>
-                  <td className={`${th} tabular-nums`}>{s.antworten}</td>
-                  <td className={`${th} tabular-nums`}>{s.gesendet > 0 ? prozent(s.antwortRate) : '–'}</td>
-                </tr>
+                <Fragment key={s.step}>
+                  <tr>
+                    <td className="px-3 py-2 font-medium">{s.label}</td>
+                    <td className={`${th} tabular-nums`}>{s.gesendet}</td>
+                    <td className={`${th} tabular-nums`}>{s.antworten}</td>
+                    <td className={`${th} tabular-nums`}>{s.gesendet > 0 ? prozent(s.antwortRate) : '–'}</td>
+                  </tr>
+                  {s.varianten.length > 1 &&
+                    s.varianten.map((v) => (
+                      <tr key={`${s.step}-${v.kuerzel}`} className="bg-slate-50/60 text-slate-600">
+                        <td className="py-1.5 pl-7 pr-3">Variante {v.kuerzel}</td>
+                        <td className={`${th} py-1.5 tabular-nums`}>{v.gesendet}</td>
+                        <td className={`${th} py-1.5 tabular-nums`}>{v.antworten}</td>
+                        <td className={`${th} py-1.5 tabular-nums`}>{v.gesendet > 0 ? prozent(v.antwortRate) : '–'}</td>
+                      </tr>
+                    ))}
+                </Fragment>
               ))}
             </tbody>
           </table>
