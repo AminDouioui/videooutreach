@@ -105,7 +105,7 @@ export function GlobalSettingsForm({ initial, heuteErlaubt, kiAktiv = false }: {
           <label className="block text-sm font-medium text-slate-700 sm:max-w-sm">
             Neue Antworten einordnen
             <select value={w.kiAutoStatus} onChange={(e) => set('kiAutoStatus', e.target.value as Werte['kiAutoStatus'])} className={feld}>
-              <option value="aus">Aus (nur per Button „Mit KI einordnen“)</option>
+              <option value="aus">Aus (nur manuell per Button)</option>
               <option value="vorschlagen">Vorschlagen (Standard)</option>
               <option value="automatisch">Automatisch anwenden</option>
             </select>
