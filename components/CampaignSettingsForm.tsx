@@ -16,6 +16,7 @@ type Werte = {
   startDatum: string;
   maxNeueLeadsProTag: number | null;
   trackingPixel: boolean;
+  linkTracking: boolean;
   stoppBeiFirmenAntwort: boolean;
   abwesenheitVerschiebenTage: number;
   bounceSchutz: boolean;
@@ -142,6 +143,15 @@ export function CampaignSettingsForm({ campaignId, initial }: { campaignId: numb
         <span>
           Öffnungs-Pixel einbinden
           <span className="block text-xs text-slate-500">Unzuverlässig (Mail-Programme laden Bilder oft nicht oder immer) und datenschutzrelevant. Standard: aus.</span>
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-sm text-slate-700">
+        <input type="checkbox" className="mt-1" checked={w.linkTracking} onChange={(e) => set('linkTracking', e.target.checked)} />
+        <span>
+          Klicks auf Links in der Mail tracken
+          <span className="block text-xs text-slate-500">
+            Links im Mailtext (außer Video-Link und Abmeldelink) laufen über diese App und werden als „Link-Klick“ erfasst. Getrackte Links können die Zustellbarkeit leicht verschlechtern (Spam-Filter mögen umgeleitete Links nicht). Standard: aus.
+          </span>
         </span>
       </label>
       <label className="flex items-start gap-2 text-sm text-slate-700">

@@ -18,6 +18,7 @@ export const EVENT_TYPEN = [
   'email_open',
   'unsubscribe',
   'abwesenheit',
+  'link_click',
 ] as const;
 
 /**
@@ -69,6 +70,8 @@ export const campaigns = sqliteTable('campaigns', {
   maxNeueLeadsProTag: integer('max_neue_leads_pro_tag'),
   ctaUrl: text('cta_url').notNull(),
   trackingPixel: integer('tracking_pixel', { mode: 'boolean' }).notNull().default(false),
+  // Klick-Tracking: http(s)-Links im Mailtext laufen über /api/c/<token> (Event link_click); schadet der Zustellbarkeit leicht
+  linkTracking: integer('link_tracking', { mode: 'boolean' }).notNull().default(false),
   status: text('status', { enum: KAMPAGNEN_STATUS }).notNull().default('entwurf'),
   // false = reine Text-Kampagne: kein Rendern, Versand direkt nach dem Import möglich
   mitVideo: integer('mit_video', { mode: 'boolean' }).notNull().default(true),

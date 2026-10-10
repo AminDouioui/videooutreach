@@ -23,6 +23,7 @@ const EVENT_LABEL: Record<string, string> = {
   progress_100: 'Video komplett angeschaut',
   cta_click: 'Termin-Link geklickt',
   email_open: 'E-Mail geöffnet',
+  link_click: 'Link in Mail geklickt',
   unsubscribe: 'Abgemeldet',
   abwesenheit: 'Abwesenheitsnotiz erhalten',
 };
@@ -115,6 +116,11 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
                   <span className={e.isBot ? '' : 'font-medium'}>{EVENT_LABEL[e.type] ?? e.type}</span>
                   {e.isBot && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">Bot</span>}
                   {e.type === 'abwesenheit' && typeof e.meta?.bis === 'number' && <span className="text-xs text-slate-500">Follow-ups warten bis {zeit.format(new Date(e.meta.bis))}</span>}
+                  {e.type === 'link_click' && typeof e.meta?.url === 'string' && (
+                    <span className="min-w-0 truncate text-xs text-slate-500" title={e.meta.url}>
+                      {e.meta.url}
+                    </span>
+                  )}
                   {e.type === 'email_open' && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">unzuverlässig</span>}
                 </li>
               ))}

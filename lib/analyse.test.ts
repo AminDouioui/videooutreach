@@ -183,3 +183,13 @@ describe('Datenbank', () => {
     expect(text.trichter.antworten).toBe(1);
   });
 });
+
+describe('Trichter: Link-Klick', () => {
+  it('zählt Leads mit link_click (auch Text-Kampagnen) an den gesendeten Erstmails', () => {
+    const leads = [lead(1), lead(2, { mitVideo: false }), lead(3), lead(4, { sendStatus: 'nicht_gesendet' })];
+    const t = a.aggregiereTrichter(leads, [ev(1, 'link_click'), ev(2, 'link_click'), ev(4, 'link_click')]);
+    const s = t.stufen.find((x) => x.key === 'linkklick')!;
+    expect(s).toMatchObject({ label: 'Link-Klick', anzahl: 2, video: false });
+    expect(s.rate).toBeCloseTo(2 / 3);
+  });
+});

@@ -80,6 +80,7 @@ export function buildLeadEmail(
   schritt?: MailSchritt,
   variante?: string | null,
   absender?: Absender | null,
+  vorschau = false,
 ): BuiltEmail {
   // Signatur und {{absender_name}} stammen vom Postfach; ohne Angabe das des Leads (Vorschau), sonst das globale
   const postfach = absender === undefined ? postfachFuerLead(lead) : absender;
@@ -91,6 +92,8 @@ export function buildLeadEmail(
       appUrl: getEnv().APP_URL.replace(/\/$/, ''),
       signature: absenderSignatur(postfach),
       senderName: absenderName(postfach),
+      linkSchluessel: getEnv().ENCRYPTION_KEY,
+      vorschau,
     },
     schritt,
   );
@@ -104,11 +107,13 @@ type MimeOpts = {
   variante?: string | null;
   /** Postfach, in dessen Namen gesendet wird (From, Name, Message-ID-Domain, List-Unsubscribe-mailto, Signatur) */
   absender: Absender;
+  /** Vorschau/Testmail: getrackte Links erzeugen keine Klick-Events */
+  vorschau?: boolean;
 };
 
 /** Fertige MIME-Nachricht (base64url) samt ihrer Message-ID. */
 export function buildLeadMimeMitId(lead: typeof schema.leads.$inferSelect, campaign: typeof schema.campaigns.$inferSelect, opts: MimeOpts): { raw: string; messageId: string } {
-  const mail = buildLeadEmail(lead, campaign, opts.schritt, opts.variante, opts.absender);
+  const mail = buildLeadEmail(lead, campaign, opts.schritt, opts.variante, opts.absender, opts.vorschau);
   const from = senderInfo(opts.absender);
   const appUrl = getEnv().APP_URL.replace(/\/$/, '');
   const messageId = neueMessageId(from.email);

@@ -1,0 +1,1 @@
+ALTER TABLE `campaigns` ADD `link_tracking` integer DEFAULT false NOT NULL;

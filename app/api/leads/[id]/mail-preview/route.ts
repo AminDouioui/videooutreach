@@ -29,7 +29,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!kampagne) return fehler('Kampagne nicht gefunden', 404);
 
   const variante = vorschauVariante(lead, gueltigeVariante(kampagne.id, new URL(req.url).searchParams.get('variante')));
-  const mail = buildLeadEmail(lead, kampagne, undefined, variante);
+  const mail = buildLeadEmail(lead, kampagne, undefined, variante, undefined, true);
   return NextResponse.json({ ...mail, variante });
 }
 
@@ -59,6 +59,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     },
     typeof body.followupBody === 'string' ? { body: body.followupBody.slice(0, 20000), betreff: typeof body.followupBetreff === 'string' ? body.followupBetreff.slice(0, 500) : null, nr: typeof body.followupNr === 'number' && body.followupNr >= 1 ? Math.floor(body.followupNr) : 1 } : undefined,
     STANDARD_VARIANTE, // Vorlage der Variante steckt bereits in `basis`
+    undefined,
+    true,
   );
   return NextResponse.json({ ...mail, variante });
 }

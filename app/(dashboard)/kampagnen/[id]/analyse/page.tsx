@@ -22,7 +22,7 @@ export default async function AnalysePage({ params }: { params: Promise<{ id: st
 
   const followups = ladeFollowups(id).length;
   const { trichter, schritte, tage, postfaecher } = ladeKampagnenAnalyse(id, 1 + followups);
-  const stufen = trichter.stufen.filter((s) => k.mitVideo || !s.video);
+  const stufen = trichter.stufen.filter((s) => (k.mitVideo || !s.video) && (k.linkTracking || s.key !== 'linkklick'));
   const stufe = (key: string) => trichter.stufen.find((s) => s.key === key)!;
   const varianten = ladeVariantenStatistik(id);
   const gefuellteStatus = trichter.statusVerteilung.filter((s) => s.anzahl > 0);
@@ -49,6 +49,7 @@ export default async function AnalysePage({ params }: { params: Promise<{ id: st
         <Kachel label="Antworten" wert={trichter.antworten} hinweis={`Antwortrate ${prozent(stufe('antwort').rate ?? 0)}`} />
         {k.mitVideo && <Kachel label="Video-Seite angesehen" wert={stufe('angesehen').anzahl} hinweis={prozent(stufe('angesehen').rate ?? 0)} />}
         {k.mitVideo && <Kachel label="Termin-Klicks" wert={stufe('termin').anzahl} hinweis={prozent(stufe('termin').rate ?? 0)} />}
+        {k.linkTracking && <Kachel label="Link-Klicks" wert={stufe('linkklick').anzahl} hinweis={prozent(stufe('linkklick').rate ?? 0)} />}
         <Kachel label="Bounces" wert={trichter.bounces} hinweis={prozent(trichter.bounceRate)} />
         <Kachel label="Abwesenheiten" wert={trichter.abwesenheiten} hinweis="zählen nicht als Antwort" />
         <Kachel label="Abmeldungen" wert={trichter.abmeldungen} hinweis={prozent(trichter.abmeldeRate)} />

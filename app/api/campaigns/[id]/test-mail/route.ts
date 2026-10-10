@@ -41,7 +41,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (grund) return fail(grund);
 
   try {
-    await sendRaw(buildLeadMime(lead, kampagne, { to: absender.email, subjectPrefix: `[TEST${variante === STANDARD_VARIANTE ? '' : ` ${variante}`}] `, variante, absender }), undefined, absender);
+    await sendRaw(buildLeadMime(lead, kampagne, { to: absender.email, subjectPrefix: `[TEST${variante === STANDARD_VARIANTE ? '' : ` ${variante}`}] `, variante, absender, vorschau: true }), undefined, absender);
     return NextResponse.json({ ok: true, to: absender.email });
   } catch (e) {
     return fail(e instanceof GmailSendError ? e.message : e instanceof Error ? e.message : 'Senden fehlgeschlagen');

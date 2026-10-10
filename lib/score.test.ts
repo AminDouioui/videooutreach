@@ -14,6 +14,12 @@ describe('berechneScore', () => {
   it('Events sind einmalig gezählt', () => {
     expect(berechneScore([e('play', '2026-01-05T10:00:00Z'), e('play', '2026-01-05T10:05:00Z'), e('cta_click', '2026-01-05T10:00:00Z'), e('cta_click', '2026-01-05T10:00:30Z')])).toBe(40);
   });
+  it('link_click: +10, einmalig je Lead, nicht für Bots', () => {
+    expect(berechneScore([e('link_click', '2026-01-05T10:00:00Z')])).toBe(10);
+    expect(berechneScore([e('link_click', '2026-01-05T10:00:00Z'), e('link_click', '2026-01-05T11:00:00Z')])).toBe(10);
+    expect(berechneScore([e('link_click', '2026-01-05T10:00:00Z', true)])).toBe(0);
+    expect(berechneScore([e('play', '2026-01-05T10:00:00Z'), e('link_click', '2026-01-05T10:00:00Z')])).toBe(20);
+  });
   it('Bots und email_open zählen nicht', () => {
     expect(berechneScore([e('play', '2026-01-05T10:00:00Z', true), e('page_view', '2026-01-05T10:00:00Z', true), e('email_open', '2026-01-05T10:00:00Z')])).toBe(0);
   });

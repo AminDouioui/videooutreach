@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 import { begruessung } from './name';
+import { trackeHtml, trackeText } from './linktracking';
 import { loeseSpintax } from './spintax';
 import { extraVariablen, PLATZHALTER_MUSTER, STANDARD_VARIABLEN } from './vorlage';
 
@@ -23,6 +24,8 @@ export type MailCampaign = {
   emailSubjectTemplate: string;
   emailBodyTemplate: string;
   trackingPixel: boolean;
+  /** true = http(s)-Links im Mailtext laufen über /api/c/<token> (Klick-Tracking); braucht `settings.linkSchluessel` */
+  linkTracking?: boolean;
   /** false = Text-Kampagne: {{video_link}} und {{vorschaubild}} werden leer ersetzt */
   mitVideo?: boolean;
   /**
@@ -56,6 +59,10 @@ export type MailSettings = {
   signature: string;
   /** Absendername für {{absender_name}} */
   senderName?: string;
+  /** Geheimer Schlüssel zum Signieren der Klick-Tracking-Token; ohne Schlüssel bleiben Links unverändert */
+  linkSchluessel?: string;
+  /** Vorschau/Testmail: getrackte Links bekommen `?vorschau=1`, damit Klicks keine Events echter Leads erzeugen */
+  vorschau?: boolean;
 };
 
 export type BuiltEmail = { subject: string; html: string; text: string };
@@ -167,9 +174,11 @@ export function buildEmail(lead: MailLead, campaign: MailCampaign, settings: Mai
   // Klartext
   const textVars = { ...vars, vorschaubild: mitVideo ? `Video ansehen: ${link}` : '' };
   const signaturText = settings.signature.replace(/\r\n?/g, '\n').trim();
+  const linkOpt = campaign.linkTracking && settings.linkSchluessel ? { appUrl, schluessel: settings.linkSchluessel, slug: lead.slug, vorschau: settings.vorschau } : null;
+  const textKoerper = renderTemplate(vorlage.replace(/\r\n?/g, '\n'), textVars).trim();
   const text =
     [
-      renderTemplate(vorlage.replace(/\r\n?/g, '\n'), textVars).trim(),
+      linkOpt ? trackeText(textKoerper, linkOpt) : textKoerper,
       signaturText ? `-- \n${signaturText}` : '',
       `Keine weiteren E-Mails? Hier abmelden: ${abmelden}`,
     ]
@@ -180,7 +189,8 @@ export function buildEmail(lead: MailLead, campaign: MailCampaign, settings: Mai
   const htmlVars: Record<string, string> = {};
   for (const [k, v] of Object.entries(vars)) htmlVars[k] = escapeHtml(v);
   htmlVars.vorschaubild = mitVideo ? BILD_TOKEN : '';
-  const koerper = absaetze(renderTemplate(escapeHtml(vorlage), htmlVars));
+  const htmlKoerper = renderTemplate(escapeHtml(vorlage), htmlVars);
+  const koerper = absaetze(linkOpt ? trackeHtml(htmlKoerper, escapeHtml, linkOpt) : htmlKoerper);
   const bild =
     `<a href="${escapeHtml(link)}"><img src="${escapeHtml(thumb)}" alt="${escapeHtml(`Video für ${vars.firma} ansehen`)}" width="320" style="max-width:100%;height:auto;border:0"></a>` +
     `<br><a href="${escapeHtml(link)}">Video ansehen: ${escapeHtml(link)}</a>`;

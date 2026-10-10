@@ -33,6 +33,7 @@ const bodySchema = z
     startDatum: z.union([datum, z.literal('')]).nullable(),
     maxNeueLeadsProTag: z.coerce.number().int().min(1).max(500).nullable(),
     trackingPixel: z.boolean(),
+    linkTracking: z.boolean(),
     stoppBeiFirmenAntwort: z.boolean(),
     abwesenheitVerschiebenTage: z.coerce.number().int().min(0).max(60),
     bounceSchutz: z.boolean(),

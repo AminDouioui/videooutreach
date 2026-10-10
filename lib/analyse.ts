@@ -31,7 +31,7 @@ export type ErstesEvent = { leadId: number; type: string; ts: number };
 export type VersandZeile = { leadId: number; step: number; sentAt: number; /** Kürzel der Variante (null/fehlt = A) */ variante?: string | null; /** Postfach, von dem gesendet wurde */ absenderId?: number | null };
 
 export type TrichterStufe = {
-  key: 'leads' | 'gesendet' | 'angesehen' | 'play' | 'p50' | 'p100' | 'termin' | 'antwort';
+  key: 'leads' | 'gesendet' | 'angesehen' | 'play' | 'p50' | 'p100' | 'termin' | 'linkklick' | 'antwort';
   label: string;
   anzahl: number;
   /** Anteil an „gesendet“ (bei Video-Stufen: an den gesendeten Leads der Video-Kampagnen); null für „Leads gesamt“ */
@@ -118,6 +118,7 @@ export function aggregiereTrichter(leads: AnalyseLead[], ereignisse: ErstesEvent
     { key: 'p50', label: '50 % angesehen', anzahl: z(videoLeads, 'progress_50', 'progress_75', 'progress_100'), rate: rate(z(videoLeads, 'progress_50', 'progress_75', 'progress_100'), nv), video: true },
     { key: 'p100', label: '100 % angesehen', anzahl: z(videoLeads, 'progress_100'), rate: rate(z(videoLeads, 'progress_100'), nv), video: true },
     { key: 'termin', label: 'Termin-Klick', anzahl: z(videoLeads, 'cta_click'), rate: rate(z(videoLeads, 'cta_click'), nv), video: true },
+    { key: 'linkklick', label: 'Link-Klick', anzahl: z(gesendet, 'link_click'), rate: rate(z(gesendet, 'link_click'), n), video: false },
     { key: 'antwort', label: 'Antwort', anzahl: antworten, rate: rate(antworten, n), video: false },
   ];
   const bounces = gesendet.filter((l) => l.flowStopp === 'bounce').length;
@@ -290,7 +291,7 @@ export function globaleKennzahlen(roh: Rohdaten, jetzt: Date = new Date()): Glob
 
 // ---------------------------------------------------------------- DB-Abfragen
 
-const TRICHTER_EVENTS = ['page_view', 'play', 'progress_50', 'progress_75', 'progress_100', 'cta_click'] as const;
+const TRICHTER_EVENTS = ['page_view', 'play', 'progress_50', 'progress_75', 'progress_100', 'cta_click', 'link_click'] as const;
 
 /** Lädt die Rohdaten einer Kampagne (oder aller Kampagnen bei `null`) in kompakter Form; Events nur ohne Bots, je Lead und Typ das erste. */
 export function ladeRohdaten(campaignId: number | null): Rohdaten {
