@@ -94,6 +94,8 @@ export function ImportWizard({ campaignId }: { campaignId: number }) {
       });
       if (!res.ok) setFehler(await fehlerText(res));
       else setValidierung(await res.json());
+    } catch {
+      setFehler('Prüfung fehlgeschlagen');
     } finally {
       setBusy(false);
     }

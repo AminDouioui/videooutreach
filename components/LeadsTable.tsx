@@ -148,8 +148,11 @@ export function LeadsTable({
     });
     const dir = sortAsc ? 1 : -1;
     return [...gefiltert].sort((a, b) => {
-      const va = a[sortKey] ?? -1;
-      const vb = b[sortKey] ?? -1;
+      const va = a[sortKey];
+      const vb = b[sortKey];
+      // Leere Werte (z. B. noch nicht gesendet) stehen in jeder Richtung am Ende
+      if (va == null || va === '') return vb == null || vb === '' ? a.firma.localeCompare(b.firma, 'de') : 1;
+      if (vb == null || vb === '') return -1;
       const c = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb), 'de');
       return c * dir || a.firma.localeCompare(b.firma, 'de');
     });

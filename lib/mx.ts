@@ -70,6 +70,8 @@ async function pruefeEine(domain: string, resolveMx: DnsResolver, resolve4: DnsR
 /**
  * Prüft die Domains auf Mail-Server (MX, sonst A/AAAA). Cache je Domain im Speicher, höchstens 10 Abfragen
  * gleichzeitig. Timeout und Netzfehler ergeben 'unbekannt' – solche Leads bleiben importierbar.
+ * Mit `kanari` (eine sicher existierende Domain) wird bei „kein_mx“ gegengeprüft: Ist selbst diese Domain nicht
+ * auflösbar, ist das DNS unbrauchbar (z. B. kein Internet, aber ENOTFOUND statt Timeout) und alles gilt als 'unbekannt'.
  */
 export async function pruefeDomains(
   domains: Iterable<string>,
@@ -77,6 +79,7 @@ export async function pruefeDomains(
   timeoutMs = 3000,
   aResolver: DnsResolver = (d) => dns.promises.resolve4(d),
   aaaaResolver: DnsResolver = (d) => dns.promises.resolve6(d),
+  kanari?: string,
 ): Promise<Map<string, MxErgebnis>> {
   const ergebnis = new Map<string, MxErgebnis>();
   const jetzt = Date.now();
@@ -93,9 +96,15 @@ export async function pruefeDomains(
       const domain = offen[naechste++];
       const r = await pruefeEine(domain, resolver, aResolver, aaaaResolver, timeoutMs);
       ergebnis.set(domain, r);
-      if (r !== 'unbekannt') cache.set(domain, { ergebnis: r, bis: Date.now() + CACHE_MS });
     }
   }
   await Promise.all(Array.from({ length: Math.min(PARALLEL, offen.length) }, arbeiter));
+  if (kanari && offen.some((d) => ergebnis.get(d) === 'kein_mx') && (await pruefeEine(kanari, resolver, aResolver, aaaaResolver, timeoutMs)) !== 'ok') {
+    for (const d of offen) if (ergebnis.get(d) === 'kein_mx') ergebnis.set(d, 'unbekannt');
+  }
+  for (const d of offen) {
+    const r = ergebnis.get(d);
+    if (r && r !== 'unbekannt') cache.set(d, { ergebnis: r, bis: Date.now() + CACHE_MS });
+  }
   return ergebnis;
 }

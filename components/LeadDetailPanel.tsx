@@ -17,10 +17,10 @@ export function LeadActions({ leadId, campaignId, sendStatus }: { leadId: number
     setMeldung(null);
     try {
       const res = await fetch(url, init);
-      if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        throw new Error(res.status === 404 ? 'Funktion noch nicht verfügbar (404)' : (j?.error ?? `Fehler ${res.status}`));
-      }
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(res.status === 404 ? 'Funktion noch nicht verfügbar (404)' : (j?.error ?? `Fehler ${res.status}`));
+      // Manche Routen melden Fehler mit HTTP 200 und { ok: false, error } (z. B. „Jetzt senden“)
+      if (j && j.ok === false) throw new Error(j.error ?? 'Aktion fehlgeschlagen');
       if (name === 'loeschen') {
         router.push(`/kampagnen/${campaignId}`);
         router.refresh();

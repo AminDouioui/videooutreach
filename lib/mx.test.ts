@@ -45,6 +45,18 @@ describe('pruefeDomains', () => {
     expect(r.get('c.de')).toBe('unbekannt');
   });
 
+  it('Kanari: ist selbst die Kontroll-Domain nicht auflösbar (kein Internet), wird kein_mx zu unbekannt und nicht gemerkt', async () => {
+    const r = await pruefeDomains(['tot.de'], fehler('ENOTFOUND'), 100, fehler('ENOTFOUND'), fehler('ENOTFOUND'), 'gmail.com');
+    expect(r.get('tot.de')).toBe('unbekannt');
+    // nicht gecacht: mit funktionierendem DNS zählt die Domain wieder als kein_mx
+    const nurKanari: DnsResolver = async (d) => {
+      if (d === 'gmail.com') return [{ exchange: 'mx', priority: 1 }];
+      throw Object.assign(new Error('nf'), { code: 'ENOTFOUND' });
+    };
+    const r2 = await pruefeDomains(['tot.de'], nurKanari, 100, fehler('ENOTFOUND'), fehler('ENOTFOUND'), 'gmail.com');
+    expect(r2.get('tot.de')).toBe('kein_mx');
+  });
+
   it('Timeout = unbekannt', async () => {
     const haengt: DnsResolver = () => new Promise(() => {});
     const r = await pruefeDomains(['langsam.de'], haengt, 20, fehler('ENOTFOUND'), fehler('ENOTFOUND'));
