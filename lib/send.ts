@@ -147,7 +147,8 @@ export function ladeFollowups(campaignId: number) {
 /** Heute (Berlin) gesendete Mails inkl. Follow-ups, optional je Kampagne (nurErstmails: nur step 0) – gezählt über sent_messages. */
 export function countSentToday(campaignId?: number, jetzt: Date = new Date(), nurErstmails = false): number {
   const von = new Date(startOfDayBerlinMs(jetzt));
-  const bedingung = [gte(schema.sentMessages.sentAt, von)];
+  // step < 0 = persönliche Antwort aus der Unibox: zählt nicht gegen Kampagnen-/Tageslimits
+  const bedingung = [gte(schema.sentMessages.sentAt, von), gte(schema.sentMessages.step, 0)];
   if (nurErstmails) bedingung.push(eq(schema.sentMessages.step, 0));
   if (campaignId !== undefined) bedingung.push(eq(schema.sentMessages.campaignId, campaignId));
   const row = getDb()
@@ -224,7 +225,7 @@ function postfachFuerErstmail(opts: SendOptions, jetzt: Date): { absender: Absen
 }
 
 /** Quota-/Auth-Fehler betreffen nur das benutzte Postfach. */
-function merkePostfachFehler(art: string, meldung: string, absender: Absender, jetzt: Date): void {
+export function merkePostfachFehler(art: string, meldung: string, absender: Absender, jetzt: Date): void {
   if (art === 'quota') stoppeQuota(absender.id, jetzt);
   else if (art === 'auth') markiereAuthFehler(absender.id, meldung);
 }
@@ -456,6 +457,7 @@ export function ersterVersandTag(): string | null {
   const row = getDb()
     .select({ erste: sql<number | null>`min(${schema.sentMessages.sentAt})` })
     .from(schema.sentMessages)
+    .where(gte(schema.sentMessages.step, 0))
     .get();
   return row?.erste ? todayBerlin(new Date(row.erste)) : null;
 }

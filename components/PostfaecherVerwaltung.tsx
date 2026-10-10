@@ -55,7 +55,8 @@ export function PostfaecherVerwaltung({ postfaecher, konfiguriert, hinweis, deta
       )}
       <p className="mt-3 text-xs text-slate-500">
         Angefordert werden „E-Mails senden“ (gmail.send), „Kopfzeilen lesen“ (gmail.metadata, nur um Antworten auf eigene Mails zu erkennen – kein Zugriff auf
-        Mail-Inhalte) sowie openid/email (die Adresse des Kontos). Die Zugriffstoken werden verschlüsselt gespeichert.
+        Mail-Inhalte) sowie openid/email (die Adresse des Kontos). Optional je Postfach „Lesezugriff erteilen“ (gmail.readonly): Dann zeigt die Unibox den Verlauf unter
+        „Antworten“ und Antworten lassen sich direkt aus der App senden. Die Zugriffstoken werden verschlüsselt gespeichert.
       </p>
     </section>
   );
@@ -112,6 +113,11 @@ function PostfachZeile({ p }: { p: PostfachAnzeige }) {
             Antwortprüfung: {p.antwortPruefung ? 'ja' : 'nein'}
           </span>
         )}
+        {p.verbunden && (
+          <span className="text-xs text-slate-500" title="Lesezugriff (gmail.readonly): Verlauf lesen und aus der App antworten">
+            Unibox: {p.unibox ? 'ja' : 'nein'}
+          </span>
+        )}
         <div className="ml-auto flex flex-wrap gap-2">
           {p.verbunden && (
             <button onClick={() => patch({ aktiv: !p.aktiv }, p.aktiv ? 'Pausiert' : 'Aktiviert')} disabled={laedt} className={knopfRahmen}>
@@ -121,6 +127,11 @@ function PostfachZeile({ p }: { p: PostfachAnzeige }) {
           <button onClick={() => setBearbeiten(!bearbeiten)} className={knopfRahmen}>
             Bearbeiten
           </button>
+          {p.verbunden && !p.unibox && (
+            <a href={`/api/gmail/connect?absender=${p.id}&lesezugriff=1`} className={knopfRahmen} title="Zusätzlich gmail.readonly anfordern, damit Antworten in der App gelesen und beantwortet werden können">
+              Lesezugriff erteilen
+            </a>
+          )}
           <a href={`/api/gmail/connect?absender=${p.id}`} className={knopfRahmen}>
             Neu verbinden
           </a>

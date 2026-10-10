@@ -4,8 +4,10 @@ import { notFound } from 'next/navigation';
 import { AbwesendBadge, Badge, LeadStatusBadge } from '@/components/Badge';
 import { LeadStatusSelect } from '@/components/LeadStatusSelect';
 import { CopyButton } from '@/components/CopyButton';
+import { ThreadAnsicht } from '@/components/ThreadAnsicht';
 import { LeadActions, MailVorschau, NotizFeld, ZeitzoneFeld } from '@/components/LeadDetailPanel';
 import { ladeAbsenderMitId } from '@/lib/absender';
+import { leadThreads } from '@/lib/antworten';
 import { getDb, schema } from '@/lib/db';
 import { gmailThreadUrl } from '@/lib/lead-status';
 import { setzeAntwortGelesen } from '@/lib/lead-status-db';
@@ -44,6 +46,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   if (lead.flowStopp === 'beantwortet' && !lead.antwortGelesen) setzeAntwortGelesen(lead.id, true);
 
   const postfach = lead.absenderId !== null ? ladeAbsenderMitId(lead.absenderId) : null;
+  const verlauf = leadThreads(lead);
   const name = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
   const link = leadPageUrl(lead.slug);
   const fertig = lead.renderStatus === 'fertig';
@@ -161,6 +164,20 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
             )}
           </div>
         </section>
+
+        {verlauf.lesezugriff && verlauf.postfach && verlauf.threads.length > 0 && (
+          <section className="rounded-lg border border-slate-200 bg-white p-4">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Verlauf</h2>
+            <ThreadAnsicht
+              leadId={lead.id}
+              threads={verlauf.threads}
+              start={verlauf.start}
+              antwortenErlaubt={lead.flowStopp === 'beantwortet'}
+              postfachEmail={verlauf.postfach.email}
+              gmailUrl={lead.gmailThreadId ? gmailThreadUrl(lead.antwortThreadId ?? lead.gmailThreadId) : null}
+            />
+          </section>
+        )}
 
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Mail-Vorschau</h2>

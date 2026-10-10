@@ -53,7 +53,7 @@ function laufendeFlows(campaignId: number, anzahlFollowups: number) {
       lead: schema.leads,
       // "leads"."id" ausdrücklich qualifizieren: unqualifiziert (drizzle-Standard bei einer Tabelle) würde SQLite
       // sent_messages.id meinen und die falsche Mail finden
-      letzteMail: sql<number>`(select max(${schema.sentMessages.sentAt}) from ${schema.sentMessages} where ${schema.sentMessages.leadId} = ${schema.leads}."id")`,
+      letzteMail: sql<number>`(select max(${schema.sentMessages.sentAt}) from ${schema.sentMessages} where ${schema.sentMessages.leadId} = ${schema.leads}."id" and ${schema.sentMessages.step} >= 0)`,
     })
     .from(schema.leads)
     .where(

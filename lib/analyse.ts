@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { getDb, schema } from './db';
 import { zaehleUngeleseneAntworten } from './lead-status-db';
 import { LEAD_STATUS, type LeadStatus } from './lead-status';
@@ -160,6 +160,7 @@ export function aggregiereSchritte(leads: AnalyseLead[], versand: VersandZeile[]
     return z;
   };
   for (const v of versand) {
+    if (v.step < 0) continue; // persönliche Antwort aus der Unibox, kein Kampagnenschritt
     gesendet.set(v.step, (gesendet.get(v.step) ?? 0) + 1);
     zelle(v.step, v.variante || 'A')[0]++;
     let l = proLead.get(v.leadId);
@@ -335,7 +336,8 @@ export function ladeRohdaten(campaignId: number | null): Rohdaten {
   const versand = db
     .select({ leadId: schema.sentMessages.leadId, step: schema.sentMessages.step, sentAt: schema.sentMessages.sentAt, absenderId: schema.sentMessages.absenderId, variante: schema.sentMessages.variante })
     .from(schema.sentMessages)
-    .where(campaignId === null ? undefined : eq(schema.sentMessages.campaignId, campaignId))
+    // step < 0 = persönliche Antworten aus der Unibox: keine Follow-ups, nicht in der Analyse
+    .where(campaignId === null ? gte(schema.sentMessages.step, 0) : and(eq(schema.sentMessages.campaignId, campaignId), gte(schema.sentMessages.step, 0)))
     .all()
     .map((r) => ({ leadId: r.leadId, step: r.step, sentAt: r.sentAt.getTime(), absenderId: r.absenderId, variante: r.variante }));
 

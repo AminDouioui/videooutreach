@@ -4,9 +4,10 @@ import { speichereVerbindung, type Absender } from './absender';
 import { decrypt, encrypt } from './crypto';
 import { getEnv } from './env';
 import { classifyGmailError, type GmailFehler } from './gmail-error';
-import { GMAIL_METADATA_SCOPE, GMAIL_SCOPE, OAUTH_SCOPES } from './gmail-scopes';
+import { GMAIL_METADATA_SCOPE, GMAIL_READONLY_SCOPE, GMAIL_SCOPE, OAUTH_SCOPES, OAUTH_SCOPES_MIT_LESEZUGRIFF } from './gmail-scopes';
+import type { GmailNachricht } from './mail-parse';
 
-export { classifyGmailError, GMAIL_METADATA_SCOPE, GMAIL_SCOPE };
+export { classifyGmailError, GMAIL_METADATA_SCOPE, GMAIL_READONLY_SCOPE, GMAIL_SCOPE };
 export type { GmailFehler };
 
 /** Was die Gmail-Funktionen von einem Postfach brauchen */
@@ -43,12 +44,16 @@ export function oauthConfigured(): boolean {
   return !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 }
 
-/** Zustimmungs-URL (offline + consent, damit immer ein Refresh-Token zurückkommt). `loginHint` = vorgeschlagenes Konto. */
-export function buildAuthUrl(state: string, loginHint?: string): string {
+/**
+ * Zustimmungs-URL (offline + consent, damit immer ein Refresh-Token zurückkommt). `loginHint` = vorgeschlagenes Konto.
+ * `lesezugriff` = zusätzlich gmail.readonly (Unibox) anfordern; include_granted_scopes behält bereits erteilte Berechtigungen.
+ */
+export function buildAuthUrl(state: string, loginHint?: string, lesezugriff = false): string {
   return oauthClient().generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: OAUTH_SCOPES,
+    scope: lesezugriff ? OAUTH_SCOPES_MIT_LESEZUGRIFF : OAUTH_SCOPES,
+    include_granted_scopes: true,
     state,
     ...(loginHint ? { login_hint: loginHint } : {}),
   });
@@ -96,7 +101,13 @@ export async function widerrufeToken(postfach: Pick<Absender, 'refreshTokenEnc'>
 function gmailClient(postfach: GmailPostfach) {
   if (!postfach.refreshTokenEnc) throw new GmailSendError({ art: 'auth', meldung: `Postfach ${postfach.email} nicht verbunden` });
   const client = oauthClient();
-  client.setCredentials({ refresh_token: decrypt(postfach.refreshTokenEnc) });
+  let token: string;
+  try {
+    token = decrypt(postfach.refreshTokenEnc);
+  } catch {
+    throw new GmailSendError({ art: 'auth', meldung: `Der gespeicherte Zugriff für ${postfach.email} ist nicht lesbar (ENCRYPTION_KEY geändert?) – bitte neu verbinden` });
+  }
+  client.setCredentials({ refresh_token: token });
   return google.gmail({ version: 'v1', auth: client });
 }
 
@@ -142,6 +153,19 @@ export const pruefeThread: ThreadPruefer = async (threadId, postfach) => {
       return h;
     });
     return bewerteThread(nachrichten, postfach.email);
+  } catch (e) {
+    throw new GmailSendError(classifyGmailError(e));
+  }
+};
+
+/** Liest einen Thread vollständig (users.threads.get format=full). Braucht gmail.readonly. Wirft GmailSendError. */
+export type ThreadLader = (threadId: string, postfach: GmailPostfach) => Promise<GmailNachricht[]>;
+
+export const holeThreadRoh: ThreadLader = async (threadId, postfach) => {
+  const gmail = gmailClient(postfach);
+  try {
+    const res = await gmail.users.threads.get({ userId: 'me', id: threadId, format: 'full' });
+    return (res.data.messages ?? []) as GmailNachricht[];
   } catch (e) {
     throw new GmailSendError(classifyGmailError(e));
   }

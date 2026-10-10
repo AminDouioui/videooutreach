@@ -1,4 +1,4 @@
-import { anzahlZuordnungen, kannAntwortenPruefen, ladePostfachZustaende } from './absender';
+import { anzahlZuordnungen, kannAntwortenPruefen, kannThreadLesen, ladePostfachZustaende } from './absender';
 import { getEnv } from './env';
 import { oauthConfigured } from './gmail';
 import { postfachStatus, type PostfachStatus } from './rotation';
@@ -23,6 +23,8 @@ export type PostfachAnzeige = {
   signatur: string;
   /** Kann Antworten erkennen (gmail.metadata erteilt) */
   antwortPruefung: boolean;
+  /** Lesezugriff (gmail.readonly) für die Unibox erteilt */
+  unibox: boolean;
   rampeBeginn: string;
   leads: number;
 };
@@ -42,6 +44,7 @@ export function ladePostfachListe(jetzt: Date = new Date()): PostfachAnzeige[] {
     heuteGesendet: z.heuteGesendet,
     signatur: a.signatur ?? '',
     antwortPruefung: kannAntwortenPruefen(a),
+    unibox: kannThreadLesen(a),
     rampeBeginn: a.rampeBeginn ?? '',
     leads: anzahlZuordnungen(a.id).leads,
   }));

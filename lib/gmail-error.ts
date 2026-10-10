@@ -35,8 +35,11 @@ export function classifyGmailError(e: unknown): GmailFehler {
   if (status === 400 && (lower.includes('invalid to') || lower.includes('recipient') || gruende.includes('invalidargument'))) {
     return { art: 'ungueltiger_empfaenger', meldung: `Ungültige Empfängeradresse: ${text}` };
   }
-  if (status === 403 && gruende.length === 0 && lower.includes('insufficient')) {
+  if (status === 403 && (lower.includes('insufficient') || gruende.includes('insufficientpermissions'))) {
     return { art: 'auth', meldung: `Gmail-Berechtigung fehlt: ${text}` };
+  }
+  if (/\b(enotfound|econnrefused|econnreset|etimedout|eai_again|enetunreach|ehostunreach)\b/i.test(`${err.code ?? ''} ${text}`) || lower.includes('fetch failed') || lower.includes('socket hang up')) {
+    return { art: 'sonstig', meldung: `Keine Verbindung zu Gmail (Netzwerkfehler) – bitte später erneut versuchen. (${text.slice(0, 200)})` };
   }
   return { art: 'sonstig', meldung: text.slice(0, 500) };
 }

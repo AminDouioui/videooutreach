@@ -143,6 +143,19 @@ function absaetze(escaped: string): string {
     .join('\n');
 }
 
+/** Text und HTML einer persönlichen Antwort aus der Unibox: nur der Text und die Signatur, kein Abmeldelink, kein Pixel, keine Links-Umschreibung. */
+export function buildAntwortMail(text: string, signatur: string): { text: string; html: string } {
+  const koerper = text.replace(/\r\n?/g, '\n').trim();
+  const sig = signatur.replace(/\r\n?/g, '\n').trim();
+  return {
+    text: [koerper, sig ? `-- \n${sig}` : ''].filter(Boolean).join('\n\n') + '\n',
+    html:
+      `<!DOCTYPE html>\n<html lang="de"><head><meta charset="utf-8"></head><body style="${BASIS_STIL}">\n${absaetze(escapeHtml(koerper))}\n` +
+      (sig ? `<p style="margin:0 0 14px 0">${escapeHtml(sig).replace(/\n/g, '<br>')}</p>\n` : '') +
+      `</body></html>`,
+  };
+}
+
 /** Betreff eines Follow-ups: „Re: “ + Betreff der Erstmail (nicht doppelt). */
 export function antwortBetreff(betreff: string): string {
   return /^re:/i.test(betreff.trim()) ? betreff.trim() : `Re: ${betreff.trim()}`;
@@ -261,6 +274,8 @@ export type MimeOptions = {
   listUnsubscribeMailto: string;
   /** Follow-up: Message-ID der Erstmail (In-Reply-To/References), damit es im selben Thread landet */
   inReplyTo?: string;
+  /** Vollständige References-Kette (Message-IDs, Leerzeichen-getrennt); ohne Angabe nur `inReplyTo` */
+  references?: string;
   /** Nur für Tests deterministisch */
   date?: Date;
   messageId?: string;
@@ -285,7 +300,7 @@ export function buildMimeText(o: MimeOptions): string {
     `To: ${sauber(o.to)}`,
     `Subject: ${encodeHeaderWord(sauber(o.subject))}`,
     `Message-ID: ${messageId}`,
-    ...(o.inReplyTo ? [`In-Reply-To: ${sauber(o.inReplyTo)}`, `References: ${sauber(o.inReplyTo)}`] : []),
+    ...(o.inReplyTo ? [`In-Reply-To: ${sauber(o.inReplyTo)}`, `References: ${sauber(o.references ?? o.inReplyTo)}`] : []),
     'MIME-Version: 1.0',
     `List-Unsubscribe: <${sauber(o.listUnsubscribeUrl)}>, <${sauber(o.listUnsubscribeMailto)}>`,
     'List-Unsubscribe-Post: List-Unsubscribe=One-Click',

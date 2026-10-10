@@ -2,7 +2,7 @@ import { and, asc, eq, gte, sql } from 'drizzle-orm';
 import { istBounceFehler } from './bounce-schutz';
 import { getDb, schema } from './db';
 import { getEnv } from './env';
-import { GMAIL_METADATA_SCOPE } from './gmail-scopes';
+import { GMAIL_METADATA_SCOPE, GMAIL_READONLY_SCOPE } from './gmail-scopes';
 import { postfachLimit, type PostfachZustand } from './rotation';
 import { getSetting, rampeEinstellung } from './settings';
 import { startOfDayBerlinMs, todayBerlin } from './time';
@@ -27,6 +27,11 @@ export function postfachVerbunden(a: Pick<Absender, 'refreshTokenEnc'>): boolean
 /** Darf die App Threads dieses Postfachs auf Antworten prüfen? (Verbindung vor der Follow-up-Funktion hat nur gmail.send) */
 export function kannAntwortenPruefen(a: Pick<Absender, 'refreshTokenEnc' | 'scopes'>): boolean {
   return postfachVerbunden(a) && a.scopes.includes(GMAIL_METADATA_SCOPE);
+}
+
+/** Hat das Postfach den optionalen Lesezugriff (gmail.readonly) für die Unibox? Ohne bleibt alles beim Alten. */
+export function kannThreadLesen(a: Pick<Absender, 'refreshTokenEnc' | 'scopes'>): boolean {
+  return postfachVerbunden(a) && a.scopes.includes(GMAIL_READONLY_SCOPE);
 }
 
 /** Mindestens ein Postfach ist verbunden (unabhängig von aktiv/pausiert) */
@@ -63,12 +68,12 @@ export function postfachNichtNutzbar(a: Absender): string | null {
 
 // ---------------------------------------------------------------- Zähler & Zustand
 
-/** Heute (Berlin) gesendete Mails je Postfach (inkl. Follow-ups). */
+/** Heute (Berlin) gesendete Kampagnen-Mails je Postfach (inkl. Follow-ups; persönliche Antworten aus der Unibox, step < 0, zählen nicht). */
 export function heuteGesendetProPostfach(jetzt: Date = new Date()): Map<number, number> {
   const rows = getDb()
     .select({ id: schema.sentMessages.absenderId, n: sql<number>`count(*)` })
     .from(schema.sentMessages)
-    .where(and(gte(schema.sentMessages.sentAt, new Date(startOfDayBerlinMs(jetzt))), sql`${schema.sentMessages.absenderId} is not null`))
+    .where(and(gte(schema.sentMessages.sentAt, new Date(startOfDayBerlinMs(jetzt))), gte(schema.sentMessages.step, 0), sql`${schema.sentMessages.absenderId} is not null`))
     .groupBy(schema.sentMessages.absenderId)
     .all();
   return new Map(rows.map((r) => [r.id as number, r.n]));
@@ -79,7 +84,7 @@ function ersteVersandTage(): Map<number, string> {
   const rows = getDb()
     .select({ id: schema.sentMessages.absenderId, erste: sql<number>`min(${schema.sentMessages.sentAt})` })
     .from(schema.sentMessages)
-    .where(sql`${schema.sentMessages.absenderId} is not null`)
+    .where(and(gte(schema.sentMessages.step, 0), sql`${schema.sentMessages.absenderId} is not null`))
     .groupBy(schema.sentMessages.absenderId)
     .all();
   return new Map(rows.map((r) => [r.id as number, todayBerlin(new Date(r.erste))]));
