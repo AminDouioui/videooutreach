@@ -17,6 +17,8 @@ type Werte = {
   kiAutoStatus: 'aus' | 'vorschlagen' | 'automatisch';
   kiKlassifizierer: 'anthropic' | 'jev';
   kiEntwurfAnbieter: 'openai' | 'anthropic';
+  openaiModell: string;
+  jevModell: string;
 };
 
 const feld = 'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600';
@@ -30,6 +32,7 @@ export function GlobalSettingsForm({
   kiAktiv = false,
   klassifiziererOptionen = [],
   entwurfOptionen = [],
+  modellStandard = { openai: 'gpt-5.5', jev: 'typesafe/jev-1.13' },
 }: {
   initial: Werte;
   heuteErlaubt: number;
@@ -38,16 +41,21 @@ export function GlobalSettingsForm({
   klassifiziererOptionen?: ('anthropic' | 'jev')[];
   /** Anbieter für Texte/Entwürfe, deren API-Schlüssel gesetzt ist */
   entwurfOptionen?: ('openai' | 'anthropic')[];
+  /** Standard-Modelle als Platzhalter */
+  modellStandard?: { openai: string; jev: string };
 }) {
   const router = useRouter();
   const [w, setW] = useState<Werte>(initial);
   const [status, setStatus] = useState<{ text: string; fehler: boolean } | null>(null);
+  // Nach dem Eintragen/Entfernen von Schlüsseln ändern sich die wählbaren Anbieter: ungültige Auswahl durch den Standard ersetzen
+  const klassifizierer: Werte['kiKlassifizierer'] = klassifiziererOptionen.includes(w.kiKlassifizierer) ? w.kiKlassifizierer : klassifiziererOptionen.includes('jev') ? 'jev' : (klassifiziererOptionen[0] ?? w.kiKlassifizierer);
+  const entwurfAnbieter: Werte['kiEntwurfAnbieter'] = entwurfOptionen.includes(w.kiEntwurfAnbieter) ? w.kiEntwurfAnbieter : (entwurfOptionen[0] ?? w.kiEntwurfAnbieter);
   const set = <K extends keyof Werte>(k: K, v: Werte[K]) => setW((x) => ({ ...x, [k]: v }));
 
   async function speichern(e: React.FormEvent) {
     e.preventDefault();
     setStatus(null);
-    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, kiAutoStatus: klassifiziererOptionen.length ? w.kiAutoStatus : undefined, kiKlassifizierer: klassifiziererOptionen.length ? w.kiKlassifizierer : undefined, kiEntwurfAnbieter: entwurfOptionen.length ? w.kiEntwurfAnbieter : undefined, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt), bounceSchwellePostfach: Number(w.bounceSchwellePostfach) }) });
+    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, kiAutoStatus: klassifiziererOptionen.length ? w.kiAutoStatus : undefined, kiKlassifizierer: klassifiziererOptionen.length ? klassifizierer : undefined, kiEntwurfAnbieter: entwurfOptionen.length ? entwurfAnbieter : undefined, openaiModell: w.openaiModell, jevModell: w.jevModell, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt), bounceSchwellePostfach: Number(w.bounceSchwellePostfach) }) });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setStatus({ text: 'Gespeichert', fehler: false });
@@ -124,7 +132,7 @@ export function GlobalSettingsForm({
           {klassifiziererOptionen.length > 0 && (
             <label className="block text-sm font-medium text-slate-700 sm:max-w-sm">
               Modell für die Einordnung von Antworten
-              <select value={w.kiKlassifizierer} onChange={(e) => set('kiKlassifizierer', e.target.value as Werte['kiKlassifizierer'])} disabled={klassifiziererOptionen.length < 2} className={feld}>
+              <select value={klassifizierer} onChange={(e) => set('kiKlassifizierer', e.target.value as Werte['kiKlassifizierer'])} disabled={klassifiziererOptionen.length < 2} className={feld}>
                 {klassifiziererOptionen.map((o) => (
                   <option key={o} value={o}>
                     {KLASSIFIZIERER_LABEL[o]}
@@ -137,7 +145,7 @@ export function GlobalSettingsForm({
           {entwurfOptionen.length > 0 && (
             <label className="block text-sm font-medium text-slate-700 sm:max-w-sm">
               Anbieter für Texte/Entwürfe
-              <select value={w.kiEntwurfAnbieter} onChange={(e) => set('kiEntwurfAnbieter', e.target.value as Werte['kiEntwurfAnbieter'])} disabled={entwurfOptionen.length < 2} className={feld}>
+              <select value={entwurfAnbieter} onChange={(e) => set('kiEntwurfAnbieter', e.target.value as Werte['kiEntwurfAnbieter'])} disabled={entwurfOptionen.length < 2} className={feld}>
                 {entwurfOptionen.map((o) => (
                   <option key={o} value={o}>
                     {ENTWURF_LABEL[o]}
@@ -146,6 +154,24 @@ export function GlobalSettingsForm({
               </select>
               <span className="mt-1 block text-xs font-normal text-slate-500">Für „Entwurf mit KI“ (Unibox) und „KI-Vorschlag“ (Vorlagen). Zur Wahl stehen nur Anbieter, deren API-Schlüssel gesetzt ist.</span>
             </label>
+          )}
+          {(klassifiziererOptionen.includes('jev') || entwurfOptionen.includes('openai')) && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {klassifiziererOptionen.includes('jev') && (
+                <label className="block text-sm font-medium text-slate-700">
+                  Jev-Modell (optional)
+                  <input value={w.jevModell} onChange={(e) => set('jevModell', e.target.value)} className={`${feld} font-mono`} placeholder={modellStandard.jev} maxLength={200} autoComplete="off" />
+                  <span className="mt-1 block text-xs font-normal text-slate-500">Leer = Standard. Alias: ~typesafe/jev-latest.</span>
+                </label>
+              )}
+              {entwurfOptionen.includes('openai') && (
+                <label className="block text-sm font-medium text-slate-700">
+                  OpenAI-Modell (optional)
+                  <input value={w.openaiModell} onChange={(e) => set('openaiModell', e.target.value)} className={`${feld} font-mono`} placeholder={modellStandard.openai} maxLength={200} autoComplete="off" />
+                  <span className="mt-1 block text-xs font-normal text-slate-500">Leer = Standard. Bei „model not found“ anpassen (platform.openai.com/docs/models).</span>
+                </label>
+              )}
+            </div>
           )}
           {klassifiziererOptionen.length > 0 && (
           <label className="block text-sm font-medium text-slate-700 sm:max-w-sm">
@@ -161,11 +187,6 @@ export function GlobalSettingsForm({
             </span>
           </label>
           )}
-          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            <strong>Datenschutz:</strong> Für die KI-Funktionen werden Mailtexte (Antworten der Leads, Thread-Verlauf, Ihre Beschreibungen) an den gewählten Anbieter übertragen: bei Claude an Anthropic, bei Jev an OpenRouter/TypeSafe, bei OpenAI an OpenAI (jeweils USA).
-            Bitte vorher einen Auftragsverarbeitungsvertrag (AVV/DPA) mit dem Anbieter prüfen bzw. abschließen und die Datenschutzerklärung anpassen. Ohne die Schlüssel{' '}
-            <span className="font-mono">ANTHROPIC_API_KEY</span> / <span className="font-mono">OPENROUTER_API_KEY</span> / <span className="font-mono">OPENAI_API_KEY</span> sind alle KI-Funktionen aus.
-          </p>
         </fieldset>
       )}
       <div className="flex items-center gap-3">

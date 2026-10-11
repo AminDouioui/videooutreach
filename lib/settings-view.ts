@@ -4,7 +4,7 @@ import { oauthConfigured } from './gmail';
 import { postfachStatus, type PostfachStatus } from './rotation';
 import { effektivesGlobalLimit } from './send';
 import { klassifizierungVerfuegbar, schreibhilfeVerfuegbar } from './ki';
-import { bounceSchwellePostfach, getSetting, globalDailyLimit, kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, rampeEinstellung, verfuegbareEntwurfAnbieter, verfuegbareKlassifizierer } from './settings';
+import { bounceSchwellePostfach, getSetting, KI_ANBIETER, kiSchluesselMitQuelle, maskiereSchluessel, type KiAnbieter, type KiSchluesselQuelle, globalDailyLimit, kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, rampeEinstellung, verfuegbareEntwurfAnbieter, verfuegbareKlassifizierer } from './settings';
 import type { Sicherheit } from './smtp-vorlagen';
 import { todayBerlin } from './time';
 
@@ -60,7 +60,20 @@ export function ladePostfachListe(jetzt: Date = new Date()): PostfachAnzeige[] {
   }));
 }
 
-export function ladeEinstellungen() {
+/** Zustand eines KI-Schlüssels für die Oberfläche: nie der Schlüssel selbst. `maske` („…abcd“) nur für Admins. */
+export type KiSchluesselStatus = { gesetzt: boolean; quelle: KiSchluesselQuelle | null; maske: string | null; appGespeichert: boolean };
+
+export function kiSchluesselStatus(mitMaske: boolean): Record<KiAnbieter, KiSchluesselStatus> {
+  const aus = {} as Record<KiAnbieter, KiSchluesselStatus>;
+  for (const a of KI_ANBIETER) {
+    const k = kiSchluesselMitQuelle(a);
+    aus[a] = { gesetzt: !!k, quelle: k?.quelle ?? null, maske: k && mitMaske ? maskiereSchluessel(k.schluessel) : null, appGespeichert: k?.quelle === 'app' };
+  }
+  return aus;
+}
+
+/** `mitMaske`: nur Admins sehen die letzten 4 Zeichen der Schlüssel; alle anderen nur „gesetzt“. */
+export function ladeEinstellungen(mitMaske = false) {
   const env = getEnv();
   const rampe = rampeEinstellung();
   return {
@@ -87,6 +100,12 @@ export function ladeEinstellungen() {
     kiKlassifiziererOptionen: verfuegbareKlassifizierer(),
     kiEntwurfAnbieter: kiEntwurfAnbieter(),
     kiEntwurfAnbieterOptionen: verfuegbareEntwurfAnbieter(),
+    // Schlüssel nie im Klartext; Modelle: Einstellung in der App (leer = Standard)
+    kiSchluessel: kiSchluesselStatus(mitMaske),
+    openaiModell: getSetting('openai_model') ?? '',
+    jevModell: getSetting('jev_modell') ?? '',
+    openaiModellStandard: env.OPENAI_MODEL,
+    jevModellStandard: env.JEV_MODELL,
     postfaecher: ladePostfachListe(),
   };
 }

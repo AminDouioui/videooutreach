@@ -1,10 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { getEnv } from './env';
+import { kiSchluessel } from './settings';
 import { KI_KATEGORIEN, type KiKategorie } from './ki-kategorien';
 import { pruefeVorlage, STANDARD_VARIABLEN, verwendeteVariablen } from './vorlage';
 
-// Optionale KI-Funktionen (nur mit ANTHROPIC_API_KEY). Schmaler Client über das offizielle SDK: Zeitlimit, deutsche
+// Optionale KI-Funktionen (nur mit Anthropic-Schlüssel). Schmaler Client über das offizielle SDK: Zeitlimit, deutsche
 // Fehlertexte, Test-Injektion (jede Funktion nimmt einen KiClient entgegen). Es wird nichts geloggt – Mailinhalte
 // stehen weder in Logs noch in Fehlermeldungen.
 
@@ -12,18 +13,16 @@ import { pruefeVorlage, STANDARD_VARIABLEN, verwendeteVariablen } from './vorlag
 
 /** Schreibhilfe und Antwort-Entwurf: mit OpenAI- oder Anthropic-Schlüssel. Ohne Schlüssel sind diese Funktionen aus und unsichtbar. */
 export function schreibhilfeVerfuegbar(): boolean {
-  const env = getEnv();
-  return !!env.ANTHROPIC_API_KEY || !!env.OPENAI_API_KEY;
+  return !!kiSchluessel('anthropic') || !!kiSchluessel('openai');
 }
 
 /** Einordnung von Antworten: mit Anthropic- oder OpenRouter-Schlüssel (Jev). */
 export function klassifizierungVerfuegbar(): boolean {
-  const env = getEnv();
-  return !!env.ANTHROPIC_API_KEY || !!env.OPENROUTER_API_KEY;
+  return !!kiSchluessel('anthropic') || !!kiSchluessel('openrouter');
 }
 
-export const KI_NICHT_AKTIV = 'Die KI-Funktionen sind nicht aktiviert (weder ANTHROPIC_API_KEY noch OPENAI_API_KEY gesetzt).';
-export const KLASSIFIZIERUNG_NICHT_AKTIV = 'Die KI-Einordnung ist nicht aktiviert (weder ANTHROPIC_API_KEY noch OPENROUTER_API_KEY gesetzt).';
+export const KI_NICHT_AKTIV = 'Die KI-Funktionen sind nicht aktiviert (weder OpenAI- noch Anthropic-Schlüssel hinterlegt: Einstellungen → KI bzw. OPENAI_API_KEY / ANTHROPIC_API_KEY in der .env).';
+export const KLASSIFIZIERUNG_NICHT_AKTIV = 'Die KI-Einordnung ist nicht aktiviert (weder OpenRouter- noch Anthropic-Schlüssel hinterlegt: Einstellungen → KI bzw. OPENROUTER_API_KEY / ANTHROPIC_API_KEY in der .env).';
 
 /** Zeitlimit je Anfrage (ms) */
 export const KI_ZEITLIMIT_MS = 30_000;
@@ -47,7 +46,7 @@ export class KiFehler extends Error {
 export function kiFehlerAus(e: unknown): KiFehler {
   if (e instanceof KiFehler) return e;
   if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) {
-    return new KiFehler('Der Anthropic-API-Schlüssel ist ungültig oder hat keine Berechtigung. Bitte ANTHROPIC_API_KEY prüfen.', 'schluessel');
+    return new KiFehler('Der Anthropic-API-Schlüssel ist ungültig oder hat keine Berechtigung. Bitte den Schlüssel unter Einstellungen → KI (bzw. ANTHROPIC_API_KEY) prüfen.', 'schluessel');
   }
   if (e instanceof Anthropic.RateLimitError) return new KiFehler('Anthropic meldet zu viele Anfragen (Rate-Limit). Bitte in einer Minute erneut versuchen.', 'limit', true);
   if (e instanceof Anthropic.APIConnectionTimeoutError) return new KiFehler('Der KI-Dienst hat nicht rechtzeitig geantwortet (Zeitüberschreitung). Bitte erneut versuchen.', 'zeit', true);
@@ -82,7 +81,7 @@ let sdkClient: { key: string; client: Anthropic } | null = null;
 
 /** Standard-Client über das offizielle SDK (Zeitlimit 30 s, ein Wiederholversuch bei 429/5xx durch das SDK). */
 export const anthropicClient: KiClient = async (a) => {
-  const key = getEnv().ANTHROPIC_API_KEY;
+  const key = kiSchluessel('anthropic');
   if (!key) throw new KiFehler(KI_NICHT_AKTIV, 'deaktiviert');
   if (!sdkClient || sdkClient.key !== key) sdkClient = { key, client: new Anthropic({ apiKey: key, timeout: KI_ZEITLIMIT_MS, maxRetries: 1 }) };
   const res = await sdkClient.client.messages.create({
