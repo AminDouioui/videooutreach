@@ -17,6 +17,7 @@ import { ladeFollowups } from '@/lib/send';
 import { ladeVariantenStatistik } from '@/lib/varianten-statistik';
 import { VariantenTabelle } from '@/components/VariantenTabelle';
 import { ladeLeadMetriken } from '@/lib/tracking';
+import { Schreibschutz } from '@/components/Schreibschutz';
 import { hatRolle } from '@/lib/auth';
 import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
 
@@ -94,7 +95,11 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
           <strong>Automatisch pausiert.</strong> {kampagne.pausiertGrund}
         </div>
       )}
-      {kampagne.mitVideo && <RenderProgress campaignId={kampagne.id} initial={ladeKampagnenStatus(kampagne.id)!} />}
+      {kampagne.mitVideo && (
+        <Schreibschutz gesperrt={!hatRolle(me.rolle, 'mitglied')}>
+          <RenderProgress campaignId={kampagne.id} initial={ladeKampagnenStatus(kampagne.id)!} />
+        </Schreibschutz>
+      )}
       <div className="mb-4">
         <SendControls campaignId={kampagne.id} readyCount={versandbereit} lesend={!hatRolle(me.rolle, 'mitglied')} />
       </div>
