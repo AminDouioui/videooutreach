@@ -5,6 +5,7 @@ import { getDb, schema } from '@/lib/db';
 import { LEAD_STATUS } from '@/lib/lead-status';
 import { setzeAntwortGelesen, setzeLeadStatus } from '@/lib/lead-status-db';
 import { deleteMedia } from '@/lib/media';
+import { parseDealWert } from '@/lib/pipeline';
 import { fehler, parseJson } from '@/lib/request';
 import { kanonischeZeitzone } from '@/lib/time';
 
@@ -18,8 +19,14 @@ const patchSchema = z
     antwortGelesen: z.boolean().optional(),
     // IANA-Zeitzone; null/leer = Zeitzone der Kampagne
     zeitzone: z.string().trim().max(64).nullable().optional(),
+    // Deal-Wert als Text („1.234,50 €“) oder Zahl in Euro; null/leer = kein Wert
+    dealWert: z.union([z.string().max(40), z.number(), z.null()]).optional(),
+    dealNotiz: z.string().max(5_000).nullable().optional(),
   })
-  .refine((v) => v.notizen !== undefined || v.sendStatus !== undefined || v.leadStatus !== undefined || v.antwortGelesen !== undefined || v.zeitzone !== undefined, 'Nichts zu ändern');
+  .refine(
+    (v) => v.notizen !== undefined || v.sendStatus !== undefined || v.leadStatus !== undefined || v.antwortGelesen !== undefined || v.zeitzone !== undefined || v.dealWert !== undefined || v.dealNotiz !== undefined,
+    'Nichts zu ändern',
+  );
 
 async function ladeId(params: Promise<{ id: string }>) {
   const id = Number((await params).id);
@@ -39,7 +46,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!kanonischeZeitzone(parsed.data.zeitzone)) return fehler('Unbekannte Zeitzone (z. B. Europe/London, America/New_York)');
   }
 
+  let dealCent: number | null | undefined;
+  if (parsed.data.dealWert !== undefined) {
+    const w = parseDealWert(parsed.data.dealWert);
+    if (!w.ok) return fehler('Ungültiger Deal-Wert (z. B. 1.234,50 €)');
+    dealCent = w.cent;
+  }
+
   const set: Partial<typeof schema.leads.$inferInsert> = {};
+  if (dealCent !== undefined) set.dealWert = dealCent;
+  if (parsed.data.dealNotiz !== undefined) set.dealNotiz = parsed.data.dealNotiz?.trim() || null;
   if (parsed.data.notizen !== undefined) set.notizen = parsed.data.notizen.trim() || null;
   if (parsed.data.zeitzone !== undefined) set.zeitzone = parsed.data.zeitzone ? kanonischeZeitzone(parsed.data.zeitzone) : null;
   if (parsed.data.sendStatus) {

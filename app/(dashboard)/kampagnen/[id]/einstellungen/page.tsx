@@ -1,9 +1,11 @@
 import Link from 'next/link';
-import { eq } from 'drizzle-orm';
+import { asc, eq, ne } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { CampaignSettingsForm } from '@/components/CampaignSettingsForm';
+import { UntersequenzenVerwaltung } from '@/components/UntersequenzenVerwaltung';
 import { getDb, schema } from '@/lib/db';
 import { parseSendDays } from '@/lib/time';
+import { ladeRegeln } from '@/lib/untersequenzen-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +14,8 @@ export default async function KampagnenEinstellungen({ params }: { params: Promi
   if (!Number.isInteger(id)) notFound();
   const k = getDb().select().from(schema.campaigns).where(eq(schema.campaigns.id, id)).get();
   if (!k) notFound();
+
+  const ziele = getDb().select({ id: schema.campaigns.id, name: schema.campaigns.name }).from(schema.campaigns).where(ne(schema.campaigns.id, id)).orderBy(asc(schema.campaigns.name)).all();
 
   return (
     <div className="max-w-2xl">
@@ -41,6 +45,7 @@ export default async function KampagnenEinstellungen({ params }: { params: Promi
           bounceFenster: k.bounceFenster,
         }}
       />
+      <UntersequenzenVerwaltung campaignId={id} regeln={ladeRegeln(id)} ziele={ziele} />
     </div>
   );
 }

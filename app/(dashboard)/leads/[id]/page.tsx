@@ -6,7 +6,7 @@ import { KiEinordnung } from '@/components/KiKomponenten';
 import { LeadStatusSelect } from '@/components/LeadStatusSelect';
 import { CopyButton } from '@/components/CopyButton';
 import { ThreadAnsicht } from '@/components/ThreadAnsicht';
-import { LeadActions, MailVorschau, NotizFeld, ZeitzoneFeld } from '@/components/LeadDetailPanel';
+import { DealFeld, LeadActions, MailVorschau, NotizFeld, ZeitzoneFeld } from '@/components/LeadDetailPanel';
 import { ladeAbsenderMitId } from '@/lib/absender';
 import { leadThreads } from '@/lib/antworten';
 import { getDb, schema } from '@/lib/db';
@@ -30,6 +30,7 @@ const EVENT_LABEL: Record<string, string> = {
   link_click: 'Link in Mail geklickt',
   unsubscribe: 'Abgemeldet',
   abwesenheit: 'Abwesenheitsnotiz erhalten',
+  untersequenz: 'In Untersequenz übernommen',
 };
 
 const zeit = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'medium' });
@@ -47,6 +48,14 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   // Öffnen des Lead-Details markiert eine Antwort als gelesen
   if (lead.flowStopp === 'beantwortet' && !lead.antwortGelesen) setzeAntwortGelesen(lead.id, true);
 
+  const herkunft = lead.herkunftLeadId !== null ? db.select({ id: schema.leads.id, campaignId: schema.leads.campaignId, kampagne: schema.campaigns.name }).from(schema.leads).innerJoin(schema.campaigns, eq(schema.campaigns.id, schema.leads.campaignId)).where(eq(schema.leads.id, lead.herkunftLeadId)).get() : undefined;
+  const weiterleitungen = db
+    .select({ id: schema.leads.id, campaignId: schema.leads.campaignId, kampagne: schema.campaigns.name })
+    .from(schema.leads)
+    .innerJoin(schema.campaigns, eq(schema.campaigns.id, schema.leads.campaignId))
+    .where(eq(schema.leads.herkunftLeadId, lead.id))
+    .orderBy(asc(schema.leads.id))
+    .all();
   const postfach = lead.absenderId !== null ? ladeAbsenderMitId(lead.absenderId) : null;
   const verlauf = leadThreads(lead);
   const name = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
@@ -88,6 +97,40 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
             </a>
             <CopyButton text={link} label="Link kopieren" />
           </p>
+          {(herkunft || lead.herkunftLeadId !== null || weiterleitungen.length > 0) && (
+            <p className="mt-2 space-y-1 text-sm text-slate-600" data-testid="untersequenz-links">
+              {lead.herkunftLeadId !== null && (
+                <span className="block">
+                  Übernommen aus Untersequenz:{' '}
+                  {herkunft ? (
+                    <>
+                      <Link href={`/leads/${herkunft.id}`} className="text-indigo-600 hover:underline">
+                        Ursprungs-Lead
+                      </Link>{' '}
+                      in{' '}
+                      <Link href={`/kampagnen/${herkunft.campaignId}`} className="text-indigo-600 hover:underline">
+                        {herkunft.kampagne}
+                      </Link>
+                    </>
+                  ) : (
+                    'Ursprungs-Lead nicht mehr vorhanden'
+                  )}
+                </span>
+              )}
+              {weiterleitungen.map((w) => (
+                <span key={w.id} className="block">
+                  Weitergeleitet an:{' '}
+                  <Link href={`/leads/${w.id}`} className="text-indigo-600 hover:underline">
+                    Lead
+                  </Link>{' '}
+                  in{' '}
+                  <Link href={`/kampagnen/${w.campaignId}`} className="text-indigo-600 hover:underline">
+                    {w.kampagne}
+                  </Link>
+                </span>
+              ))}
+            </p>
+          )}
           {lead.renderError && <p className="mt-2 text-sm text-red-700">Render-Fehler: {lead.renderError}</p>}
           {lead.sendError && <p className="mt-2 text-sm text-red-700">Versand-Fehler: {lead.sendError}</p>}
         </div>
@@ -126,6 +169,11 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
                     <span className="min-w-0 break-all text-xs text-slate-500">
                       {e.meta.url}
                     </span>
+                  )}
+                  {e.type === 'untersequenz' && typeof e.meta?.zielLeadId === 'number' && typeof e.meta?.zielCampaignId === 'number' && (
+                    <Link href={`/leads/${e.meta.zielLeadId}`} className="text-xs text-indigo-600 hover:underline">
+                      Lead in Ziel-Kampagne ansehen
+                    </Link>
                   )}
                   {e.type === 'email_open' && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">unzuverlässig</span>}
                 </li>
@@ -187,6 +235,11 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Mail-Vorschau</h2>
           <MailVorschau leadId={lead.id} />
+        </section>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Pipeline</h2>
+          <DealFeld leadId={lead.id} wert={lead.dealWert} notiz={lead.dealNotiz ?? ''} />
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-4">

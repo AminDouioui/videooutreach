@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { dealWertEingabe, parseDealWert } from '@/lib/pipeline';
 import { istGueltigeZeitzone } from '@/lib/time';
 import { GAENGIGE_ZEITZONEN } from '@/lib/zeitzone';
 import { Ortszeit } from './Ortszeit';
@@ -188,6 +189,59 @@ export function ZeitzoneFeld({ leadId, initial, kampagneZone }: { leadId: number
           Zeitzone speichern
         </button>
         {status && <span className={`text-xs ${status.fehler ? 'text-red-700' : 'text-green-700'}`}>{status.text}</span>}
+      </div>
+    </div>
+  );
+}
+
+/** Deal-Wert (€) und Notiz zum Deal; der Lead erscheint damit in der Pipeline mit Summe je Spalte. */
+export function DealFeld({ leadId, wert, notiz }: { leadId: number; wert: number | null; notiz: string }) {
+  const router = useRouter();
+  const [w, setW] = useState(dealWertEingabe(wert));
+  const [n, setN] = useState(notiz);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<{ text: string; fehler: boolean } | null>(null);
+
+  async function speichern() {
+    const p = parseDealWert(w);
+    if (!p.ok) {
+      setStatus({ text: 'Ungültiger Betrag (z. B. 1.234,50 €)', fehler: true });
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dealWert: p.cent, dealNotiz: n.trim() || null }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setStatus({ text: j.error ?? 'Speichern fehlgeschlagen', fehler: true });
+      else {
+        setW(dealWertEingabe(p.cent));
+        setStatus({ text: 'Gespeichert', fehler: false });
+        router.refresh();
+      }
+    } catch {
+      setStatus({ text: 'Speichern fehlgeschlagen', fehler: true });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const feld = 'w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600';
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm text-slate-600">
+        Deal-Wert in €
+        <input value={w} onChange={(e) => { setW(e.target.value); setStatus(null); }} inputMode="decimal" placeholder="z. B. 1.234,50" className={`mt-1 ${feld} sm:w-48`} />
+      </label>
+      <label className="block text-sm text-slate-600">
+        Notiz zum Deal
+        <textarea value={n} onChange={(e) => { setN(e.target.value); setStatus(null); }} rows={3} className={`mt-1 ${feld}`} />
+      </label>
+      <div className="flex items-center gap-3">
+        <button onClick={speichern} disabled={busy} className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+          Speichern
+        </button>
+        {status && <span className={`text-sm ${status.fehler ? 'text-red-700' : 'text-green-700'}`}>{status.text}</span>}
       </div>
     </div>
   );

@@ -1,22 +1,37 @@
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { getDb, schema } from './db';
+import { wendeUntersequenzenAn } from './untersequenzen-db';
 import { FIRMA_HAT_GEANTWORTET, firmenDomain, statusPatch, type LeadStatus } from './lead-status';
 
 // Datenbankzugriffe für Lead-Status, Antworten und Firmen-Stopp
 
-/** Setzt den Lead-Status und passt den Flow an (siehe statusPatch). false = Lead nicht gefunden. */
+/**
+ * Setzt den Lead-Status und passt den Flow an (siehe statusPatch). Zentrale Stelle für alle Statuswechsel (manuell,
+ * Pipeline, KI): Bei geändertem Status greifen danach die Untersequenz-Regeln der Kampagne.
+ * false = Lead nicht gefunden.
+ */
 export function setzeLeadStatus(leadId: number, status: LeadStatus, jetzt: Date = new Date()): boolean {
   const db = getDb();
-  return db.transaction((tx) => {
+  const ergebnis = db.transaction((tx) => {
     const lead = tx.select().from(schema.leads).where(eq(schema.leads.id, leadId)).get();
-    if (!lead) return false;
+    if (!lead) return null;
     const patch = statusPatch(lead, status, jetzt);
     tx.update(schema.leads)
       .set({ ...patch, leadStatus: status, leadStatusAt: status === 'offen' ? null : jetzt })
       .where(eq(schema.leads.id, leadId))
       .run();
-    return true;
+    return { geaendert: lead.leadStatus !== status };
   });
+  if (!ergebnis) return false;
+  if (ergebnis.geaendert) {
+    try {
+      wendeUntersequenzenAn(leadId, status, jetzt);
+    } catch (e) {
+      // Der Statuswechsel selbst ist gespeichert; eine fehlgeschlagene Übernahme darf ihn nicht rückgängig machen
+      console.error(`Untersequenz für Lead ${leadId} fehlgeschlagen:`, e instanceof Error ? e.message : e);
+    }
+  }
+  return true;
 }
 
 /** Antwort als gelesen/ungelesen markieren */

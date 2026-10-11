@@ -85,6 +85,13 @@
       "when": 1791675154645,
       "tag": "0011_ki_einordnung",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1791676462034,
+      "tag": "0012_pipeline_untersequenzen",
+      "breakpoints": true
     }
   ]
 }

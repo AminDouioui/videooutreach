@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 
 const ts = (name: string) => integer(name, { mode: 'timestamp_ms' });
 const jetzt = sql`(unixepoch() * 1000)`;
@@ -19,6 +19,8 @@ export const EVENT_TYPEN = [
   'unsubscribe',
   'abwesenheit',
   'link_click',
+  // Lead wurde per Untersequenz-Regel in eine andere Kampagne übernommen (meta: zielCampaignId, zielLeadId)
+  'untersequenz',
 ] as const;
 
 /**
@@ -212,14 +214,41 @@ export const leads = sqliteTable(
     kiVersuchAt: ts('ki_versuch_at'),
     // Postfach, über das die Erstmail ging (Follow-ups und Antwortprüfung laufen über dasselbe); null = Altbestand
     absenderId: integer('absender_id').references(() => absender.id, { onDelete: 'set null' }),
+    // Pipeline (CRM light): Deal-Wert in Cent (null = keiner) und Notiz zum Deal
+    dealWert: integer('deal_wert'),
+    dealNotiz: text('deal_notiz'),
+    // Per Untersequenz übernommen: Lead, aus dem dieser Datensatz kopiert wurde (null = importiert/angelegt)
+    herkunftLeadId: integer('herkunft_lead_id').references((): AnySQLiteColumn => leads.id, { onDelete: 'set null' }),
     createdAt: ts('created_at').notNull().default(jetzt),
   },
   (t) => [
+    index('leads_herkunft_idx').on(t.herkunftLeadId),
     index('leads_campaign_idx').on(t.campaignId),
     index('leads_email_idx').on(t.email),
     index('leads_flow_stopp_idx').on(t.flowStopp),
     index('leads_absender_idx').on(t.absenderId),
   ],
+);
+
+/**
+ * Untersequenz-Regeln: Wird ein Lead der Quell-Kampagne auf `ausloeserStatus` gesetzt, wird er (als Kopie) in die
+ * Ziel-Kampagne übernommen, wo der Flow neu startet.
+ */
+export const untersequenzen = sqliteTable(
+  'untersequenzen',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    campaignId: integer('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    ausloeserStatus: text('ausloeser_status', { enum: LEAD_STATUS }).notNull(),
+    zielCampaignId: integer('ziel_campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    aktiv: integer('aktiv', { mode: 'boolean' }).notNull().default(true),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [index('untersequenzen_campaign_idx').on(t.campaignId), uniqueIndex('untersequenzen_regel_idx').on(t.campaignId, t.ausloeserStatus, t.zielCampaignId)],
 );
 
 /** Jede gesendete Mail (Erstmail = step 0, Follow-ups = 1, 2 …); Grundlage der Tageslimits. */
@@ -278,6 +307,7 @@ export type Campaign = typeof campaigns.$inferSelect;
 export type Variante = typeof varianten.$inferSelect;
 export type Followup = typeof followups.$inferSelect;
 export type FollowupVariante = typeof followupVarianten.$inferSelect;
+export type Untersequenz = typeof untersequenzen.$inferSelect;
 export type Lead = typeof leads.$inferSelect;
 export type NewLead = typeof leads.$inferInsert;
 export type EventRow = typeof events.$inferSelect;

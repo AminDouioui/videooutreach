@@ -23,6 +23,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </span>
             )}
           </Link>
+          <Link href="/pipeline" className="text-slate-600 hover:text-slate-900">
+            Pipeline
+          </Link>
           <Link href="/leads" className="text-slate-600 hover:text-slate-900">
             Leads
           </Link>

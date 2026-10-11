@@ -241,11 +241,32 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
       break;
     }
     if (!res && bereitOffen.length > 0) {
-      const wahl = waehlePostfach(postfaecher().map((x) => x.zustand), jetzt.getTime(), heute);
-      if (wahl.art === 'warten') wartend.add(wahl.grund);
-      else {
-        ziel = `Mail an Lead ${bereitOffen[0].id}`;
-        res = await sendLead(bereitOffen[0].id, { sender: deps.sender, now: jetzt, absenderId: wahl.id });
+      // Leads mit festem Postfach (z. B. per Untersequenz übernommen) schreiben über dasselbe Postfach wie zuvor;
+      // alle anderen rotieren über die aktiven Postfächer
+      let rotation: ReturnType<typeof waehlePostfach> | null = null;
+      let kandidat: { id: number; pfId: number } | null = null;
+      for (const l of bereitOffen) {
+        if (l.absenderId !== null) {
+          const z = postfaecher().find((x) => x.absender.id === l.absenderId)?.zustand;
+          const block = z ? blockiertDurch(z, jetzt.getTime(), heute) : 'kein_postfach';
+          if (block) {
+            wartend.add(followupWartGrund(block));
+            continue;
+          }
+          kandidat = { id: l.id, pfId: l.absenderId };
+          break;
+        }
+        rotation ??= waehlePostfach(postfaecher().map((x) => x.zustand), jetzt.getTime(), heute);
+        if (rotation.art === 'warten') {
+          wartend.add(rotation.grund);
+          continue;
+        }
+        kandidat = { id: l.id, pfId: rotation.id };
+        break;
+      }
+      if (kandidat) {
+        ziel = `Mail an Lead ${kandidat.id}`;
+        res = await sendLead(kandidat.id, { sender: deps.sender, now: jetzt, absenderId: kandidat.pfId });
       }
     }
     if (!res) {

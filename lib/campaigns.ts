@@ -59,7 +59,8 @@ export function loescheKampagne(campaignId: number): { leads: number } | null {
 
 /**
  * Kampagne duplizieren: Vorlage, Einstellungen, Follow-ups und Varianten (inkl. aktiv-Status) werden kopiert,
- * Leads nicht. Die Kopie heißt „<Name> (Kopie)“ und startet als Entwurf. Gibt die neue Kampagne zurück.
+ * Leads nicht. Untersequenz-Regeln werden bewusst NICHT kopiert (das Ziel wäre unklar, und eine Regel in die
+ * Original-Kampagne würde ungewollt Leads weiterleiten). Die Kopie heißt „<Name> (Kopie)“ und startet als Entwurf. Gibt die neue Kampagne zurück.
  */
 export function dupliziereKampagne(campaignId: number): typeof schema.campaigns.$inferSelect | null {
   const db = getDb();
