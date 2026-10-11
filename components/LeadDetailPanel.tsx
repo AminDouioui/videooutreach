@@ -211,7 +211,7 @@ export function DealFeld({ leadId, wert, notiz }: { leadId: number; wert: number
     setBusy(true);
     setStatus(null);
     try {
-      const res = await fetch(`/api/leads/${leadId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dealWert: p.cent, dealNotiz: n.trim() || null }) });
+      const res = await fetch(`/api/leads/${leadId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dealWert: w, dealNotiz: n.trim() || null }) });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) setStatus({ text: j.error ?? 'Speichern fehlgeschlagen', fehler: true });
       else {

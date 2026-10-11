@@ -64,7 +64,7 @@ export function PipelineBoard({ leads: initial, kampagnen, campaignId, jetzt }: 
   async function speichereDeal(id: number, wert: string, notiz: string): Promise<string | null> {
     const w = parseDealWert(wert);
     if (!w.ok) return 'Ungültiger Betrag (z. B. 1.234,50 €)';
-    const f = await patch(id, { dealWert: w.cent, dealNotiz: notiz.trim() || null });
+    const f = await patch(id, { dealWert: wert, dealNotiz: notiz.trim() || null });
     if (f) return f;
     setLeads((ls) => ls.map((l) => (l.id === id ? { ...l, dealWert: w.cent, dealNotiz: notiz.trim() || null } : l)));
     router.refresh();
@@ -98,7 +98,7 @@ export function PipelineBoard({ leads: initial, kampagnen, campaignId, jetzt }: 
           {fehler}
         </p>
       )}
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:overflow-x-auto md:pb-3">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:overflow-x-auto md:pb-3">
         {spalten.map((sp) => {
           const info = LEAD_STATUS_INFO[sp.status];
           const eingeklappt = sp.status === 'offen' && !offenZeigen;
@@ -122,9 +122,9 @@ export function PipelineBoard({ leads: initial, kampagnen, campaignId, jetzt }: 
                 setZiehend(null);
                 if (id) void verschieben(id, sp.status);
               }}
-              className={`rounded-lg border-t-4 bg-slate-100 p-2 md:w-64 md:shrink-0 ${SPALTEN_FARBE[info.farbe]} ${ueber === sp.status ? 'ring-2 ring-indigo-400' : ''}`}
+              className={`rounded-lg border-t-4 bg-slate-100 p-2 ${eingeklappt ? 'md:w-32 md:shrink-0' : 'md:min-w-[9rem] md:flex-1'} ${SPALTEN_FARBE[info.farbe]} ${ueber === sp.status ? 'ring-2 ring-indigo-400' : ''}`}
             >
-              <header className="mb-2 flex items-start justify-between gap-2 px-1">
+              <header className="mb-2 flex flex-wrap items-start justify-between gap-2 px-1">
                 <div>
                   <h2 className="text-sm font-semibold text-slate-800">{info.label}</h2>
                   <p className="text-xs text-slate-500">
