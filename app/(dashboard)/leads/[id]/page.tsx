@@ -7,11 +7,11 @@ import { LeadStatusSelect } from '@/components/LeadStatusSelect';
 import { CopyButton } from '@/components/CopyButton';
 import { ThreadAnsicht } from '@/components/ThreadAnsicht';
 import { DealFeld, LeadActions, MailVorschau, NotizFeld, ZeitzoneFeld } from '@/components/LeadDetailPanel';
-import { ladeAbsenderMitId } from '@/lib/absender';
+import { ladeAbsenderMitId, postfachVerbunden } from '@/lib/absender';
 import { leadThreads } from '@/lib/antworten';
 import { getDb, schema } from '@/lib/db';
 import { kiAktiv } from '@/lib/ki';
-import { gmailThreadUrl } from '@/lib/lead-status';
+import { gmailLink } from '@/lib/lead-status';
 import { setzeAntwortGelesen } from '@/lib/lead-status-db';
 import { zeitzoneOderStandard } from '@/lib/time';
 import { leadPageUrl, thumbnailUrl, videoUrl } from '@/lib/media';
@@ -63,6 +63,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
     .all();
   const postfach = lead.absenderId !== null ? ladeAbsenderMitId(lead.absenderId) : null;
   const verlauf = leadThreads(lead);
+  const gmailUrl = gmailLink(lead.antwortThreadId ?? lead.gmailThreadId, verlauf.postfach?.typ);
   const name = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
   const link = leadPageUrl(lead.slug);
   const fertig = lead.renderStatus === 'fertig';
@@ -205,7 +206,8 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
             </p>
             <p>
               <span className="text-slate-500">Absender-Postfach:</span> {postfach ? postfach.email : lead.sendStatus === 'gesendet' ? 'nicht zugeordnet (Altbestand)' : '–'}
-              {postfach && (!postfach.aktiv || postfach.fehler || !postfach.refreshTokenEnc) && <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">pausiert/getrennt – Follow-ups warten</span>}
+              {postfach && <span className={`ml-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${postfach.typ === 'smtp' ? 'bg-teal-100 text-teal-800' : 'bg-indigo-100 text-indigo-800'}`}>{postfach.typ === 'smtp' ? 'SMTP/IMAP' : 'Gmail'}</span>}
+              {postfach && (!postfach.aktiv || postfach.fehler || !postfachVerbunden(postfach)) && <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">pausiert/getrennt – Follow-ups warten</span>}
             </p>
             <p>
               <span className="text-slate-500">Antwort:</span>{' '}
@@ -222,8 +224,8 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
                 <KiEinordnung key={lead.id} aktiv leadId={lead.id} einordnung={lead.kiEinordnung ?? null} />
               </Schreibschutz>
             )}
-            {lead.gmailThreadId && (
-              <a href={gmailThreadUrl(lead.antwortThreadId ?? lead.gmailThreadId)} target="_blank" rel="noopener noreferrer" className="inline-block rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
+            {gmailUrl && (
+              <a href={gmailUrl} target="_blank" rel="noopener noreferrer" className="inline-block rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
                 In Gmail öffnen
               </a>
             )}
@@ -239,7 +241,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               start={verlauf.start}
               antwortenErlaubt={schreiben && lead.flowStopp === 'beantwortet'}
               postfachEmail={verlauf.postfach.email}
-              gmailUrl={lead.gmailThreadId ? gmailThreadUrl(lead.antwortThreadId ?? lead.gmailThreadId) : null}
+              gmailUrl={gmailUrl}
               kiAktiv={ki}
             />
           </section>

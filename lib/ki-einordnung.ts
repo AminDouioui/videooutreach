@@ -105,7 +105,7 @@ async function ladeVerlauf(lead: Lead, opt: KiOptionen): Promise<ThreadNachricht
   if (!t.postfach) throw new UniboxFehler('Diesem Lead ist kein Postfach zugeordnet.');
   if (!t.lesezugriff) throw new UniboxFehler(`Für ${t.postfach.email} fehlt der Lesezugriff (Einstellungen → Postfächer „Lesezugriff erteilen“).`);
   const threadId = t.threads[t.start];
-  if (!threadId) throw new UniboxFehler('Zu diesem Lead gibt es noch keinen Gmail-Thread.');
+  if (!threadId) throw new UniboxFehler('Zu diesem Lead gibt es noch keinen Mail-Verlauf.');
   return ladeThread(t.postfach, threadId, { lader: opt.lader, frisch: true, jetzt: opt.jetzt?.getTime() });
 }
 

@@ -27,6 +27,8 @@ const AUSNAHMEN: Record<string, string> = {
 
 /** Erwartete Mindestrolle je Route und Methode */
 const ERWARTET: Record<string, string> = {
+  'POST absender': 'admin',
+  'POST absender/verbindungstest': 'admin',
   'PATCH absender/[id]': 'admin',
   'DELETE absender/[id]': 'admin',
   'POST api-schluessel': 'admin',
@@ -226,6 +228,8 @@ const stichproben: { name: string; laden: () => Promise<Record<string, Handler>>
   { name: 'leads/[id]/ki/entwurf', laden: () => import('../app/api/leads/[id]/ki/entwurf/route') as never, methode: 'POST', mindestens: 'mitglied' },
   { name: 'settings', laden: () => import('../app/api/settings/route') as never, methode: 'PUT', mindestens: 'admin', body: {} },
   { name: 'absender/[id]', laden: () => import('../app/api/absender/[id]/route') as never, methode: 'DELETE', mindestens: 'admin' },
+  { name: 'absender', laden: () => import('../app/api/absender/route') as never, methode: 'POST', mindestens: 'admin', body: { email: 'x@y.de' } },
+  { name: 'absender/verbindungstest', laden: () => import('../app/api/absender/verbindungstest/route') as never, methode: 'POST', mindestens: 'admin', body: {} },
   { name: 'gmail/connect', laden: () => import('../app/api/gmail/connect/route') as never, methode: 'GET', mindestens: 'admin' },
   { name: 'webhooks', laden: () => import('../app/api/webhooks/route') as never, methode: 'POST', mindestens: 'admin', body: { url: 'https://x.de', ereignisse: ['antwort'] } },
   { name: 'webhooks/[id]/geheimnis', laden: () => import('../app/api/webhooks/[id]/geheimnis/route') as never, methode: 'GET', mindestens: 'admin' },

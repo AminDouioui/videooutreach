@@ -1,8 +1,9 @@
 import { and, asc, eq, gte, sql } from 'drizzle-orm';
 import { getDb, schema } from './db';
 import { getEnv } from './env';
-import { absenderName, absenderSignatur, kannAntwortenPruefen, ladeAbsenderMitId, ladePostfachZustaende, markiereAuthFehler, postfachFuerLead, postfachNichtNutzbar, stoppeQuota, type Absender } from './absender';
-import { GmailSendError, pruefeThread, sendRaw, type GmailSender, type ThreadPruefer } from './gmail';
+import { absenderName, absenderSignatur, istSmtp, kannAntwortenPruefen, ladeAbsenderMitId, ladePostfachZustaende, markiereAuthFehler, postfachFuerLead, postfachNichtNutzbar, stoppeQuota, type Absender } from './absender';
+import { GmailSendError, type GmailSender, type PruefKontext, type ThreadPruefer } from './gmail';
+import { treiberFuer } from './postfach-treiber';
 import { pruefeBounceSchutz } from './bounce-schutz-db';
 import { buildEmail, buildMime, istNeuerThread, neueMessageId, oneClickUrl, type BuiltEmail, type MailSchritt } from './mail';
 import { FIRMA_HAT_GEANTWORTET, leadStatusLabel, STATUS_SKIP_PREFIX, statusBeendetFlow } from './lead-status';
@@ -258,10 +259,11 @@ export async function sendLead(leadId: number, opts: SendOptions = {}): Promise<
   if (!kampagne) return { ok: false, kind: 'nicht_gefunden', error: 'Kampagne nicht gefunden' };
   if (kampagne.mitVideo && lead.renderStatus !== 'fertig') return { ok: false, kind: 'nicht_gerendert', error: 'Video ist noch nicht fertig gerendert' };
 
-  const sender = opts.sender ?? sendRaw;
   const wahl = postfachFuerErstmail(opts, jetzt);
   if ('fehler' in wahl) return wahl.fehler;
   const postfach = wahl.absender;
+  // Versand über den Treiber des Postfachs (Gmail-API oder SMTP); Tests können `sender` austauschen
+  const sender = opts.sender ?? treiberFuer(postfach).senden;
 
   try {
     // Variante der Erstmail: gleichmäßig rotierend unter den aktiven; wird erst mit dem Versand gespeichert
@@ -344,13 +346,23 @@ export function wartetWegenAbwesenheit(lead: Pick<typeof schema.leads.$inferSele
 }
 
 /**
+ * Angaben für Postfächer ohne echte Threads (SMTP/IMAP): Adresse des Leads, Zeitpunkt der Erstmail und die Message-IDs
+ * aller an ihn gesendeten Mails. Gmail braucht das nicht.
+ */
+function pruefKontext(lead: typeof schema.leads.$inferSelect, postfach: Absender): PruefKontext | undefined {
+  if (!istSmtp(postfach)) return undefined;
+  const ids = getDb().select({ id: schema.sentMessages.gmailMessageId }).from(schema.sentMessages).where(and(eq(schema.sentMessages.leadId, lead.id), gte(schema.sentMessages.step, 0))).all();
+  return { leadEmail: lead.email, seit: lead.sentAt ? lead.sentAt.getTime() : null, messageIds: [...(lead.rfcMessageId ? [lead.rfcMessageId] : []), ...ids.map((r) => r.id).filter((x): x is string => !!x)] };
+}
+
+/**
  * Prüft alle Threads eines Leads (Erstmail und Follow-ups mit eigenem Betreff = neuer Thread) auf Antwort/Bounce und
  * beendet ggf. den Flow. Eine echte Antwort in irgendeinem Thread entscheidet, danach Bounce, dann Abwesenheit.
  * Liefert true, wenn der Flow (jetzt oder schon vorher) beendet ist. Wirft GmailSendError.
  */
 export async function pruefeAntwort(
   lead: typeof schema.leads.$inferSelect,
-  pruefer: ThreadPruefer = pruefeThread,
+  pruefer: ThreadPruefer | undefined = undefined,
   jetzt: Date = new Date(),
   postfach: Absender | null = postfachFuerLead(lead),
 ): Promise<boolean> {
@@ -358,17 +370,23 @@ export async function pruefeAntwort(
   if (!lead.gmailThreadId) return false;
   // Die Threads liegen im Postfach der Erstmail: nur dort kann geprüft werden
   if (!postfach) throw new GmailSendError({ art: 'sonstig', meldung: 'Postfach der Erstmail nicht gefunden' });
-  let ergebnis: ThreadErgebnis = null;
-  let antwortThread: string | null = null;
-  for (const threadId of threadsDesLeads(lead)) {
-    const e = await pruefer(threadId, postfach);
-    if (e === 'antwort') {
-      ergebnis = e;
-      antwortThread = threadId;
-      break;
+  const stand: { ergebnis: ThreadErgebnis; antwortThread: string | null } = { ergebnis: null, antwortThread: null };
+  const kontext = pruefKontext(lead, postfach);
+  const pruefeAlle = async (pf: ThreadPruefer) => {
+    for (const threadId of threadsDesLeads(lead)) {
+      const e = await pf(threadId, postfach, kontext);
+      if (e === 'antwort') {
+        stand.ergebnis = e;
+        stand.antwortThread = threadId;
+        break;
+      }
+      stand.ergebnis = staerkeresErgebnis(stand.ergebnis, e);
     }
-    ergebnis = staerkeresErgebnis(ergebnis, e);
-  }
+  };
+  // Eigener Prüfer (Tests) oder der Treiber des Postfachs – bei IMAP über eine einzige Verbindung für alle Threads
+  if (pruefer) await pruefeAlle(pruefer);
+  else await treiberFuer(postfach).mitPruefsitzung(postfach, pruefeAlle);
+  const { ergebnis, antwortThread } = stand;
   if (ergebnis === 'antwort') {
     stoppeFlow(lead.id, 'beantwortet', jetzt);
     getDb().update(schema.leads).set({ antwortAt: jetzt, antwortGelesen: false, antwortThreadId: antwortThread !== lead.gmailThreadId ? antwortThread : null }).where(eq(schema.leads.id, lead.id)).run();
@@ -410,7 +428,6 @@ export async function sendFollowup(leadId: number, opts: SendOptions = {}): Prom
   const schritt = ladeFollowups(kampagne.id)[lead.followupsSent];
   if (!schritt) return { ok: false, kind: 'flow_beendet', error: 'Keine weiteren Follow-ups' };
 
-  const sender = opts.sender ?? sendRaw;
   // Immer über das Postfach der Erstmail (der Thread gehört nur dort hin). Ist es pausiert, getrennt, fehlerhaft oder
   // entfernt, wartet das Follow-up – niemals über ein anderes Postfach senden.
   const postfach = postfachFuerLead(lead);
@@ -420,6 +437,7 @@ export async function sendFollowup(leadId: number, opts: SendOptions = {}): Prom
   if (!opts.pruefer && !kannAntwortenPruefen(postfach)) {
     return { ok: false, kind: 'antwort_pruefung_fehlt', absenderId: postfach.id, error: `Postfach ${postfach.email} neu verbinden: Antwort-Erkennung braucht die Leseberechtigung für Kopfzeilen` };
   }
+  const sender = opts.sender ?? treiberFuer(postfach).senden;
 
   try {
     if (await pruefeAntwort(lead, opts.pruefer, jetzt, postfach)) return { ok: false, kind: 'flow_beendet', error: 'Lead hat geantwortet' };

@@ -5,9 +5,11 @@ import { useState } from 'react';
 import { istBounceFehler } from '@/lib/bounce-schutz';
 import type { PostfachAnzeige } from '@/lib/settings-view';
 import { POSTFACH_STATUS_LABEL, type PostfachStatus } from '@/lib/rotation';
+import { SmtpPostfachNeu, VerbindungsFelder, type Verbindung } from './SmtpPostfachFormular';
 
 const MELDUNGEN: Record<string, { text: string; fehler: boolean }> = {
   verbunden: { text: 'Postfach wurde verbunden:', fehler: false },
+  smtp_angelegt: { text: 'SMTP/IMAP-Postfach wurde angelegt:', fehler: false },
   nicht_konfiguriert: { text: 'GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET fehlen in der .env (siehe docs/gmail-einrichtung.md).', fehler: true },
   fehler: { text: 'Verbindung fehlgeschlagen.', fehler: true },
 };
@@ -23,16 +25,24 @@ const STATUS_FARBE: Record<PostfachStatus, string> = {
 const feld = 'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600';
 const knopfRahmen = 'rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60';
 
-/** Liste der Gmail-Postfächer: Status, Tagesstand, Bearbeiten, Pausieren, Neu verbinden, Entfernen, Hinzufügen. */
+/** Liste der Postfächer (Gmail und SMTP/IMAP): Status, Tagesstand, Bearbeiten, Pausieren, Neu verbinden, Entfernen, Hinzufügen. */
 export function PostfaecherVerwaltung({ postfaecher, konfiguriert, hinweis, detail }: { postfaecher: PostfachAnzeige[]; konfiguriert: boolean; hinweis?: string; detail?: string }) {
+  const router = useRouter();
+  const [neuSmtp, setNeuSmtp] = useState(false);
+  const [angelegt, setAngelegt] = useState<string | null>(null);
   const m = hinweis ? MELDUNGEN[hinweis] : undefined;
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5">
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <h2 className="text-base font-semibold">Postfächer</h2>
-        <a href="/api/gmail/connect" className="ml-auto rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">
-          Postfach hinzufügen
-        </a>
+        <div className="ml-auto flex flex-wrap gap-2">
+          <a href="/api/gmail/connect" className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">
+            Gmail-Postfach hinzufügen
+          </a>
+          <button type="button" onClick={() => setNeuSmtp(!neuSmtp)} aria-expanded={neuSmtp} className="rounded-md border border-indigo-600 bg-white px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50">
+            SMTP/IMAP-Postfach hinzufügen
+          </button>
+        </div>
       </div>
       <p className="mb-3 text-sm text-slate-600">
         Erstmails rotieren über die aktiven Postfächer (zuerst das mit den wenigsten Mails heute). Follow-ups und die Antwort-Erkennung laufen immer über das
@@ -44,8 +54,19 @@ export function PostfaecherVerwaltung({ postfaecher, konfiguriert, hinweis, deta
           {m.text} {detail}
         </p>
       )}
+      {angelegt && <p className="mb-3 text-sm text-green-700">{MELDUNGEN.smtp_angelegt.text} {angelegt}</p>}
+      {neuSmtp && (
+        <SmtpPostfachNeu
+          onAbbruch={() => setNeuSmtp(false)}
+          onFertig={(email) => {
+            setNeuSmtp(false);
+            setAngelegt(email);
+            router.refresh();
+          }}
+        />
+      )}
       {postfaecher.length === 0 ? (
-        <p className="rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-500">Noch kein Postfach verbunden. Ohne Postfach wird nichts gesendet.</p>
+        <p className="rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-500">Noch kein Postfach verbunden. Ohne Postfach wird nichts gesendet. Gmail-Konten werden per Google-Anmeldung verbunden, alle anderen Anbieter (Outlook, IONOS, Strato …) über SMTP/IMAP.</p>
       ) : (
         <ul className="space-y-3">
           {postfaecher.map((p) => (
@@ -56,7 +77,8 @@ export function PostfaecherVerwaltung({ postfaecher, konfiguriert, hinweis, deta
       <p className="mt-3 text-xs text-slate-500">
         Angefordert werden „E-Mails senden“ (gmail.send), „Kopfzeilen lesen“ (gmail.metadata, nur um Antworten auf eigene Mails zu erkennen – kein Zugriff auf
         Mail-Inhalte) sowie openid/email (die Adresse des Kontos). Optional je Postfach „Lesezugriff erteilen“ (gmail.readonly): Dann zeigt die Unibox den Verlauf unter
-        „Antworten“ und Antworten lassen sich direkt aus der App senden. Die Zugriffstoken werden verschlüsselt gespeichert.
+        „Antworten“ und Antworten lassen sich direkt aus der App senden. Die Zugriffstoken werden verschlüsselt gespeichert. Bei SMTP/IMAP-Postfächern werden
+        die Passwörter verschlüsselt gespeichert und nie wieder angezeigt; die Antwort-Erkennung und die Unibox lesen über IMAP.
       </p>
     </section>
   );
@@ -68,6 +90,21 @@ function PostfachZeile({ p }: { p: PostfachAnzeige }) {
   const [laedt, setLaedt] = useState(false);
   const [meldung, setMeldung] = useState<{ text: string; fehler: boolean } | null>(null);
   const [w, setW] = useState({ name: p.name, tageslimit: p.tageslimit, signatur: p.signatur, rampeBeginn: p.rampeBeginn });
+  const smtp = p.typ === 'smtp';
+  // Verbindungsangaben (nur SMTP/IMAP); Passwörter bleiben leer = unverändert
+  const [v, setV] = useState<Verbindung>({
+    smtpHost: p.smtp?.host ?? '',
+    smtpPort: p.smtp?.port ?? 587,
+    smtpSicherheit: p.smtp?.sicherheit ?? 'starttls',
+    smtpBenutzer: p.smtp?.benutzer ?? '',
+    smtpPasswort: '',
+    imapHost: p.imap?.host ?? '',
+    imapPort: p.imap?.port ?? 993,
+    imapSicherheit: p.imap?.sicherheit ?? 'ssl',
+    imapBenutzer: p.imap?.benutzer ?? '',
+    imapPasswort: '',
+    imapKopieGesendet: p.imap?.kopieGesendet ?? true,
+  });
 
   async function patch(daten: Record<string, unknown>, ok = 'Gespeichert') {
     setLaedt(true);
@@ -84,14 +121,36 @@ function PostfachZeile({ p }: { p: PostfachAnzeige }) {
 
   async function speichern(e: React.FormEvent) {
     e.preventDefault();
-    await patch({ name: w.name.trim() || null, tageslimit: Number(w.tageslimit), signatur: w.signatur.trim() || null, rampeBeginn: w.rampeBeginn || null });
+    await patch({
+      name: w.name.trim() || null,
+      tageslimit: Number(w.tageslimit),
+      signatur: w.signatur.trim() || null,
+      rampeBeginn: w.rampeBeginn || null,
+      ...(smtp
+        ? {
+            smtpHost: v.smtpHost,
+            smtpPort: v.smtpPort,
+            smtpSicherheit: v.smtpSicherheit,
+            smtpBenutzer: v.smtpBenutzer,
+            imapHost: v.imapHost,
+            imapPort: v.imapPort,
+            imapSicherheit: v.imapSicherheit,
+            imapBenutzer: v.imapBenutzer,
+            imapKopieGesendet: v.imapKopieGesendet,
+            // Leere Passwortfelder werden nicht gesendet: die gespeicherten bleiben unverändert
+            ...(v.smtpPasswort ? { smtpPasswort: v.smtpPasswort } : {}),
+            ...(v.imapPasswort ? { imapPasswort: v.imapPasswort } : {}),
+          }
+        : {}),
+    });
   }
 
   async function entfernen() {
+    const ende = smtp ? 'die gespeicherten Zugangsdaten löschen' : 'den Zugriff bei Google widerrufen';
     const hinweis =
       p.leads > 0
         ? `${p.leads} Lead(s) wurden über dieses Postfach angeschrieben. Der Eintrag bleibt deaktiviert erhalten, deren Follow-ups warten dann, bis das Postfach neu verbunden wird. Zugriff trennen?`
-        : 'Postfach entfernen und den Zugriff bei Google widerrufen?';
+        : `Postfach entfernen und ${ende}?`;
     if (!confirm(`${p.email}: ${hinweis}`)) return;
     setLaedt(true);
     await fetch(`/api/absender/${p.id}`, { method: 'DELETE' });
@@ -102,7 +161,13 @@ function PostfachZeile({ p }: { p: PostfachAnzeige }) {
   return (
     <li className="rounded-md border border-slate-200 p-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="font-medium">{p.email}</span>
+        <span className="break-all font-medium">{p.email}</span>
+        <span
+          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${smtp ? 'bg-teal-100 text-teal-800' : 'bg-indigo-100 text-indigo-800'}`}
+          title={smtp ? 'Versand über SMTP, Antworten über IMAP' : 'Versand und Antworten über die Gmail-API'}
+        >
+          {smtp ? 'SMTP/IMAP' : 'Gmail'}
+        </span>
         {p.name && <span className="text-sm text-slate-500">{p.name}</span>}
         <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_FARBE[p.status]}`}>{POSTFACH_STATUS_LABEL[p.status]}</span>
         <span className="text-sm tabular-nums text-slate-600" title="Heute gesendet / effektives Tageslimit (Rampe berücksichtigt)">
@@ -114,7 +179,7 @@ function PostfachZeile({ p }: { p: PostfachAnzeige }) {
           </span>
         )}
         {p.verbunden && (
-          <span className="text-xs text-slate-500" title="Lesezugriff (gmail.readonly): Verlauf lesen und aus der App antworten">
+          <span className="text-xs text-slate-500" title={smtp ? 'Verlauf per IMAP lesen und aus der App antworten' : 'Lesezugriff (gmail.readonly): Verlauf lesen und aus der App antworten'}>
             Unibox: {p.unibox ? 'ja' : 'nein'}
           </span>
         )}
@@ -127,14 +192,16 @@ function PostfachZeile({ p }: { p: PostfachAnzeige }) {
           <button onClick={() => setBearbeiten(!bearbeiten)} className={knopfRahmen}>
             Bearbeiten
           </button>
-          {p.verbunden && !p.unibox && (
+          {!smtp && p.verbunden && !p.unibox && (
             <a href={`/api/gmail/connect?absender=${p.id}&lesezugriff=1`} className={knopfRahmen} title="Zusätzlich gmail.readonly anfordern, damit Antworten in der App gelesen und beantwortet werden können">
               Lesezugriff erteilen
             </a>
           )}
-          <a href={`/api/gmail/connect?absender=${p.id}`} className={knopfRahmen}>
-            Neu verbinden
-          </a>
+          {!smtp && (
+            <a href={`/api/gmail/connect?absender=${p.id}`} className={knopfRahmen}>
+              Neu verbinden
+            </a>
+          )}
           <button onClick={entfernen} disabled={laedt} className={`${knopfRahmen} text-red-700`}>
             Entfernen
           </button>
@@ -145,9 +212,23 @@ function PostfachZeile({ p }: { p: PostfachAnzeige }) {
           Automatisch pausiert (Bounce-Schutz): {p.fehler}. Nach Prüfung der Adressliste mit „Aktivieren“ wieder freigeben.
         </p>
       )}
-      {p.fehler && !istBounceFehler(p.fehler) && <p className="mt-2 text-sm text-red-700">Pausiert wegen Fehler (bitte neu verbinden): {p.fehler}</p>}
-      {!p.verbunden && <p className="mt-2 text-sm text-slate-500">Nicht verbunden{p.leads > 0 ? ` – ${p.leads} Lead(s) hängen noch an diesem Postfach, ihre Follow-ups warten.` : '.'}</p>}
-      {p.verbunden && !p.antwortPruefung && (
+      {p.fehler && !istBounceFehler(p.fehler) && (
+        <p className="mt-2 break-words text-sm text-red-700">
+          Pausiert wegen Fehler ({smtp ? 'bitte Zugangsdaten unter „Bearbeiten“ prüfen' : 'bitte neu verbinden'}): {p.fehler}
+        </p>
+      )}
+      {smtp && p.smtp && p.imap && (
+        <p className="mt-1 break-all text-xs text-slate-500">
+          SMTP {p.smtp.host}:{p.smtp.port} ({p.smtp.sicherheit === 'ssl' ? 'SSL' : p.smtp.sicherheit === 'starttls' ? 'STARTTLS' : 'unverschlüsselt'}) · IMAP {p.imap.host}:{p.imap.port} ({p.imap.sicherheit === 'ssl' ? 'SSL' : p.imap.sicherheit === 'starttls' ? 'STARTTLS' : 'unverschlüsselt'})
+        </p>
+      )}
+      {!p.verbunden && (
+        <p className="mt-2 text-sm text-slate-500">
+          Nicht verbunden{smtp ? ' (Zugangsdaten gelöscht – unter „Bearbeiten“ neu eintragen)' : ''}
+          {p.leads > 0 ? ` – ${p.leads} Lead(s) hängen noch an diesem Postfach, ihre Follow-ups warten.` : '.'}
+        </p>
+      )}
+      {!smtp && p.verbunden && !p.antwortPruefung && (
         <p className="mt-2 text-sm text-amber-800">Für Follow-ups dieses Postfachs bitte „Neu verbinden“: Die Antwort-Erkennung braucht eine zusätzliche Berechtigung.</p>
       )}
       {bearbeiten && (
@@ -166,6 +247,7 @@ function PostfachZeile({ p }: { p: PostfachAnzeige }) {
             Signatur
             <textarea value={w.signatur} onChange={(e) => setW({ ...w, signatur: e.target.value })} rows={5} className={`${feld} font-mono`} placeholder="leer = Standard-Signatur" />
           </label>
+          {smtp && <VerbindungsFelder v={v} setV={setV} email={p.email} absenderId={p.id} />}
           <label className="block text-sm font-medium text-slate-700 sm:max-w-xs">
             Rampen-Beginn (optional)
             <input type="date" value={w.rampeBeginn} onChange={(e) => setW({ ...w, rampeBeginn: e.target.value })} className={feld} />

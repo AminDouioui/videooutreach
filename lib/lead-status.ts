@@ -149,3 +149,12 @@ export function firmenDomain(email: string): string | null {
 export function gmailThreadUrl(threadId: string): string {
   return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(threadId)}`;
 }
+
+/**
+ * Gmail-Link nur für Gmail-Postfächer: SMTP/IMAP-Threads (`smtp:<Message-ID>`) gibt es in Gmail nicht.
+ * `typ` = Typ des Postfachs der Erstmail (unbekannt = Gmail, wie im Bestand).
+ */
+export function gmailLink(threadId: string | null | undefined, typ?: string | null): string | null {
+  if (!threadId || typ === 'smtp' || threadId.startsWith('smtp:')) return null;
+  return gmailThreadUrl(threadId);
+}

@@ -24,8 +24,9 @@ export const EVENT_TYPEN = [
 ] as const;
 
 /**
- * Absender-Postfächer (Gmail). Erstmails rotieren über die aktiven Postfächer; Follow-ups und Antwortprüfung laufen
- * immer über das Postfach der Erstmail (leads.absender_id). Der Token wird verschlüsselt gespeichert; leer = getrennt.
+ * Absender-Postfächer (Gmail oder SMTP/IMAP, siehe `typ`). Erstmails rotieren über die aktiven Postfächer; Follow-ups und Antwortprüfung laufen
+ * immer über das Postfach der Erstmail (leads.absender_id). Gmail: Token verschlüsselt, leer = getrennt. SMTP: Passwörter
+ * verschlüsselt in zugangsdaten_enc, leer = getrennt.
  */
 export const absender = sqliteTable('absender', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -48,6 +49,22 @@ export const absender = sqliteTable('absender', {
   fehler: text('fehler'),
   // Erster Tag der Aufwärmrampe ('YYYY-MM-DD'); null = Tag der ersten Mail dieses Postfachs
   rampeBeginn: text('rampe_beginn'),
+  // Postfach-Typ: 'gmail' (OAuth, Gmail-API) oder 'smtp' (SMTP-Versand + IMAP-Lesen, z. B. Outlook/IONOS/Strato)
+  typ: text('typ', { enum: ['gmail', 'smtp'] }).notNull().default('gmail'),
+  // Nur typ 'smtp': Server und Benutzer (Passwörter stehen verschlüsselt in zugangsdatenEnc)
+  smtpHost: text('smtp_host'),
+  smtpPort: integer('smtp_port'),
+  // 'ssl' (implizites TLS), 'starttls' oder 'keine' (unverschlüsselt, nur mit Warnhinweis)
+  smtpSicherheit: text('smtp_sicherheit', { enum: ['ssl', 'starttls', 'keine'] }),
+  smtpBenutzer: text('smtp_benutzer'),
+  imapHost: text('imap_host'),
+  imapPort: integer('imap_port'),
+  imapSicherheit: text('imap_sicherheit', { enum: ['ssl', 'starttls', 'keine'] }),
+  imapBenutzer: text('imap_benutzer'),
+  // AES-verschlüsseltes JSON {smtpPasswort, imapPasswort}; '' = nicht gesetzt/getrennt
+  zugangsdatenEnc: text('zugangsdaten_enc').notNull().default(''),
+  // Gesendete Mails zusätzlich per IMAP im „Gesendet“-Ordner ablegen (nötig, wenn der Server das nicht selbst tut)
+  imapKopieGesendet: integer('imap_kopie_gesendet', { mode: 'boolean' }).notNull().default(true),
   createdAt: ts('created_at').notNull().default(jetzt),
 });
 

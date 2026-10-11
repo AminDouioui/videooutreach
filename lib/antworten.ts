@@ -6,7 +6,8 @@ import { istBounceFehler } from './bounce-schutz';
 import { getDb, schema } from './db';
 import { getEnv } from './env';
 import { threadsDesLeads } from './followup-varianten-db';
-import { GmailSendError, holeThreadRoh, sendRaw, type GmailSender, type ThreadLader } from './gmail';
+import { GmailSendError, type GmailSender, type ThreadLader } from './gmail';
+import { treiberFuer } from './postfach-treiber';
 import { antwortBetreff, buildAntwortMail, buildMime, neueMessageId, oneClickUrl } from './mail';
 import { extrahiereAdresse, fuerAnzeige, parseThread, type NachrichtMitKopf, type ThreadNachricht } from './mail-parse';
 import { merkePostfachFehler, senderInfo } from './send';
@@ -37,7 +38,7 @@ export function fehlerText(e: unknown): string {
       if (l.includes('berechtigung fehlt') || l.includes('insufficient')) return 'Es fehlt die Berechtigung zum Lesen. Bitte unter Einstellungen → Postfächer „Lesezugriff erteilen“.';
       return m;
     }
-    if (l.includes('not found') || l.includes('404')) return 'Der Thread wurde in Gmail nicht gefunden (gelöscht oder zu einem anderen Konto gehörig).';
+    if (l.includes('not found') || l.includes('404')) return 'Der Thread wurde im Postfach nicht gefunden (gelöscht oder zu einem anderen Konto gehörig).';
     return m;
   }
   const m = e instanceof Error ? e.message : String(e);
@@ -60,7 +61,7 @@ export function leereThreadCache(absenderId?: number, threadId?: string): void {
 export type LadeOptionen = { lader?: ThreadLader; /** Cache ignorieren */ frisch?: boolean; jetzt?: number };
 
 /** Prüft, ob das Postfach Threads lesen darf; wirft sonst UniboxFehler mit Hinweis. */
-function pruefeLesezugriff(absender: Pick<Absender, 'email' | 'refreshTokenEnc' | 'scopes'>): void {
+function pruefeLesezugriff(absender: Pick<Absender, 'email' | 'refreshTokenEnc' | 'scopes' | 'typ' | 'zugangsdatenEnc'>): void {
   if (!postfachVerbunden(absender)) throw new UniboxFehler(`Das Postfach ${absender.email} ist nicht verbunden.`);
   if (!kannThreadLesen(absender)) throw new UniboxFehler(`Für ${absender.email} fehlt der Lesezugriff. Unter Einstellungen → Postfächer „Lesezugriff erteilen“.`);
 }
@@ -72,7 +73,7 @@ export async function ladeThreadMitKopf(absender: Absender, threadId: string, op
   const key = `${absender.id}:${threadId}`;
   const treffer = cache.get(key);
   if (!opt.frisch && treffer && treffer.bis > jetzt) return treffer.daten;
-  const roh = await (opt.lader ?? holeThreadRoh)(threadId, absender);
+  const roh = await (opt.lader ?? treiberFuer(absender).ladeThread)(threadId, absender);
   const daten = parseThread(roh, absender.email);
   if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
   cache.set(key, { bis: jetzt + CACHE_MS, daten });
@@ -120,7 +121,7 @@ export async function ladeLeadThread(leadId: number, threadId: string | null, op
     const t = leadThreads(lead);
     if (!t.postfach) throw new UniboxFehler('Diesem Lead ist kein Postfach zugeordnet (noch keine Mail gesendet).');
     const id = threadId ?? t.threads[t.start];
-    if (!id) throw new UniboxFehler('Zu diesem Lead gibt es noch keinen Gmail-Thread.');
+    if (!id) throw new UniboxFehler('Zu diesem Lead gibt es noch keinen Mail-Verlauf.');
     if (!t.threads.includes(id)) throw new UniboxFehler('Dieser Thread gehört nicht zu dem Lead.', 400);
     return { ok: true, status: 200, threadId: id, nachrichten: await ladeThread(t.postfach, id, opt) };
   } catch (e) {
@@ -157,7 +158,7 @@ export async function sendeAntwort(leadId: number, textRoh: string, threadWunsch
     pruefeLesezugriff(postfach);
     if (postfach.fehler && !istBounceFehler(postfach.fehler)) throw new UniboxFehler(`Das Postfach ${postfach.email} hat einen Fehler (bitte neu verbinden): ${postfach.fehler}`);
     const threadId = threadWunsch ?? t.threads[t.start];
-    if (!threadId) throw new UniboxFehler('Zu diesem Lead gibt es noch keinen Gmail-Thread.');
+    if (!threadId) throw new UniboxFehler('Zu diesem Lead gibt es noch keinen Mail-Verlauf.');
     if (!t.threads.includes(threadId)) throw new UniboxFehler('Dieser Thread gehört nicht zu dem Lead.', 400);
 
     // Immer frisch lesen: die Message-ID der letzten fremden Nachricht muss stimmen
@@ -189,7 +190,7 @@ export async function sendeAntwort(leadId: number, textRoh: string, threadWunsch
 
     let res: { id: string; threadId: string };
     try {
-      res = await (opt.sender ?? sendRaw)(raw, threadId, postfach);
+      res = await (opt.sender ?? treiberFuer(postfach).senden)(raw, threadId, postfach);
     } catch (e) {
       // Nur Fehler des Sendens betreffen den Versandzustand des Postfachs (nicht das Lesen)
       if (e instanceof GmailSendError) merkePostfachFehler(e.info.art, e.info.meldung, postfach, jetzt);

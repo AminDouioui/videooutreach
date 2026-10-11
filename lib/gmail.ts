@@ -10,8 +10,11 @@ import type { GmailNachricht } from './mail-parse';
 export { classifyGmailError, GMAIL_METADATA_SCOPE, GMAIL_READONLY_SCOPE, GMAIL_SCOPE };
 export type { GmailFehler };
 
-/** Was die Gmail-Funktionen von einem Postfach brauchen */
-export type GmailPostfach = Pick<Absender, 'id' | 'email' | 'refreshTokenEnc'>;
+/**
+ * Was die Versand-/Lesefunktionen von einem Postfach brauchen. Die Gmail-Funktionen brauchen nur id, E-Mail und Token;
+ * der SMTP-Treiber (lib/smtp-treiber.ts) liest zusätzlich die übrigen Spalten des Postfachs.
+ */
+export type GmailPostfach = Pick<Absender, 'id' | 'email' | 'refreshTokenEnc'> & Partial<Omit<Absender, 'id' | 'email' | 'refreshTokenEnc'>>;
 
 /**
  * Funktion, die eine fertige base64url-Nachricht über das Postfach versendet (für Tests austauschbar). Mit threadId
@@ -21,8 +24,20 @@ export type GmailSender = (raw: string, threadId: string | undefined, postfach: 
 
 /** Ergebnis der Thread-Prüfung: Antwort des Leads, Bounce, Abwesenheitsnotiz (zählt nicht als Antwort) oder nichts */
 export type ThreadErgebnis = 'antwort' | 'bounce' | 'abwesenheit' | null;
+/**
+ * Zusätzliche Angaben zum Lead für Postfächer ohne echte Threads (SMTP/IMAP): Antworten werden dort über Message-IDs
+ * und die Adresse des Leads zugeordnet. Gmail braucht sie nicht und ignoriert sie.
+ */
+export type PruefKontext = {
+  /** Adresse des Leads: Mails von ihr nach `seit` zählen als Antwort */
+  leadEmail?: string | null;
+  /** Zeitpunkt der Erstmail (Unix-ms) */
+  seit?: number | null;
+  /** Message-IDs aller Mails, die wir an den Lead gesendet haben (Bounces nennen die abgewiesene ID) */
+  messageIds?: string[];
+};
 /** Prüft einen Thread im Postfach der Erstmail auf Antworten (für Tests austauschbar). Wirft GmailSendError. */
-export type ThreadPruefer = (threadId: string, postfach: GmailPostfach) => Promise<ThreadErgebnis>;
+export type ThreadPruefer = (threadId: string, postfach: GmailPostfach, kontext?: PruefKontext) => Promise<ThreadErgebnis>;
 
 /** Fehler beim Versand mit Klassifizierung. */
 export class GmailSendError extends Error {

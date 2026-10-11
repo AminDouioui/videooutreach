@@ -8,7 +8,7 @@ import { leadThreads } from '@/lib/antworten';
 import { getDb, schema } from '@/lib/db';
 import { kiAktiv } from '@/lib/ki';
 import { KI_KATEGORIE_LABEL, type KiKategorie } from '@/lib/ki-kategorien';
-import { gmailThreadUrl, LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
+import { gmailLink, LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
 import { ladeAntworten, parseAntwortFilter } from '@/lib/lead-listen';
 import { Schreibschutz } from '@/components/Schreibschutz';
 import { hatRolle } from '@/lib/auth';
@@ -132,7 +132,7 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
 
 function Detail({ lead, kampagne, zurueck, ki, schreiben }: { lead: typeof schema.leads.$inferSelect; kampagne: string; zurueck: string; ki: boolean; schreiben: boolean }) {
   const t = leadThreads(lead);
-  const gmailUrl = lead.gmailThreadId ? gmailThreadUrl(lead.antwortThreadId ?? lead.gmailThreadId) : null;
+  const gmailUrl = gmailLink(lead.antwortThreadId ?? lead.gmailThreadId, t.postfach?.typ);
   const personName = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
   const wann = lead.antwortAt ?? lead.flowStoppAt;
   return (
