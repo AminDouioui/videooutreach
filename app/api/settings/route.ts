@@ -28,6 +28,8 @@ const bodySchema = z.object({
   rampeBeginn: z.union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT')]),
   bounceSchwellePostfach: z.coerce.number().int().min(1).max(100),
   impressumUrl: urlOderLeer,
+  // Prozessia-Schreibregeln prüfen; fehlt das Feld, bleibt die Einstellung unverändert
+  schreibregelnAktiv: z.boolean().optional(),
   datenschutzUrl: urlOderLeer,
   // Nur mit KI-Schlüssel (Anthropic oder OpenRouter) sichtbar; fehlt das Feld, bleibt die Einstellung unverändert
   kiAutoStatus: z.enum(KI_AUTO_STATUS).optional(),
@@ -65,6 +67,7 @@ export async function PUT(req: Request) {
   setSetting('bounce_schwelle_postfach', String(d.bounceSchwellePostfach));
   setOrDelete('impressum_url', d.impressumUrl);
   setOrDelete('datenschutz_url', d.datenschutzUrl);
+  if (d.schreibregelnAktiv !== undefined) setSetting('schreibregeln_aktiv', d.schreibregelnAktiv ? '1' : '0');
   if (d.kiAutoStatus) setSetting('ki_auto_status', d.kiAutoStatus);
   if (d.kiKlassifizierer) setSetting('ki_klassifizierer', d.kiKlassifizierer);
   if (d.kiEntwurfAnbieter) setSetting('ki_entwurf_anbieter', d.kiEntwurfAnbieter);

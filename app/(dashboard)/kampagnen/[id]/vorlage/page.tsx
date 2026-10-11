@@ -10,6 +10,7 @@ import { ladeAbsender, postfachNichtNutzbar } from '@/lib/absender';
 import { ladeFollowupVarianten } from '@/lib/followup-varianten-db';
 import { schreibhilfeVerfuegbar } from '@/lib/ki';
 import { ladeFollowups } from '@/lib/send';
+import { schreibregelnAktiv } from '@/lib/settings';
 import { STANDARD_VARIANTE } from '@/lib/varianten';
 import { ladeVarianten, variantenZaehler } from '@/lib/varianten-db';
 import { Schreibschutz } from '@/components/Schreibschutz';
@@ -33,6 +34,7 @@ export default async function VorlagePage({ params }: { params: Promise<{ id: st
   const zusatz = ladeVarianten(id).map((v) => ({ id: v.id, kuerzel: v.kuerzel, betreff: v.betreff, text: v.text, aktiv: v.aktiv, verwendet: zaehler[v.kuerzel] ?? 0 }));
   const postfaecher = ladeAbsender().map((a) => ({ id: a.id, email: a.email, nutzbar: postfachNichtNutzbar(a) === null }));
   const ki = schreibhilfeVerfuegbar();
+  const regeln = schreibregelnAktiv();
   const followups = ladeFollowups(id).map((f) => ({
     waitDays: f.waitDays,
     body: f.body,
@@ -53,13 +55,13 @@ export default async function VorlagePage({ params }: { params: Promise<{ id: st
 
       <Schreibschutz gesperrt={gesperrt} hinweis="Nur Ansicht: Mit Ihrer Rolle können Sie den E-Mail-Flow nicht ändern.">
       <h2 className="mb-3 text-base font-semibold">Schritt 1 · Erstmail (Variante A)</h2>
-      <TemplateEditor campaignId={id} subject={k.emailSubjectTemplate} body={k.emailBodyTemplate} postfaecher={postfaecher} leads={leadOptionen} mitVideo={k.mitVideo} extraSpalten={extraSpalten} kiAktiv={ki} />
+      <TemplateEditor campaignId={id} subject={k.emailSubjectTemplate} body={k.emailBodyTemplate} postfaecher={postfaecher} leads={leadOptionen} mitVideo={k.mitVideo} extraSpalten={extraSpalten} kiAktiv={ki} schreibregeln={regeln} />
 
       <h2 className="mb-3 mt-10 text-base font-semibold">A/B-Test</h2>
-      <VariantenEditor campaignId={id} initial={zusatz} extraSpalten={extraSpalten} vorschauLeadId={leads[0]?.id ?? null} kiAktiv={ki} />
+      <VariantenEditor campaignId={id} initial={zusatz} extraSpalten={extraSpalten} vorschauLeadId={leads[0]?.id ?? null} kiAktiv={ki} schreibregeln={regeln} />
 
       <h2 className="mb-3 mt-10 text-base font-semibold">Follow-ups</h2>
-      <FollowupEditor campaignId={id} initial={followups} leads={leadOptionen} varianten={[STANDARD_VARIANTE, ...zusatz.map((v) => v.kuerzel)]} mitVideo={k.mitVideo} extraSpalten={extraSpalten} kiAktiv={ki} />
+      <FollowupEditor campaignId={id} initial={followups} leads={leadOptionen} varianten={[STANDARD_VARIANTE, ...zusatz.map((v) => v.kuerzel)]} mitVideo={k.mitVideo} extraSpalten={extraSpalten} kiAktiv={ki} schreibregeln={regeln} />
       </Schreibschutz>
     </div>
   );

@@ -31,7 +31,12 @@ export type SettingKey =
   | 'openai_api_key'
   // Modell-IDs (Klartext, optional; leer = Standard aus .env bzw. eingebauter Standard)
   | 'openai_model'
-  | 'jev_modell';
+  | 'jev_modell'
+  // Prozessia-Schreibregeln prüfen: '0' = aus, sonst an (Standard)
+  | 'schreibregeln_aktiv'
+  // Brain-Anbindung (Lead-Kontext): URL im Klartext, Token AES-GCM verschlüsselt (lib/brain.ts)
+  | 'brain_url'
+  | 'brain_token';
 
 export function getSetting(key: SettingKey): string | null {
   const row = getDb().select().from(schema.settings).where(eq(schema.settings.key, key)).get();
@@ -89,6 +94,11 @@ export function rampeEinstellung(): RampeEinstellung {
 export function bounceSchwellePostfach(): number {
   const n = Number(getSetting('bounce_schwelle_postfach'));
   return Number.isFinite(n) && n >= 1 && n <= 100 ? n : 5;
+}
+
+/** Prozessia-Schreibregeln (keine Gedankenstriche/Trenner/Klammern, Wahrheitsregel) prüfen: Standard an. */
+export function schreibregelnAktiv(): boolean {
+  return getSetting('schreibregeln_aktiv') !== '0';
 }
 
 export const KI_AUTO_STATUS = ['aus', 'vorschlagen', 'automatisch'] as const;
