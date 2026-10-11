@@ -220,12 +220,8 @@ export function SmtpPostfachNeu({ onFertig, onAbbruch }: { onFertig: (email: str
     setVorlage(schluessel);
     const t = findeVorlage(schluessel);
     if (!t) return;
-    // Bei „Sonstige“ bleiben bereits eingetragene Server stehen
-    setV(
-      schluessel === 'sonstige'
-        ? { ...v, smtpPort: t.smtpPort, smtpSicherheit: t.smtpSicherheit, imapPort: t.imapPort, imapSicherheit: t.imapSicherheit, imapKopieGesendet: !t.serverSpeichertGesendet }
-        : { ...v, smtpHost: t.smtpHost, smtpPort: t.smtpPort, smtpSicherheit: t.smtpSicherheit, imapHost: t.imapHost, imapPort: t.imapPort, imapSicherheit: t.imapSicherheit, imapKopieGesendet: !t.serverSpeichertGesendet },
-    );
+    // „Sonstige“ beginnt mit leeren Servern (keine Reste der vorher gewählten Vorlage)
+    setV({ ...v, smtpHost: t.smtpHost, smtpPort: t.smtpPort, smtpSicherheit: t.smtpSicherheit, imapHost: t.imapHost, imapPort: t.imapPort, imapSicherheit: t.imapSicherheit, imapKopieGesendet: !t.serverSpeichertGesendet });
   }
 
   async function speichern(e: React.FormEvent) {
