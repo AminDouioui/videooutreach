@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { eq } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { KiAnfrage, KiClient } from './ki';
 import type { GmailNachricht } from './mail-parse';
 import { legePostfachAn } from './test-postfach';
@@ -21,6 +21,8 @@ Object.assign(process.env, {
   SEND_MAX_GAP_MINUTES: '9',
 });
 delete process.env.ANTHROPIC_API_KEY;
+delete process.env.OPENROUTER_API_KEY;
+delete process.env.OPENAI_API_KEY;
 
 type Mods = {
   db: typeof import('./db');
@@ -96,6 +98,8 @@ beforeEach(async () => {
   const { leereThreadCache } = await import('./antworten');
   leereThreadCache();
   m.settings.deleteSetting('ki_auto_status');
+  m.settings.deleteSetting('ki_klassifizierer');
+  m.settings.deleteSetting('ki_entwurf_anbieter');
 });
 
 describe('Einordnung speichern', () => {
@@ -104,7 +108,7 @@ describe('Einordnung speichern', () => {
     const { anfragen, ki } = fake(klasse('interessiert', 0.97));
     const res = await m.ki.ordneLeadEin(l.id, { ki, lader: lader(), jetzt: T0 });
     expect(res).toMatchObject({ ok: true, angewendet: false });
-    expect(lead(l.id).kiEinordnung).toEqual({ kategorie: 'interessiert', konfidenz: 0.97, begruendung: 'Begründung.', at: T0.getTime(), angewendet: false });
+    expect(lead(l.id).kiEinordnung).toEqual({ kategorie: 'interessiert', konfidenz: 0.97, begruendung: 'Begründung.', at: T0.getTime(), angewendet: false, modell: 'anthropic' });
     expect(lead(l.id).leadStatus).toBe('offen');
     expect(anfragen).toHaveLength(1);
     expect(anfragen[0].nutzer).toContain(ANTWORT_TEXT);
@@ -319,5 +323,175 @@ describe('Routen', () => {
     expect(video.anfragen).toHaveLength(2); // zweiter Versuch
     expect((await m.routen.vorlageHandler({ ki: gut.ki })(post({ beschreibung: '', art: 'erstmail' }), ctx(l.campaignId))).status).toBe(400);
     expect((await m.routen.vorlageHandler({ ki: gut.ki })(post({ beschreibung: 'x', art: 'erstmail' }), ctx(999_999))).status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------- Jev (OpenRouter)
+
+describe('Jev als Klassifizierer', () => {
+  const jevAntwort = (choice: string, probabilities: Record<string, number>, confidence?: number) => ({ answers: { kategorie: { choice, ...(confidence === undefined ? {} : { confidence }), probabilities } } });
+  /** fetch-Attrappe: merkt sich die Anfragen, liefert feste Antworten */
+  function jevFake(antwort: object | number) {
+    const aufrufe: { url: string; init: RequestInit }[] = [];
+    const jevFetch = (async (url: string, init: RequestInit) => {
+      aufrufe.push({ url, init });
+      return typeof antwort === 'number' ? new Response('x', { status: antwort }) : new Response(JSON.stringify(antwort), { status: 200 });
+    }) as unknown as typeof fetch;
+    return { aufrufe, jevFetch };
+  }
+  const setzeSchluessel = async (anthropic?: string, openrouter?: string) => {
+    const { resetEnvCache } = await import('./env');
+    for (const [k, v] of [['ANTHROPIC_API_KEY', anthropic], ['OPENROUTER_API_KEY', openrouter]] as const) {
+      if (v) process.env[k] = v;
+      else delete process.env[k];
+    }
+    resetEnvCache();
+  };
+  afterEach(() => setzeSchluessel());
+
+  it('Einordnung mit Jev: speichert modell „jev“, Begründung aus den Wahrscheinlichkeiten; es geht nur der Text ohne Zitat raus', async () => {
+    await setzeSchluessel(undefined, 'or-key');
+    const l = await neuerLead();
+    const f = jevFake(jevAntwort('interessiert', { interessiert: 0.92, spaeter: 0.05, sonstiges: 0.02, abmeldung: 0.004 }, 0.92));
+    const res = await m.ki.ordneLeadEin(l.id, { jevFetch: f.jevFetch, lader: lader(), jetzt: T0 });
+    expect(res).toMatchObject({ ok: true, angewendet: false });
+    expect(lead(l.id).kiEinordnung).toEqual({ kategorie: 'interessiert', konfidenz: 0.92, begruendung: 'Jev: 92 % interessiert, 5 % später, 2 % sonstiges', at: T0.getTime(), angewendet: false, modell: 'jev' });
+    expect(f.aufrufe).toHaveLength(1);
+    const body = JSON.parse(String(f.aufrufe[0].init.body));
+    expect(body.state).toEqual({ betreff: 'Re: Ihr Video', text: ANTWORT_TEXT, sprache: 'de' });
+    expect(JSON.stringify(body)).not.toContain('Hallo Max, hier Ihr Video');
+  });
+  it('Auto-Status mit Jev-Ergebnis: ab 0,8 angewendet, darunter nur Vorschlag', async () => {
+    await setzeSchluessel(undefined, 'or-key');
+    m.settings.setSetting('ki_auto_status', 'automatisch');
+    const hoch = await neuerLead();
+    const r1 = await m.ki.ordneLeadEin(hoch.id, { jevFetch: jevFake(jevAntwort('interessiert', { interessiert: 0.9, sonstiges: 0.1 })).jevFetch, lader: lader(), jetzt: T0 });
+    expect(r1).toMatchObject({ ok: true, angewendet: true });
+    expect(lead(hoch.id).leadStatus).toBe('interessiert');
+    const niedrig = await neuerLead();
+    const r2 = await m.ki.ordneLeadEin(niedrig.id, { jevFetch: jevFake(jevAntwort('nicht_interessiert', { nicht_interessiert: 0.6, spaeter: 0.4 })).jevFetch, lader: lader(), jetzt: T0 });
+    expect(r2).toMatchObject({ ok: true, angewendet: false });
+    expect(lead(niedrig.id).leadStatus).toBe('offen');
+  });
+  it('Auswahl: Standard Jev bei OpenRouter-Schlüssel, sonst Anthropic; Einstellung gilt nur, wenn deren Schlüssel gesetzt ist', async () => {
+    await setzeSchluessel();
+    expect(m.settings.kiKlassifizierer()).toBeNull();
+    await setzeSchluessel('sk-a');
+    expect(m.settings.kiKlassifizierer()).toBe('anthropic');
+    await setzeSchluessel('sk-a', 'or-key');
+    expect(m.settings.kiKlassifizierer()).toBe('jev');
+    expect(m.settings.verfuegbareKlassifizierer()).toEqual(['anthropic', 'jev']);
+    m.settings.setSetting('ki_klassifizierer', 'anthropic');
+    expect(m.settings.kiKlassifizierer()).toBe('anthropic');
+    expect(m.ki.waehleKlassifizierer()).toBe('anthropic');
+    await setzeSchluessel(undefined, 'or-key');
+    expect(m.settings.kiKlassifizierer()).toBe('jev'); // gewählter Anthropic-Schlüssel fehlt
+    m.settings.setSetting('ki_klassifizierer', 'jev');
+    await setzeSchluessel('sk-a');
+    expect(m.settings.kiKlassifizierer()).toBe('anthropic');
+  });
+  it('Die Einstellung entscheidet bei beiden Schlüsseln: Anthropic gewählt → modell „anthropic“ (Jev wird nicht angefragt)', async () => {
+    await setzeSchluessel('sk-a', 'or-key');
+    m.settings.setSetting('ki_klassifizierer', 'anthropic');
+    const l = await neuerLead();
+    const j = jevFake(jevAntwort('interessiert', { interessiert: 1 }));
+    // injizierter Anthropic-Client + jevFetch: der Client gewinnt
+    const res = await m.ki.ordneLeadEin(l.id, { ki: fake(klasse('spaeter')).ki, jevFetch: j.jevFetch, lader: lader(), jetzt: T0 });
+    expect(res.ok && res.einordnung.modell).toBe('anthropic');
+    expect(j.aufrufe).toHaveLength(0);
+  });
+  it('Nur OPENROUTER_API_KEY: Warteschlange, Einstellungen und Routen funktionieren, Schreibhilfe/Entwurf bleiben aus', async () => {
+    await setzeSchluessel(undefined, 'or-key');
+    const l = await neuerLead({ antwortAt: new Date(T0.getTime() - 24 * 3600_000) }); // ältester offener Fall: kommt zuerst dran
+    const f = jevFake(jevAntwort('spaeter', { spaeter: 0.85, sonstiges: 0.15 }));
+    const { klassifizierungVerfuegbar, schreibhilfeVerfuegbar } = await import('./ki');
+    expect([klassifizierungVerfuegbar(), schreibhilfeVerfuegbar()]).toEqual([true, false]);
+    expect(await m.ki.verarbeiteKiWarteschlange({ jevFetch: f.jevFetch, lader: lader(), jetzt: T0 })).toBe(l.id);
+    expect(lead(l.id).kiEinordnung).toMatchObject({ kategorie: 'spaeter', modell: 'jev' });
+    const ev = m.settingsView.ladeEinstellungen();
+    expect(ev).toMatchObject({ kiAktiv: true, kiSchreibhilfe: false, kiKlassifizierer: 'jev', kiKlassifiziererOptionen: ['jev'] });
+    const post = () => new Request('http://x/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const ctx = { params: Promise.resolve({ id: String(l.id) }) };
+    const ein = await m.routen.einordnenHandler({ jevFetch: jevFake(jevAntwort('interessiert', { interessiert: 0.9 })).jevFetch, lader: lader() })(post(), ctx);
+    expect(ein.status).toBe(200);
+    expect((await ein.json()).einordnung.modell).toBe('jev');
+    expect((await m.routen.entwurfHandler({ lader: lader() })(post(), ctx)).status).toBe(404);
+    expect((await m.routen.vorlageHandler()(new Request('http://x/api', { method: 'POST', body: JSON.stringify({ beschreibung: 'x', art: 'erstmail' }) }), { params: Promise.resolve({ id: String(l.campaignId) }) })).status).toBe(404);
+  });
+  it('Jev-Fehler (401, 402, 429, 5xx, Format) → verständliche Meldung statt Absturz, nichts gespeichert', async () => {
+    await setzeSchluessel(undefined, 'or-key');
+    const l = await neuerLead();
+    for (const [status, text, code] of [[401, 'OPENROUTER_API_KEY', 502], [402, 'Guthaben', 502], [429, 'Rate-Limit', 502], [503, 'Serverfehler', 502], [400, 'abgelehnt', 422]] as const) {
+      const r = await m.ki.ordneLeadEin(l.id, { jevFetch: jevFake(status).jevFetch, lader: lader() });
+      expect(r).toMatchObject({ ok: false, status: code });
+      expect(r.ok === false && r.error).toContain(text);
+    }
+    const unbekannt = await m.ki.ordneLeadEin(l.id, { jevFetch: jevFake({ foo: 1 }).jevFetch, lader: lader() });
+    expect(unbekannt.ok === false && unbekannt.error).toContain('unbekanntes Format');
+    expect(lead(l.id).kiEinordnung).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------- OpenAI für Entwürfe + Jev (ohne Anthropic)
+
+describe('Jev (Einordnung) + OpenAI (Entwürfe) ohne Anthropic-Schlüssel', () => {
+  const setze = async (werte: Record<string, string | undefined>) => {
+    const { resetEnvCache } = await import('./env');
+    for (const k of ['ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY']) delete process.env[k];
+    for (const [k, v] of Object.entries(werte)) if (v) process.env[k] = v;
+    resetEnvCache();
+  };
+  afterEach(() => setze({}));
+  const oaiFetch = (text: string) => {
+    const aufrufe: { url: string; body: string }[] = [];
+    const openaiFetch = (async (url: string, init: RequestInit) => {
+      aufrufe.push({ url, body: String(init.body) });
+      return new Response(JSON.stringify({ output_text: text }), { status: 200 });
+    }) as unknown as typeof fetch;
+    return { aufrufe, openaiFetch };
+  };
+  const post = (body?: unknown) => new Request('http://x/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+
+  it('Anbieterwahl: Standard OpenAI bei Schlüssel, Einstellung gilt nur mit Schlüssel; Verfügbarkeit', async () => {
+    await setze({});
+    expect(m.settings.kiEntwurfAnbieter()).toBeNull();
+    await setze({ ANTHROPIC_API_KEY: 'a' });
+    expect(m.settings.kiEntwurfAnbieter()).toBe('anthropic');
+    await setze({ ANTHROPIC_API_KEY: 'a', OPENAI_API_KEY: 'o' });
+    expect(m.settings.kiEntwurfAnbieter()).toBe('openai');
+    m.settings.setSetting('ki_entwurf_anbieter', 'anthropic');
+    expect(m.settings.kiEntwurfAnbieter()).toBe('anthropic');
+    await setze({ OPENAI_API_KEY: 'o' });
+    expect(m.settings.kiEntwurfAnbieter()).toBe('openai'); // gewählter Anthropic-Schlüssel fehlt
+    const { schreibhilfeVerfuegbar, klassifizierungVerfuegbar } = await import('./ki');
+    expect([schreibhilfeVerfuegbar(), klassifizierungVerfuegbar()]).toEqual([true, false]); // OpenAI klassifiziert nicht
+  });
+  it('nur OPENROUTER + OPENAI: Einordnung (Jev), Entwurf und Vorlagen-Vorschlag (OpenAI) funktionieren', async () => {
+    await setze({ OPENROUTER_API_KEY: 'or', OPENAI_API_KEY: 'oa' });
+    const l = await neuerLead({}, { mitVideo: false });
+    const jev = { answers: { kategorie: { choice: 'interessiert', confidence: 0.9, probabilities: { interessiert: 0.9, sonstiges: 0.1 } } } };
+    const jevFetch = (async () => new Response(JSON.stringify(jev), { status: 200 })) as unknown as typeof fetch;
+    const ctx = (id: number) => ({ params: Promise.resolve({ id: String(id) }) });
+    const ein = await m.routen.einordnenHandler({ jevFetch, lader: lader() })(post(), ctx(l.id));
+    expect((await ein.json()).einordnung).toMatchObject({ kategorie: 'interessiert', modell: 'jev' });
+    const oa = oaiFetch('{"text":"Gern am Dienstag."}');
+    const ent = await m.routen.entwurfHandler({ openaiFetch: oa.openaiFetch, lader: lader() })(post(), ctx(l.id));
+    expect(await ent.json()).toEqual({ ok: true, text: 'Gern am Dienstag.' });
+    expect(oa.aufrufe[0].url).toBe('https://api.openai.com/v1/responses');
+    expect(oa.aufrufe[0].body).toContain('https://cal.example/termin');
+    const oa2 = oaiFetch('{"betreff":"Frage zu {{firma}}","text":"{{begruessung}}, kurz."}');
+    const vor = await m.routen.vorlageHandler({ openaiFetch: oa2.openaiFetch })(post({ beschreibung: 'Angebot X', art: 'erstmail' }), ctx(l.campaignId));
+    expect(vor.status).toBe(200);
+    expect(m.settingsView.ladeEinstellungen()).toMatchObject({ kiAktiv: true, kiSchreibhilfe: true, kiEntwurfAnbieter: 'openai', kiEntwurfAnbieterOptionen: ['openai'], kiKlassifizierer: 'jev' });
+  });
+  it('OpenAI-Fehler im Entwurf → verständliche Meldung (502), Schlüssel fehlt → 404', async () => {
+    await setze({ OPENAI_API_KEY: 'oa' });
+    const l = await neuerLead();
+    const f401 = (async () => new Response('{}', { status: 401 })) as unknown as typeof fetch;
+    const res = await m.routen.entwurfHandler({ openaiFetch: f401, lader: lader() })(post(), { params: Promise.resolve({ id: String(l.id) }) });
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toContain('OPENAI_API_KEY');
+    await setze({});
+    expect((await m.routen.entwurfHandler({ lader: lader() })(post(), { params: Promise.resolve({ id: String(l.id) }) })).status).toBe(404);
   });
 });

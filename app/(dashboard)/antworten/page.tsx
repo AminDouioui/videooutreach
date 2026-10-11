@@ -6,7 +6,7 @@ import { KiEinordnung } from '@/components/KiKomponenten';
 import { ThreadAnsicht } from '@/components/ThreadAnsicht';
 import { leadThreads } from '@/lib/antworten';
 import { getDb, schema } from '@/lib/db';
-import { kiAktiv } from '@/lib/ki';
+import { klassifizierungVerfuegbar, schreibhilfeVerfuegbar } from '@/lib/ki';
 import { KI_KATEGORIE_LABEL, type KiKategorie } from '@/lib/ki-kategorien';
 import { gmailLink, LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
 import { ladeAntworten, parseAntwortFilter } from '@/lib/lead-listen';
@@ -38,7 +38,7 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
   const leadParam = Number(Array.isArray(sp.lead) ? sp.lead[0] : sp.lead);
   const auswahl = Number.isInteger(leadParam) && leadParam > 0 ? getDb().select({ lead: schema.leads, kampagne: schema.campaigns.name }).from(schema.leads).innerJoin(schema.campaigns, eq(schema.campaigns.id, schema.leads.campaignId)).where(eq(schema.leads.id, leadParam)).get() : undefined;
   const chip = (aktiv: boolean) => `rounded-full px-3 py-1 text-xs font-medium ${aktiv ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50'}`;
-  const ki = kiAktiv();
+  const ki = klassifizierungVerfuegbar();
   const name = (l: { anrede: string | null; vorname: string | null; nachname: string | null }) => [l.anrede, l.vorname, l.nachname].filter(Boolean).join(' ');
 
   return (
@@ -122,7 +122,7 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
           {!auswahl ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">Antwort in der Liste auswählen, um den Verlauf zu sehen.</div>
           ) : (
-            <Detail lead={auswahl.lead} kampagne={auswahl.kampagne} zurueck={href(filter.gelesen, filter.leadStatus)} ki={ki} schreiben={schreiben} />
+            <Detail lead={auswahl.lead} kampagne={auswahl.kampagne} zurueck={href(filter.gelesen, filter.leadStatus)} ki={ki} schreibhilfe={schreibhilfeVerfuegbar()} schreiben={schreiben} />
           )}
         </section>
       </div>
@@ -130,7 +130,7 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
   );
 }
 
-function Detail({ lead, kampagne, zurueck, ki, schreiben }: { lead: typeof schema.leads.$inferSelect; kampagne: string; zurueck: string; ki: boolean; schreiben: boolean }) {
+function Detail({ lead, kampagne, zurueck, ki, schreibhilfe, schreiben }: { lead: typeof schema.leads.$inferSelect; kampagne: string; zurueck: string; ki: boolean; schreibhilfe: boolean; schreiben: boolean }) {
   const t = leadThreads(lead);
   const gmailUrl = gmailLink(lead.antwortThreadId ?? lead.gmailThreadId, t.postfach?.typ);
   const personName = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
@@ -178,7 +178,7 @@ function Detail({ lead, kampagne, zurueck, ki, schreiben }: { lead: typeof schem
       )}
       <div className="mt-3">
         {t.lesezugriff && t.postfach ? (
-          <ThreadAnsicht leadId={lead.id} threads={t.threads} start={t.start} antwortenErlaubt={schreiben} postfachEmail={t.postfach.email} gmailUrl={gmailUrl} kiAktiv={ki} />
+          <ThreadAnsicht leadId={lead.id} threads={t.threads} start={t.start} antwortenErlaubt={schreiben} postfachEmail={t.postfach.email} gmailUrl={gmailUrl} kiAktiv={schreibhilfe} />
         ) : (
           <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             <p className="font-medium">Verlauf nur in Gmail</p>

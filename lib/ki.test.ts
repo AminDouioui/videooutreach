@@ -4,7 +4,7 @@ import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
 import { afterEach, describe, expect, it } from 'vitest';
 import { resetEnvCache } from './env';
-import { entwerfeAntwort, kiAktiv, KiFehler, kiFehlerAus, kuerzeMailtext, ordneAntwortEin, pruefeVorschlag, schlageVorlageVor, type KiAnfrage, type KiClient } from './ki';
+import { entwerfeAntwort, schreibhilfeVerfuegbar, KiFehler, kiFehlerAus, kuerzeMailtext, ordneAntwortEin, pruefeVorschlag, schlageVorlageVor, type KiAnfrage, type KiClient } from './ki';
 
 Object.assign(process.env, {
   DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'vo-ki-')),
@@ -36,14 +36,14 @@ function fake(...antworten: (object | string | Error)[]) {
 
 describe('Konfiguration', () => {
   it('ohne Schlüssel inaktiv, mit Schlüssel aktiv; Standardmodelle laut Vorgabe, per Env überschreibbar', async () => {
-    expect(kiAktiv()).toBe(false);
+    expect(schreibhilfeVerfuegbar()).toBe(false);
     const { anfragen, client } = fake({ kategorie: 'interessiert', konfidenz: 0.9, begruendung: 'x' });
     await ordneAntwortEin('Gern, rufen Sie an.', client);
     expect(anfragen[0].modell).toBe('claude-haiku-5-5');
     process.env.ANTHROPIC_API_KEY = 'sk-test';
     process.env.ANTHROPIC_MODEL_KLASSIFIZIEREN = 'mein-haiku';
     resetEnvCache();
-    expect(kiAktiv()).toBe(true);
+    expect(schreibhilfeVerfuegbar()).toBe(true);
     await ordneAntwortEin('Gern, rufen Sie an.', client);
     expect(anfragen[1].modell).toBe('mein-haiku');
   });

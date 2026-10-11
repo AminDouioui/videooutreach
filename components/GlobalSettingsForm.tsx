@@ -15,11 +15,30 @@ type Werte = {
   impressumUrl: string;
   datenschutzUrl: string;
   kiAutoStatus: 'aus' | 'vorschlagen' | 'automatisch';
+  kiKlassifizierer: 'anthropic' | 'jev';
+  kiEntwurfAnbieter: 'openai' | 'anthropic';
 };
 
 const feld = 'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600';
 
-export function GlobalSettingsForm({ initial, heuteErlaubt, kiAktiv = false }: { initial: Werte; heuteErlaubt: number; kiAktiv?: boolean }) {
+const ENTWURF_LABEL = { openai: 'OpenAI', anthropic: 'Claude (Anthropic)' } as const;
+const KLASSIFIZIERER_LABEL = { jev: 'Jev (TypeSafe AI, über OpenRouter)', anthropic: 'Claude (Anthropic)' } as const;
+
+export function GlobalSettingsForm({
+  initial,
+  heuteErlaubt,
+  kiAktiv = false,
+  klassifiziererOptionen = [],
+  entwurfOptionen = [],
+}: {
+  initial: Werte;
+  heuteErlaubt: number;
+  kiAktiv?: boolean;
+  /** Klassifizierer, deren API-Schlüssel gesetzt ist */
+  klassifiziererOptionen?: ('anthropic' | 'jev')[];
+  /** Anbieter für Texte/Entwürfe, deren API-Schlüssel gesetzt ist */
+  entwurfOptionen?: ('openai' | 'anthropic')[];
+}) {
   const router = useRouter();
   const [w, setW] = useState<Werte>(initial);
   const [status, setStatus] = useState<{ text: string; fehler: boolean } | null>(null);
@@ -28,7 +47,7 @@ export function GlobalSettingsForm({ initial, heuteErlaubt, kiAktiv = false }: {
   async function speichern(e: React.FormEvent) {
     e.preventDefault();
     setStatus(null);
-    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, kiAutoStatus: kiAktiv ? w.kiAutoStatus : undefined, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt), bounceSchwellePostfach: Number(w.bounceSchwellePostfach) }) });
+    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, kiAutoStatus: klassifiziererOptionen.length ? w.kiAutoStatus : undefined, kiKlassifizierer: klassifiziererOptionen.length ? w.kiKlassifizierer : undefined, kiEntwurfAnbieter: entwurfOptionen.length ? w.kiEntwurfAnbieter : undefined, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt), bounceSchwellePostfach: Number(w.bounceSchwellePostfach) }) });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setStatus({ text: 'Gespeichert', fehler: false });
@@ -101,7 +120,34 @@ export function GlobalSettingsForm({ initial, heuteErlaubt, kiAktiv = false }: {
       </div>
       {kiAktiv && (
         <fieldset className="space-y-3 rounded-md border border-slate-200 p-3" aria-label="KI-Funktionen">
-          <legend className="px-1 text-sm font-medium text-slate-700">KI-Funktionen (Anthropic)</legend>
+          <legend className="px-1 text-sm font-medium text-slate-700">KI-Funktionen</legend>
+          {klassifiziererOptionen.length > 0 && (
+            <label className="block text-sm font-medium text-slate-700 sm:max-w-sm">
+              Modell für die Einordnung von Antworten
+              <select value={w.kiKlassifizierer} onChange={(e) => set('kiKlassifizierer', e.target.value as Werte['kiKlassifizierer'])} disabled={klassifiziererOptionen.length < 2} className={feld}>
+                {klassifiziererOptionen.map((o) => (
+                  <option key={o} value={o}>
+                    {KLASSIFIZIERER_LABEL[o]}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs font-normal text-slate-500">Zur Wahl stehen nur Modelle, deren API-Schlüssel gesetzt ist. Ohne Schlüssel für Jev oder Claude ist die Einordnung aus.</span>
+            </label>
+          )}
+          {entwurfOptionen.length > 0 && (
+            <label className="block text-sm font-medium text-slate-700 sm:max-w-sm">
+              Anbieter für Texte/Entwürfe
+              <select value={w.kiEntwurfAnbieter} onChange={(e) => set('kiEntwurfAnbieter', e.target.value as Werte['kiEntwurfAnbieter'])} disabled={entwurfOptionen.length < 2} className={feld}>
+                {entwurfOptionen.map((o) => (
+                  <option key={o} value={o}>
+                    {ENTWURF_LABEL[o]}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs font-normal text-slate-500">Für „Entwurf mit KI“ (Unibox) und „KI-Vorschlag“ (Vorlagen). Zur Wahl stehen nur Anbieter, deren API-Schlüssel gesetzt ist.</span>
+            </label>
+          )}
+          {klassifiziererOptionen.length > 0 && (
           <label className="block text-sm font-medium text-slate-700 sm:max-w-sm">
             Neue Antworten einordnen
             <select value={w.kiAutoStatus} onChange={(e) => set('kiAutoStatus', e.target.value as Werte['kiAutoStatus'])} className={feld}>
@@ -114,9 +160,11 @@ export function GlobalSettingsForm({ initial, heuteErlaubt, kiAktiv = false }: {
               setzt den Lead-Status (nur bei Status „Offen“), sperrt Abmeldungen wie den Abmeldelink und behandelt Abwesenheitsnotizen wie erkannte Abwesenheit – jeweils nur bei einer Sicherheit von mindestens 80 %.
             </span>
           </label>
+          )}
           <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            <strong>Datenschutz:</strong> Für die KI-Funktionen werden Mailtexte (Antworten der Leads, Thread-Verlauf, Ihre Beschreibungen) an Anthropic übertragen. Bitte vorher einen Auftragsverarbeitungsvertrag (AVV/DPA) mit Anthropic
-            abschließen und die Datenschutzerklärung anpassen. Ohne den Schlüssel <span className="font-mono">ANTHROPIC_API_KEY</span> sind alle KI-Funktionen aus.
+            <strong>Datenschutz:</strong> Für die KI-Funktionen werden Mailtexte (Antworten der Leads, Thread-Verlauf, Ihre Beschreibungen) an den gewählten Anbieter übertragen: bei Claude an Anthropic, bei Jev an OpenRouter/TypeSafe, bei OpenAI an OpenAI (jeweils USA).
+            Bitte vorher einen Auftragsverarbeitungsvertrag (AVV/DPA) mit dem Anbieter prüfen bzw. abschließen und die Datenschutzerklärung anpassen. Ohne die Schlüssel{' '}
+            <span className="font-mono">ANTHROPIC_API_KEY</span> / <span className="font-mono">OPENROUTER_API_KEY</span> / <span className="font-mono">OPENAI_API_KEY</span> sind alle KI-Funktionen aus.
           </p>
         </fieldset>
       )}

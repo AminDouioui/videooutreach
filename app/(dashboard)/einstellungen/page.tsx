@@ -53,8 +53,12 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           impressumUrl: e.impressumUrl,
           datenschutzUrl: e.datenschutzUrl,
           kiAutoStatus: e.kiAutoStatus,
+          kiKlassifizierer: e.kiKlassifizierer ?? 'anthropic',
+          kiEntwurfAnbieter: e.kiEntwurfAnbieter ?? 'anthropic',
         }}
         kiAktiv={e.kiAktiv}
+        klassifiziererOptionen={e.kiKlassifiziererOptionen}
+        entwurfOptionen={e.kiEntwurfAnbieterOptionen}
         heuteErlaubt={e.heuteErlaubt}
       />
       </Schreibschutz>

@@ -3,16 +3,22 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { kampagnenExtraSpalten } from './campaigns';
 import { getDb, schema } from './db';
-import { kiAktiv, KI_NICHT_AKTIV, KiFehler, schlageVorlageVor, anthropicClient } from './ki';
-import { entwerfeLeadAntwort, ordneLeadEin, uebernimmEinordnung, type KiOptionen } from './ki-einordnung';
+import { klassifizierungVerfuegbar, KLASSIFIZIERUNG_NICHT_AKTIV, schreibhilfeVerfuegbar, KI_NICHT_AKTIV, KiFehler, schlageVorlageVor } from './ki';
+import { entwerfeLeadAntwort, ordneLeadEin, schreibClient, uebernimmEinordnung, type KiOptionen } from './ki-einordnung';
 
-// Route-Handler der KI-Funktionen. Ohne ANTHROPIC_API_KEY (und ohne injizierten Client) antworten alle mit 404 und
-// einer Meldung – es wird nichts angefragt. `opt` ersetzt Client/Gmail (Tests).
+// Route-Handler der KI-Funktionen. Ohne passenden Schlüssel (und ohne injizierten Client) antworten sie mit 404 und
+// einer Meldung: Einordnung/Übernehmen brauchen ANTHROPIC_API_KEY oder OPENROUTER_API_KEY, Schreibhilfe/Entwurf OPENAI_API_KEY oder ANTHROPIC_API_KEY – es wird nichts angefragt. `opt` ersetzt Client/Gmail (Tests).
 
 type Kontext = { params: Promise<{ id: string }> };
 
+/** Schreibhilfe/Entwurf: mit OpenAI oder Anthropic (Client oder Schlüssel) */
 function nichtAktiv(opt: KiOptionen): NextResponse | null {
-  return opt.ki || kiAktiv() ? null : NextResponse.json({ ok: false, error: KI_NICHT_AKTIV }, { status: 404 });
+  return opt.ki || opt.openaiFetch || schreibhilfeVerfuegbar() ? null : NextResponse.json({ ok: false, error: KI_NICHT_AKTIV }, { status: 404 });
+}
+
+/** Einordnung: Anthropic oder Jev (Client/fetch oder Schlüssel) */
+function keineKlassifizierung(opt: KiOptionen): NextResponse | null {
+  return opt.ki || opt.jevFetch || klassifizierungVerfuegbar() ? null : NextResponse.json({ ok: false, error: KLASSIFIZIERUNG_NICHT_AKTIV }, { status: 404 });
 }
 
 async function idAus(ctx: Kontext): Promise<number | null> {
@@ -39,7 +45,7 @@ export function vorlageHandler(opt: KiOptionen = {}) {
     const parsed = vorschlagSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.issues[0]?.message ?? 'Ungültige Eingabe' }, { status: 400 });
     try {
-      const v = await schlageVorlageVor({ ...parsed.data, mitVideo: kampagne.mitVideo, extraSpalten: kampagnenExtraSpalten(id) }, opt.ki ?? anthropicClient);
+      const v = await schlageVorlageVor({ ...parsed.data, mitVideo: kampagne.mitVideo, extraSpalten: kampagnenExtraSpalten(id) }, schreibClient(opt));
       return NextResponse.json({ ok: true, ...v });
     } catch (e) {
       const f = e instanceof KiFehler ? e : new KiFehler('Unerwarteter Fehler bei der KI-Anfrage.', 'anfrage');
@@ -48,9 +54,9 @@ export function vorlageHandler(opt: KiOptionen = {}) {
   };
 }
 
-function leadHandler<T extends { ok: true }>(opt: KiOptionen, lauf: (id: number) => Promise<T | { ok: false; status: number; error: string }> | T | { ok: false; status: number; error: string }) {
+function leadHandler<T extends { ok: true }>(opt: KiOptionen, pruefe: (opt: KiOptionen) => NextResponse | null, lauf: (id: number) => Promise<T | { ok: false; status: number; error: string }> | T | { ok: false; status: number; error: string }) {
   return async (_req: Request, ctx: Kontext): Promise<Response> => {
-    const aus = nichtAktiv(opt);
+    const aus = pruefe(opt);
     if (aus) return aus;
     const id = await idAus(ctx);
     if (id === null) return NextResponse.json({ ok: false, error: 'Ungültiger Lead' }, { status: 404 });
@@ -60,10 +66,10 @@ function leadHandler<T extends { ok: true }>(opt: KiOptionen, lauf: (id: number)
 }
 
 /** POST /api/leads/[id]/ki/einordnen → {ok, einordnung, angewendet} */
-export const einordnenHandler = (opt: KiOptionen = {}) => leadHandler(opt, (id) => ordneLeadEin(id, opt));
+export const einordnenHandler = (opt: KiOptionen = {}) => leadHandler(opt, keineKlassifizierung, (id) => ordneLeadEin(id, opt));
 
 /** POST /api/leads/[id]/ki/uebernehmen → gespeicherte Einordnung anwenden */
-export const uebernehmenHandler = (opt: KiOptionen = {}) => leadHandler(opt, (id) => uebernimmEinordnung(id, opt.jetzt));
+export const uebernehmenHandler = (opt: KiOptionen = {}) => leadHandler(opt, keineKlassifizierung, (id) => uebernimmEinordnung(id, opt.jetzt));
 
 /** POST /api/leads/[id]/ki/entwurf → {ok, text} (nichts wird gesendet) */
-export const entwurfHandler = (opt: KiOptionen = {}) => leadHandler(opt, (id) => entwerfeLeadAntwort(id, opt));
+export const entwurfHandler = (opt: KiOptionen = {}) => leadHandler(opt, nichtAktiv, (id) => entwerfeLeadAntwort(id, opt));
