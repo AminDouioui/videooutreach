@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { pruefeFelder } from '@/lib/schreibregeln';
 import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
 import { KiVorschlag } from './KiKomponenten';
 import { VorlagenHinweise } from './VorlagenHilfe';
@@ -40,6 +41,7 @@ export function TemplateEditor({
   mitVideo = true,
   extraSpalten = [],
   kiAktiv = false,
+  schreibregeln = false,
 }: {
   campaignId: number;
   subject: string;
@@ -52,6 +54,8 @@ export function TemplateEditor({
   extraSpalten?: string[];
   /** KI-Schreibhilfe verfügbar (ANTHROPIC_API_KEY gesetzt) */
   kiAktiv?: boolean;
+  /** Prozessia-Schreibregeln prüfen (Einstellung) */
+  schreibregeln?: boolean;
 }) {
   const [subject, setSubject] = useState(s0);
   const [body, setBody] = useState(b0);
@@ -68,6 +72,7 @@ export function TemplateEditor({
   const pruefText = pruefeVorlage(body, bekannt);
   const klammerFehler = [...pruefBetreff.fehler.map((f) => `Betreff: ${f}`), ...pruefText.fehler.map((f) => `Text: ${f}`)];
   const unbekannt = [...new Set([...pruefBetreff.unbekannt, ...pruefText.unbekannt])];
+  const regelVerstoesse = schreibregeln ? pruefeFelder([{ ort: 'Betreff', text: subject }, { ort: 'Text', text: body }]) : [];
   const geaendert = subject !== gespeichert.subject || body !== gespeichert.body;
 
   // Live-Vorschau (entprellt) mit der aktuellen, auch ungespeicherten Vorlage
@@ -159,7 +164,7 @@ export function TemplateEditor({
               </button>
             ))}
           </div>
-          <VorlagenHinweise fehler={klammerFehler} unbekannt={unbekannt} />
+          <VorlagenHinweise fehler={klammerFehler} unbekannt={unbekannt} schreibregeln={regelVerstoesse} />
           <p className="mt-2 text-xs text-slate-500">Signatur (Einstellungen) und Abmeldelink werden automatisch angehängt.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

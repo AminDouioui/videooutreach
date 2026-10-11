@@ -41,6 +41,9 @@ const envSchema = z.object({
   OPENROUTER_API_KEY: opt(z.string()),
   JEV_MODELL: z.preprocess(leer, z.string().default('typesafe/jev-1.13')),
   JEV_BASE_URL: z.preprocess(leer, z.string().url().default('https://openrouter.ai/api')),
+  // Optional: Brain (Second Brain von Prozessia) als Kontextquelle für Antwort-Entwürfe; die Einstellung in der App hat Vorrang
+  BRAIN_URL: opt(z.string()),
+  BRAIN_API_TOKEN: opt(z.string()),
 });
 
 export type Env = z.infer<typeof envSchema>;

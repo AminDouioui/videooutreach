@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { asc, eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { AbwesendBadge, Badge, LeadStatusBadge } from '@/components/Badge';
+import { BrainKontext } from '@/components/BrainKontext';
 import { KiEinordnung } from '@/components/KiKomponenten';
 import { LeadStatusSelect } from '@/components/LeadStatusSelect';
 import { CopyButton } from '@/components/CopyButton';
@@ -10,7 +11,9 @@ import { DealFeld, LeadActions, MailVorschau, NotizFeld, ZeitzoneFeld } from '@/
 import { ladeAbsenderMitId, postfachVerbunden } from '@/lib/absender';
 import { leadThreads } from '@/lib/antworten';
 import { getDb, schema } from '@/lib/db';
+import { brainVerbunden } from '@/lib/brain';
 import { klassifizierungVerfuegbar, schreibhilfeVerfuegbar } from '@/lib/ki';
+import { schreibregelnAktiv } from '@/lib/settings';
 import { gmailLink } from '@/lib/lead-status';
 import { setzeAntwortGelesen } from '@/lib/lead-status-db';
 import { zeitzoneOderStandard } from '@/lib/time';
@@ -69,6 +72,8 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const fertig = lead.renderStatus === 'fertig';
   const ki = klassifizierungVerfuegbar();
   const schreibhilfe = schreibhilfeVerfuegbar();
+  const brain = brainVerbunden();
+  const regeln = schreibregelnAktiv();
 
   return (
     <div>
@@ -244,7 +249,14 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               postfachEmail={verlauf.postfach.email}
               gmailUrl={gmailUrl}
               kiAktiv={schreibhilfe}
+              schreibregeln={regeln}
             />
+          </section>
+        )}
+
+        {brain && (
+          <section className="rounded-lg border border-slate-200 bg-white p-4">
+            <BrainKontext leadId={lead.id} aktiv />
           </section>
         )}
 

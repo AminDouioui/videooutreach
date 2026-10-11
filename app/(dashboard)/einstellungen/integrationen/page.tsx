@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { ApiSchluesselVerwaltung } from '@/components/ApiSchluesselVerwaltung';
+import { BrainVerbindung } from '@/components/BrainVerbindung';
 import { WebhooksVerwaltung } from '@/components/WebhooksVerwaltung';
 import { listeSchluessel } from '@/lib/api-schluessel';
+import { brainStatus } from '@/lib/brain';
 import { privateZieleErlaubt } from '@/lib/webhook-logik';
 import { ladeProtokoll, listeWebhooks } from '@/lib/webhooks';
 import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
@@ -46,11 +48,12 @@ export default async function IntegrationenPage() {
         </Link>
         <h1 className="text-xl font-semibold">Integrationen</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Webhooks melden Ereignisse an andere Systeme, die REST-API liest Kampagnen und legt Leads an. Beschreibung mit Beispielen: <code>docs/api.md</code>.
+          Webhooks melden Ereignisse an andere Systeme, die REST-API liest Kampagnen und legt Leads an, das Brain liefert Hintergrundwissen zu Leads. Beschreibung mit Beispielen: <code>docs/api.md</code>.
         </p>
       </div>
       <WebhooksVerwaltung webhooks={webhooks} privatErlaubt={privateZieleErlaubt()} />
       <ApiSchluesselVerwaltung schluessel={schluessel} />
+      <BrainVerbindung initial={brainStatus(true)} />
     </div>
   );
 }

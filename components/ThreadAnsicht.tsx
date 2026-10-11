@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ThreadNachricht } from '@/lib/mail-parse';
+import { istStilVerstoss, pruefeSchreibregeln, type SchreibVerstoss } from '@/lib/schreibregeln';
 import { KiEntwurfKnopf } from './KiKomponenten';
+import { SchreibregelnWarnung } from './VorlagenHilfe';
 
 const zeit = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' });
 
-type Antwort = { ok: boolean; error?: string; threadId?: string; nachrichten?: ThreadNachricht[] };
+type Antwort = { ok: boolean; error?: string; threadId?: string; nachrichten?: ThreadNachricht[]; schreibregeln?: boolean; verstoesse?: SchreibVerstoss[] };
 
 /**
  * Verlauf eines Leads (Unibox): Nachrichten als reiner Text (nie HTML, React-escaped, keine Links/Bilder werden geladen),
@@ -21,6 +23,7 @@ export function ThreadAnsicht({
   postfachEmail,
   gmailUrl,
   kiAktiv = false,
+  schreibregeln = false,
 }: {
   leadId: number;
   threads: string[];
@@ -31,6 +34,8 @@ export function ThreadAnsicht({
   gmailUrl: string | null;
   /** KI-Funktionen verfügbar (ANTHROPIC_API_KEY gesetzt) */
   kiAktiv?: boolean;
+  /** Prozessia-Schreibregeln prüfen (Einstellung): „Antwort senden“ blockiert bei Verstoß, außer „Trotzdem senden“ */
+  schreibregeln?: boolean;
 }) {
   const [index, setIndex] = useState(Math.min(start, Math.max(threads.length - 1, 0)));
   const [nachrichten, setNachrichten] = useState<ThreadNachricht[] | null>(null);
@@ -41,6 +46,9 @@ export function ThreadAnsicht({
   const [sendet, setSendet] = useState(false);
   const [sendFehler, setSendFehler] = useState<string | null>(null);
   const [gesendet, setGesendet] = useState(false);
+  const [trotzdem, setTrotzdem] = useState(false);
+  // Verstöße, die der Server gemeldet hat (falls die Prüfung hier aus ist, dort aber an)
+  const [serverVerstoesse, setServerVerstoesse] = useState<SchreibVerstoss[]>([]);
   const threadId = threads[index];
 
   useEffect(() => {
@@ -68,28 +76,41 @@ export function ThreadAnsicht({
     return () => ctrl.abort();
   }, [leadId, threadId, neuLaden]);
 
+  // Live-Prüfung des Antworttextes: Stilverstöße blockieren das Senden (außer „Trotzdem senden“), behauptete Gespräche warnen nur
+  const verstoesse = schreibregeln ? pruefeSchreibregeln(text) : serverVerstoesse;
+  const stilVerstoesse = verstoesse.filter(istStilVerstoss);
+
   const senden = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!text.trim() || sendet) return;
+      setGesendet(false);
+      if (schreibregeln && stilVerstoesse.length > 0 && !trotzdem) {
+        setSendFehler('Der Text verstößt gegen die Prozessia-Schreibregeln. Bitte umformulieren oder „Trotzdem senden“ wählen.');
+        return;
+      }
       setSendet(true);
       setSendFehler(null);
-      setGesendet(false);
       try {
-        const res = await fetch(`/api/leads/${leadId}/antworten`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, threadId }) });
+        const res = await fetch(`/api/leads/${leadId}/antworten`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, threadId, trotzdemSenden: trotzdem || undefined }) });
         const data = (await res.json().catch(() => ({}))) as Antwort;
         if (res.ok && data.ok) {
           setText('');
+          setTrotzdem(false);
+          setServerVerstoesse([]);
           setGesendet(true);
           setNeuLaden((n) => n + 1);
-        } else setSendFehler(data.error ?? `Senden fehlgeschlagen (Fehler ${res.status}).`);
+        } else {
+          if (data.schreibregeln && Array.isArray(data.verstoesse)) setServerVerstoesse(data.verstoesse);
+          setSendFehler(data.error ?? `Senden fehlgeschlagen (Fehler ${res.status}).`);
+        }
       } catch {
         setSendFehler('Senden fehlgeschlagen – keine Verbindung zum Server. Der Text bleibt erhalten.');
       } finally {
         setSendet(false);
       }
     },
-    [leadId, text, threadId, sendet],
+    [leadId, text, threadId, sendet, schreibregeln, stilVerstoesse.length, trotzdem],
   );
 
   if (threads.length === 0) return <p className="text-sm text-slate-500">Zu diesem Lead gibt es noch keinen Mail-Verlauf.</p>;
@@ -170,12 +191,27 @@ export function ThreadAnsicht({
           <textarea
             id={`antwort-${leadId}`}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              setServerVerstoesse([]);
+            }}
+            aria-describedby={verstoesse.length > 0 ? `regeln-${leadId}` : undefined}
             rows={5}
             maxLength={20000}
             placeholder="Antwort schreiben …"
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
           />
+          {verstoesse.length > 0 && (
+            <div id={`regeln-${leadId}`} className="space-y-2">
+              <SchreibregelnWarnung titel="Schreibregeln" hinweis={stilVerstoesse.length > 0 ? 'Zum Senden bitte umformulieren oder „Trotzdem senden“ wählen.' : 'Nur ein Hinweis, gesendet werden kann trotzdem.'} verstoesse={verstoesse.map((verstoss) => ({ ort: '', verstoss }))} />
+              {stilVerstoesse.length > 0 && (
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input type="checkbox" checked={trotzdem} onChange={(e) => setTrotzdem(e.target.checked)} />
+                  Trotzdem senden
+                </label>
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-3">
             <button type="submit" disabled={sendet || !text.trim()} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">
               {sendet ? 'Wird gesendet …' : 'Antwort senden'}

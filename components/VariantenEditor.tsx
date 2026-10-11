@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { MAX_VARIANTEN, naechstesKuerzel } from '@/lib/varianten';
+import { pruefeFelder } from '@/lib/schreibregeln';
 import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
 import { KiVorschlag } from './KiKomponenten';
 import { VorlagenHinweise } from './VorlagenHilfe';
@@ -24,12 +25,15 @@ export function VariantenEditor({
   extraSpalten,
   vorschauLeadId,
   kiAktiv = false,
+  schreibregeln = false,
 }: {
   campaignId: number;
   initial: VarianteEintrag[];
   extraSpalten: string[];
   vorschauLeadId: number | null;
   kiAktiv?: boolean;
+  /** Prozessia-Schreibregeln prüfen (Einstellung) */
+  schreibregeln?: boolean;
 }) {
   const router = useRouter();
   const [liste, setListe] = useState(initial);
@@ -63,6 +67,7 @@ export function VariantenEditor({
           extraSpalten={extraSpalten}
           vorschauLeadId={vorschauLeadId}
           kiAktiv={kiAktiv}
+          schreibregeln={schreibregeln}
           onGeloescht={() => {
             setListe((l) => l.filter((x) => x.id !== v.id));
             router.refresh();
@@ -86,6 +91,7 @@ function VarianteKarte({
   extraSpalten,
   vorschauLeadId,
   kiAktiv,
+  schreibregeln,
   onGeloescht,
   onGeaendert,
 }: {
@@ -94,6 +100,7 @@ function VarianteKarte({
   extraSpalten: string[];
   vorschauLeadId: number | null;
   kiAktiv: boolean;
+  schreibregeln: boolean;
   onGeloescht: () => void;
   onGeaendert: () => void;
 }) {
@@ -109,6 +116,7 @@ function VarianteKarte({
   const pt = pruefeVorlage(text, bekannt);
   const klammerFehler = [...pb.fehler.map((f) => `Betreff: ${f}`), ...pt.fehler.map((f) => `Text: ${f}`)];
   const unbekannt = [...new Set([...pb.unbekannt, ...pt.unbekannt])];
+  const regelVerstoesse = schreibregeln ? pruefeFelder([{ ort: 'Betreff', text: betreff }, { ort: 'Text', text }]) : [];
   const geaendert = betreff !== gespeichert.betreff || text !== gespeichert.text || aktiv !== gespeichert.aktiv;
 
   // Vorschau mit der aktuellen (auch ungespeicherten) Fassung dieser Variante
@@ -205,7 +213,7 @@ function VarianteKarte({
         Text
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={10} className={`${feld} font-mono`} />
       </label>
-      <VorlagenHinweise fehler={klammerFehler} unbekannt={unbekannt} />
+      <VorlagenHinweise fehler={klammerFehler} unbekannt={unbekannt} schreibregeln={regelVerstoesse} />
       {zeigeVorschau && (
         <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
           <p className="mb-2">

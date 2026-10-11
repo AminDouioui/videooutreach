@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { KI_KATEGORIE_LABEL, type KiKategorie } from '@/lib/ki-kategorien';
+import type { SchreibVerstoss } from '@/lib/schreibregeln';
+import { SchreibregelnWarnung } from './VorlagenHilfe';
 
 // Optionale KI-Bausteine (Schreibhilfe/Entwurf mit OpenAI- oder Anthropic-Schlüssel, Einordnung mit Anthropic- oder OpenRouter-Schlüssel; Schlüssel unter Einstellungen → KI oder in der .env): Der Server reicht `aktiv` durch; ohne Schlüssel rendert nichts davon.
 
@@ -45,7 +47,7 @@ export function KiVorschlag({
   const [spintax, setSpintax] = useState(false);
   const [laedt, setLaedt] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
-  const [ergebnis, setErgebnis] = useState<{ betreff: string; text: string } | null>(null);
+  const [ergebnis, setErgebnis] = useState<{ betreff: string; text: string; verstoesse: SchreibVerstoss[] } | null>(null);
   if (!aktiv) return null;
 
   async function erzeugen() {
@@ -54,7 +56,7 @@ export function KiVorschlag({
     setErgebnis(null);
     const r = await post(`/api/campaigns/${campaignId}/ki/vorlage`, { beschreibung, art, nr, spintax, mitBetreff: betreffNoetig });
     setLaedt(false);
-    if (r.ok && typeof r.data.text === 'string') setErgebnis({ betreff: typeof r.data.betreff === 'string' ? r.data.betreff : '', text: r.data.text });
+    if (r.ok && typeof r.data.text === 'string') setErgebnis({ betreff: typeof r.data.betreff === 'string' ? r.data.betreff : '', text: r.data.text, verstoesse: Array.isArray(r.data.verstoesse) ? (r.data.verstoesse as SchreibVerstoss[]) : [] });
     else setFehler(meldung(r));
   }
 
@@ -100,11 +102,16 @@ export function KiVorschlag({
                 </p>
               )}
               <pre className="whitespace-pre-wrap break-words font-sans text-slate-800">{ergebnis.text}</pre>
+              {ergebnis.verstoesse.length > 0 && (
+                <div className="mt-2">
+                  <SchreibregelnWarnung titel="Der Vorschlag verstößt auch nach einem zweiten Versuch gegen die Schreibregeln" verstoesse={ergebnis.verstoesse.map((verstoss) => ({ ort: '', verstoss }))} />
+                </div>
+              )}
               <div className="mt-3 flex gap-2">
                 <button
                   type="button"
                   onClick={() => {
-                    onUebernehmen(ergebnis);
+                    onUebernehmen({ betreff: ergebnis.betreff, text: ergebnis.text });
                     setErgebnis(null);
                     setOffen(false);
                   }}
@@ -188,20 +195,34 @@ export function KiEinordnung({ aktiv, leadId, einordnung }: { aktiv: boolean; le
   );
 }
 
+type BrainHinweis = { status: 'genutzt' | 'nicht_verbunden' | 'nichts_gefunden' | 'fehler'; meldung?: string };
+
+const BRAIN_TEXT: Record<BrainHinweis['status'], string> = {
+  genutzt: 'Mit Hintergrundwissen aus dem Brain erstellt.',
+  nicht_verbunden: 'Ohne Brain-Kontext erstellt (Brain nicht verbunden).',
+  nichts_gefunden: 'Ohne Brain-Kontext erstellt (im Brain nichts zu diesem Lead gefunden).',
+  fehler: 'Ohne Brain-Kontext erstellt',
+};
+
 /** Button „Entwurf mit KI“ für das Antwortfeld der Unibox: setzt den Text, sendet nie. */
 export function KiEntwurfKnopf({ aktiv, leadId, vorhandenerText, onEntwurf }: { aktiv: boolean; leadId: number; vorhandenerText: string; onEntwurf: (text: string) => void }) {
   const [laedt, setLaedt] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
+  const [hinweis, setHinweis] = useState<{ brain: BrainHinweis | null; verstoesse: number } | null>(null);
   if (!aktiv) return null;
 
   async function entwerfen() {
     if (vorhandenerText.trim() && !window.confirm('Den bisherigen Text im Antwortfeld durch den KI-Entwurf ersetzen?')) return;
     setLaedt(true);
     setFehler(null);
+    setHinweis(null);
     const r = await post(`/api/leads/${leadId}/ki/entwurf`);
     setLaedt(false);
-    if (r.ok && typeof r.data.text === 'string') onEntwurf(r.data.text);
-    else setFehler(meldung(r));
+    if (r.ok && typeof r.data.text === 'string') {
+      onEntwurf(r.data.text);
+      const b = r.data.brain as BrainHinweis | undefined;
+      setHinweis({ brain: b && typeof b.status === 'string' ? b : null, verstoesse: Array.isArray(r.data.verstoesse) ? r.data.verstoesse.length : 0 });
+    } else setFehler(meldung(r));
   }
 
   return (
@@ -212,6 +233,17 @@ export function KiEntwurfKnopf({ aktiv, leadId, vorhandenerText, onEntwurf }: { 
       {fehler && (
         <p role="alert" className="basis-full text-sm text-red-700">
           {fehler}
+        </p>
+      )}
+      {hinweis?.brain && (
+        <p className="basis-full text-xs text-slate-500" data-testid="entwurf-brain-hinweis">
+          {BRAIN_TEXT[hinweis.brain.status]}
+          {hinweis.brain.status === 'fehler' && hinweis.brain.meldung ? ` (${hinweis.brain.meldung})` : ''}
+        </p>
+      )}
+      {hinweis && hinweis.verstoesse > 0 && (
+        <p className="basis-full text-xs text-amber-800" data-testid="entwurf-regel-hinweis">
+          Der Entwurf verstößt auch nach einem zweiten Versuch gegen die Schreibregeln (siehe Warnung unter dem Antwortfeld). Bitte vor dem Senden anpassen.
         </p>
       )}
     </>

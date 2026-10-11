@@ -2,11 +2,14 @@ import Link from 'next/link';
 import { eq } from 'drizzle-orm';
 import { LeadStatusBadge } from '@/components/Badge';
 import { AutoGelesen, GelesenButton, LeadStatusSelect } from '@/components/LeadStatusSelect';
+import { BrainKontext } from '@/components/BrainKontext';
 import { KiEinordnung } from '@/components/KiKomponenten';
 import { ThreadAnsicht } from '@/components/ThreadAnsicht';
 import { leadThreads } from '@/lib/antworten';
 import { getDb, schema } from '@/lib/db';
+import { brainVerbunden } from '@/lib/brain';
 import { klassifizierungVerfuegbar, schreibhilfeVerfuegbar } from '@/lib/ki';
+import { schreibregelnAktiv } from '@/lib/settings';
 import { KI_KATEGORIE_LABEL, type KiKategorie } from '@/lib/ki-kategorien';
 import { gmailLink, LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
 import { ladeAntworten, parseAntwortFilter } from '@/lib/lead-listen';
@@ -122,7 +125,7 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
           {!auswahl ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">Antwort in der Liste auswählen, um den Verlauf zu sehen.</div>
           ) : (
-            <Detail lead={auswahl.lead} kampagne={auswahl.kampagne} zurueck={href(filter.gelesen, filter.leadStatus)} ki={ki} schreibhilfe={schreibhilfeVerfuegbar()} schreiben={schreiben} />
+            <Detail lead={auswahl.lead} kampagne={auswahl.kampagne} zurueck={href(filter.gelesen, filter.leadStatus)} ki={ki} schreibhilfe={schreibhilfeVerfuegbar()} schreiben={schreiben} brain={brainVerbunden()} regeln={schreibregelnAktiv()} />
           )}
         </section>
       </div>
@@ -130,7 +133,7 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
   );
 }
 
-function Detail({ lead, kampagne, zurueck, ki, schreibhilfe, schreiben }: { lead: typeof schema.leads.$inferSelect; kampagne: string; zurueck: string; ki: boolean; schreibhilfe: boolean; schreiben: boolean }) {
+function Detail({ lead, kampagne, zurueck, ki, schreibhilfe, schreiben, brain, regeln }: { lead: typeof schema.leads.$inferSelect; kampagne: string; zurueck: string; ki: boolean; schreibhilfe: boolean; schreiben: boolean; brain: boolean; regeln: boolean }) {
   const t = leadThreads(lead);
   const gmailUrl = gmailLink(lead.antwortThreadId ?? lead.gmailThreadId, t.postfach?.typ);
   const personName = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
@@ -176,9 +179,14 @@ function Detail({ lead, kampagne, zurueck, ki, schreibhilfe, schreiben }: { lead
           </Schreibschutz>
         </div>
       )}
+      {brain && (
+        <div className="mt-3">
+          <BrainKontext key={lead.id} leadId={lead.id} aktiv />
+        </div>
+      )}
       <div className="mt-3">
         {t.lesezugriff && t.postfach ? (
-          <ThreadAnsicht leadId={lead.id} threads={t.threads} start={t.start} antwortenErlaubt={schreiben} postfachEmail={t.postfach.email} gmailUrl={gmailUrl} kiAktiv={schreibhilfe} />
+          <ThreadAnsicht leadId={lead.id} threads={t.threads} start={t.start} antwortenErlaubt={schreiben} postfachEmail={t.postfach.email} gmailUrl={gmailUrl} kiAktiv={schreibhilfe} schreibregeln={regeln} />
         ) : (
           <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             <p className="font-medium">Verlauf nur in Gmail</p>

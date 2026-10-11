@@ -14,6 +14,7 @@ type Werte = {
   bounceSchwellePostfach: number;
   impressumUrl: string;
   datenschutzUrl: string;
+  schreibregelnAktiv: boolean;
   kiAutoStatus: 'aus' | 'vorschlagen' | 'automatisch';
   kiKlassifizierer: 'anthropic' | 'jev';
   kiEntwurfAnbieter: 'openai' | 'anthropic';
@@ -126,6 +127,15 @@ export function GlobalSettingsForm({
           <input type="url" value={w.datenschutzUrl} onChange={(e) => set('datenschutzUrl', e.target.value)} className={feld} placeholder="https://…" />
         </label>
       </div>
+      <label className="flex items-start gap-2 rounded-md border border-slate-200 p-3 text-sm text-slate-700">
+        <input type="checkbox" className="mt-1" checked={w.schreibregelnAktiv} onChange={(e) => set('schreibregelnAktiv', e.target.checked)} />
+        <span>
+          <span className="font-medium">Prozessia-Schreibregeln prüfen</span>
+          <span className="block text-xs text-slate-500">
+            Keine Gedankenstriche, keine Bindestriche als Trenner, keine runden Klammern; kein behauptetes Gespräch („unser Telefonat“, „wie besprochen“). Die Editoren für Vorlagen, Varianten und Follow-ups warnen (Speichern bleibt möglich), die KI hält die Regeln ein und versucht es bei einem Verstoß ein zweites Mal, und „Antwort senden“ in der Unibox blockiert bei Verstoß, außer „Trotzdem senden“ ist gewählt.
+          </span>
+        </span>
+      </label>
       {kiAktiv && (
         <fieldset className="space-y-3 rounded-md border border-slate-200 p-3" aria-label="KI-Funktionen">
           <legend className="px-1 text-sm font-medium text-slate-700">KI-Funktionen</legend>

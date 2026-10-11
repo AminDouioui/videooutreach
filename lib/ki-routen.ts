@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { kampagnenExtraSpalten } from './campaigns';
 import { getDb, schema } from './db';
 import { klassifizierungVerfuegbar, KLASSIFIZIERUNG_NICHT_AKTIV, schreibhilfeVerfuegbar, KI_NICHT_AKTIV, KiFehler, schlageVorlageVor } from './ki';
+import { schreibregelnAktiv } from './settings';
 import { entwerfeLeadAntwort, ordneLeadEin, schreibClient, uebernimmEinordnung, type KiOptionen } from './ki-einordnung';
 
 // Route-Handler der KI-Funktionen. Ohne passenden Schlüssel (und ohne injizierten Client) antworten sie mit 404 und
@@ -45,7 +46,7 @@ export function vorlageHandler(opt: KiOptionen = {}) {
     const parsed = vorschlagSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.issues[0]?.message ?? 'Ungültige Eingabe' }, { status: 400 });
     try {
-      const v = await schlageVorlageVor({ ...parsed.data, mitVideo: kampagne.mitVideo, extraSpalten: kampagnenExtraSpalten(id) }, schreibClient(opt));
+      const v = await schlageVorlageVor({ ...parsed.data, mitVideo: kampagne.mitVideo, extraSpalten: kampagnenExtraSpalten(id) }, schreibClient(opt), { schreibregeln: opt.schreibregeln ?? schreibregelnAktiv() });
       return NextResponse.json({ ok: true, ...v });
     } catch (e) {
       const f = e instanceof KiFehler ? e : new KiFehler('Unerwarteter Fehler bei der KI-Anfrage.', 'anfrage');

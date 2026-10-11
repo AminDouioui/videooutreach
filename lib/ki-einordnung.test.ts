@@ -300,7 +300,7 @@ describe('Routen', () => {
     expect(lead(l.id).leadStatus).toBe('interessiert');
     const entwurf = fake({ text: 'Gern am Dienstag, hier der Link.' });
     const e = await m.routen.entwurfHandler({ ki: entwurf.ki, lader: lader() })(post(), ctx(l.id));
-    expect(await e.json()).toEqual({ ok: true, text: 'Gern am Dienstag, hier der Link.' });
+    expect(await e.json()).toEqual({ ok: true, text: 'Gern am Dienstag, hier der Link.', verstoesse: [], brain: { status: 'nicht_verbunden' } });
     expect(entwurf.anfragen[0].nutzer).toContain('https://cal.example/termin');
     expect(lead(l.id).antwortGelesen).toBe(false); // Entwurf sendet und ändert nichts
   });
@@ -476,7 +476,7 @@ describe('Jev (Einordnung) + OpenAI (Entwürfe) ohne Anthropic-Schlüssel', () =
     expect((await ein.json()).einordnung).toMatchObject({ kategorie: 'interessiert', modell: 'jev' });
     const oa = oaiFetch('{"text":"Gern am Dienstag."}');
     const ent = await m.routen.entwurfHandler({ openaiFetch: oa.openaiFetch, lader: lader() })(post(), ctx(l.id));
-    expect(await ent.json()).toEqual({ ok: true, text: 'Gern am Dienstag.' });
+    expect(await ent.json()).toEqual({ ok: true, text: 'Gern am Dienstag.', verstoesse: [], brain: { status: 'nicht_verbunden' } });
     expect(oa.aufrufe[0].url).toBe('https://api.openai.com/v1/responses');
     expect(oa.aufrufe[0].body).toContain('https://cal.example/termin');
     const oa2 = oaiFetch('{"betreff":"Frage zu {{firma}}","text":"{{begruessung}}, kurz."}');

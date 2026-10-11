@@ -3,7 +3,8 @@ import { kannThreadLesen, ladeAbsender, postfachFuerLead } from './absender';
 import { fehlerText, ladeThread, leadThreads, UniboxFehler } from './antworten';
 import { getDb, schema } from './db';
 import type { ThreadLader } from './gmail';
-import { anthropicClient, entwerfeAntwort, klassifizierungVerfuegbar, KiFehler, KLASSIFIZIERUNG_NICHT_AKTIV, kiFehlerAus, MAX_EINORDNUNG_ZEICHEN, ordneAntwortEin, type Einordnung, type KiClient } from './ki';
+import { anthropicClient, entwerfeAntwortGeprueft, klassifizierungVerfuegbar, KiFehler, KLASSIFIZIERUNG_NICHT_AKTIV, kiFehlerAus, MAX_EINORDNUNG_ZEICHEN, ordneAntwortEin, type Einordnung, type KiClient } from './ki';
+import { kontextFuerPrompt, ladeLeadKontext, type BrainFetch } from './brain';
 import { ordneAntwortMitJev, type JevFetch } from './ki-jev';
 import { openaiClient } from './ki-openai';
 import type { KiKategorie } from './ki-kategorien';
@@ -11,7 +12,8 @@ import type { LeadStatus } from './lead-status';
 import { setzeLeadStatus } from './lead-status-db';
 import type { ThreadNachricht } from './mail-parse';
 import { merkeAbwesenheit } from './send';
-import { kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, type KiKlassifizierer } from './settings';
+import { kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, schreibregelnAktiv, type KiKlassifizierer } from './settings';
+import type { SchreibVerstoss } from './schreibregeln';
 import { unsubscribeBySlug } from './suppression';
 
 // Einordnung von Antworten mit KI: letzte fremde Nachricht lesen, klassifizieren, speichern (leads.kiEinordnung) und je
@@ -19,7 +21,8 @@ import { unsubscribeBySlug } from './suppression';
 // Antwort-Erkennung nie blockieren: die Warteschlange fängt alles ab und versucht es höchstens 3x erneut.
 
 // `ki` ersetzt den Anthropic-Client, `jevFetch`/`openaiFetch` das fetch für Jev bzw. OpenAI (Tests); wer einen davon übergibt, nutzt diesen Klassifizierer.
-export type KiOptionen = { ki?: KiClient; jevFetch?: JevFetch; openaiFetch?: JevFetch; lader?: ThreadLader; jetzt?: Date };
+// `schreibregeln` überschreibt die Einstellung `schreibregeln_aktiv`, `brainFetch` ersetzt das fetch zum Brain (Tests).
+export type KiOptionen = { ki?: KiClient; jevFetch?: JevFetch; openaiFetch?: JevFetch; lader?: ThreadLader; jetzt?: Date; schreibregeln?: boolean; brainFetch?: BrainFetch };
 type Lead = typeof schema.leads.$inferSelect;
 
 /** Ab dieser Konfidenz wird im Modus „automatisch“ angewendet */
@@ -179,16 +182,23 @@ export function uebernimmEinordnung(leadId: number, jetzt: Date = new Date()): L
 
 // ---------------------------------------------------------------- Entwurf
 
-/** Entwurf einer Antwort auf Basis des Verlaufs und des Kampagnen-Terminlinks (nichts wird gesendet oder gespeichert). */
-export async function entwerfeLeadAntwort(leadId: number, opt: KiOptionen = {}): Promise<LeadKiErgebnis<{ text: string }>> {
+/** Woher der Entwurf sein Hintergrundwissen hatte: genutzt, Brain nicht eingerichtet, im Brain nichts zum Lead, oder Fehler (Meldung dabei) */
+export type EntwurfBrain = { status: 'genutzt' | 'nicht_verbunden' | 'nichts_gefunden' | 'fehler'; meldung?: string };
+
+/** Entwurf einer Antwort auf Basis des Verlaufs, des Kampagnen-Terminlinks und (wenn das Brain verbunden ist) des Lead-Kontexts. Nichts wird gesendet oder gespeichert. */
+export async function entwerfeLeadAntwort(leadId: number, opt: KiOptionen = {}): Promise<LeadKiErgebnis<{ text: string; verstoesse: SchreibVerstoss[]; brain: EntwurfBrain }>> {
   const lead = ladeLead(leadId);
   if (!lead) return { ok: false, status: 404, error: 'Lead nicht gefunden' };
   try {
     const verlauf = await ladeVerlauf(lead, opt);
     const kampagne = getDb().select({ cta: schema.campaigns.ctaUrl }).from(schema.campaigns).where(eq(schema.campaigns.id, lead.campaignId)).get();
     const postfach = postfachFuerLead(lead);
-    const text = await entwerfeAntwort({ verlauf, ctaUrl: kampagne?.cta ?? '', absenderName: postfach?.name ?? undefined }, schreibClient(opt));
-    return { ok: true, text };
+    // Brain-Kontext: nie blockierend, Fehler werden nur als Hinweis gemeldet
+    const k = await ladeLeadKontext({ id: lead.id, email: lead.email, firma: lead.firma, website: lead.website }, { fetch: opt.brainFetch });
+    const kontext = k.status === 'ok' ? kontextFuerPrompt(k.daten) : '';
+    const brain: EntwurfBrain = k.status === 'nicht_konfiguriert' ? { status: 'nicht_verbunden' } : k.status === 'fehler' ? { status: 'fehler', meldung: k.meldung } : kontext ? { status: 'genutzt' } : { status: 'nichts_gefunden' };
+    const res = await entwerfeAntwortGeprueft({ verlauf, ctaUrl: kampagne?.cta ?? '', absenderName: postfach?.name ?? undefined, brainKontext: kontext || undefined }, schreibClient(opt), { schreibregeln: opt.schreibregeln ?? schreibregelnAktiv() });
+    return { ok: true, text: res.text, verstoesse: res.verstoesse, brain };
   } catch (err) {
     return { ok: false, ...fehlerAus(err) };
   }

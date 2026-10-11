@@ -26,7 +26,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           <Link href="/einstellungen/integrationen" className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-5 py-3 hover:bg-slate-50">
             <span>
               <span className="block text-base font-semibold">Integrationen</span>
-              <span className="block text-xs text-slate-500">Webhooks und API-Schlüssel für die REST-API</span>
+              <span className="block text-xs text-slate-500">Webhooks, API-Schlüssel für die REST-API und Brain-Anbindung</span>
             </span>
             <span className="text-slate-400">→</span>
           </Link>
@@ -54,6 +54,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           bounceSchwellePostfach: e.bounceSchwellePostfach,
           impressumUrl: e.impressumUrl,
           datenschutzUrl: e.datenschutzUrl,
+          schreibregelnAktiv: e.schreibregelnAktiv,
           kiAutoStatus: e.kiAutoStatus,
           kiKlassifizierer: e.kiKlassifizierer ?? 'anthropic',
           kiEntwurfAnbieter: e.kiEntwurfAnbieter ?? 'anthropic',

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { MAX_VARIANTEN, naechstesKuerzel, STANDARD_VARIANTE } from '@/lib/varianten';
+import { pruefeFelder } from '@/lib/schreibregeln';
 import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
 import { KiVorschlag } from './KiKomponenten';
 import { platzhalterFuer } from './TemplateEditor';
@@ -36,6 +37,7 @@ export function FollowupEditor({
   mitVideo,
   extraSpalten = [],
   kiAktiv = false,
+  schreibregeln = false,
 }: {
   campaignId: number;
   initial: Schritt[];
@@ -45,6 +47,8 @@ export function FollowupEditor({
   mitVideo: boolean;
   extraSpalten?: string[];
   kiAktiv?: boolean;
+  /** Prozessia-Schreibregeln prüfen (Einstellung) */
+  schreibregeln?: boolean;
 }) {
   const [schritte, setSchritte] = useState<Schritt[]>(initial);
   const [gespeichert, setGespeichert] = useState(JSON.stringify(initial));
@@ -71,6 +75,18 @@ export function FollowupEditor({
   );
   const klammerFehler = pruefungen.flatMap(({ i, name, p }) => p.fehler.map((f) => `Follow-up ${i + 1}: ${name}${f}`));
   const unbekannt = [...new Set(pruefungen.flatMap(({ p }) => p.unbekannt))];
+  const regelVerstoesse = schreibregeln
+    ? schritte.flatMap((x, i) =>
+        pruefeFelder([
+          { ort: `Follow-up ${i + 1} Text`, text: x.body },
+          { ort: `Follow-up ${i + 1} Betreff`, text: x.betreff },
+          ...x.varianten.flatMap((v) => [
+            { ort: `Follow-up ${i + 1} Variante ${v.kuerzel} Text`, text: v.text },
+            { ort: `Follow-up ${i + 1} Variante ${v.kuerzel} Betreff`, text: v.betreff },
+          ]),
+        ]),
+      )
+    : [];
   const geaendert = JSON.stringify(schritte) !== gespeichert;
   const schritt = schritte[aktiv];
   // Gewählte Variante des aktiven Schritts (Rückfall A, falls gelöscht)
@@ -287,7 +303,7 @@ export function FollowupEditor({
           </button>
           {status && <span className={`text-sm ${status.fehler ? 'text-red-600' : 'text-green-700'}`}>{status.text}</span>}
         </div>
-        <VorlagenHinweise fehler={klammerFehler} unbekannt={unbekannt} />
+        <VorlagenHinweise fehler={klammerFehler} unbekannt={unbekannt} schreibregeln={regelVerstoesse} />
         <p className="text-xs text-slate-500">
           Platzhalter wie in der Erstmail: {platzhalterFuer(mitVideo, extraSpalten).map(([p]) => p).join(' ')}. Follow-ups gehen als Antwort im selben Thread raus (Betreff „Re: …“); mit eigenem Betreff als neuer Thread. Mehrere Varianten je Schritt werden rotierend gesendet. Antwortet ein Lead oder kommt die Mail
           zurück, endet sein Flow automatisch. Tageslimit, Versandfenster und Abstand gelten auch für Follow-ups.

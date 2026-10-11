@@ -4,7 +4,7 @@ import { oauthConfigured } from './gmail';
 import { postfachStatus, type PostfachStatus } from './rotation';
 import { effektivesGlobalLimit } from './send';
 import { klassifizierungVerfuegbar, schreibhilfeVerfuegbar } from './ki';
-import { bounceSchwellePostfach, getSetting, KI_ANBIETER, kiSchluesselMitQuelle, maskiereSchluessel, type KiAnbieter, type KiSchluesselQuelle, globalDailyLimit, kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, rampeEinstellung, verfuegbareEntwurfAnbieter, verfuegbareKlassifizierer } from './settings';
+import { bounceSchwellePostfach, getSetting, KI_ANBIETER, kiSchluesselMitQuelle, maskiereSchluessel, type KiAnbieter, type KiSchluesselQuelle, globalDailyLimit, kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, rampeEinstellung, schreibregelnAktiv, verfuegbareEntwurfAnbieter, verfuegbareKlassifizierer } from './settings';
 import type { Sicherheit } from './smtp-vorlagen';
 import { todayBerlin } from './time';
 
@@ -90,6 +90,7 @@ export function ladeEinstellungen(mitMaske = false) {
     heuteErlaubt: effektivesGlobalLimit(),
     impressumUrl: getSetting('impressum_url') ?? env.IMPRESSUM_URL ?? '',
     datenschutzUrl: getSetting('datenschutz_url') ?? env.DATENSCHUTZ_URL ?? '',
+    schreibregelnAktiv: schreibregelnAktiv(),
     gmailKonfiguriert: oauthConfigured(),
     // KI-Funktionen (optional): ohne Schlüssel ist alles aus und unsichtbar. kiAktiv = irgendeine KI-Funktion verfügbar (Einordnung: Anthropic oder
     // Jev), kiSchreibhilfe = Schreibhilfe/Entwurf (OpenAI oder Anthropic)

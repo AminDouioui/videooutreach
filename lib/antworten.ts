@@ -11,6 +11,8 @@ import { treiberFuer } from './postfach-treiber';
 import { antwortBetreff, buildAntwortMail, buildMime, neueMessageId, oneClickUrl } from './mail';
 import { extrahiereAdresse, fuerAnzeige, parseThread, type NachrichtMitKopf, type ThreadNachricht } from './mail-parse';
 import { merkePostfachFehler, senderInfo } from './send';
+import { istStilVerstoss, pruefeSchreibregeln, verstossLabels, type SchreibVerstoss } from './schreibregeln';
+import { schreibregelnAktiv } from './settings';
 import { ANTWORT_STEP } from './versand-schritt';
 
 // Unibox: Threads lesen und aus der App antworten. Gmail-Aufrufe sind austauschbar (Tests); Fehler kommen auf Deutsch.
@@ -133,8 +135,12 @@ export async function ladeLeadThread(leadId: number, threadId: string | null, op
 
 export const MAX_ANTWORT_ZEICHEN = 20_000;
 
-export type AntwortOptionen = LadeOptionen & { sender?: GmailSender; now?: Date };
-export type AntwortErgebnis = { ok: true; threadId: string; messageId: string } | { ok: false; status: number; error: string };
+/** `trotzdem` = Schreibregel-Verstöße bewusst in Kauf nehmen; `schreibregeln` überschreibt die Einstellung `schreibregeln_aktiv` (Tests) */
+export type AntwortOptionen = LadeOptionen & { sender?: GmailSender; now?: Date; trotzdem?: boolean; schreibregeln?: boolean };
+export type AntwortErgebnis = { ok: true; threadId: string; messageId: string } | { ok: false; status: number; error: string; verstoesse?: SchreibVerstoss[] };
+
+/** Meldung des Senden-Blockers */
+export const SCHREIBREGELN_BLOCKER = 'Der Text verstößt gegen die Prozessia-Schreibregeln';
 
 /** Absender, an die nie persönlich geantwortet wird (Bounces u. Ä.) */
 const SYSTEMADRESSE = /^(mailer-daemon|postmaster|no-?reply|donotreply)@/i;
@@ -150,6 +156,12 @@ export async function sendeAntwort(leadId: number, textRoh: string, threadWunsch
   if (text.length > MAX_ANTWORT_ZEICHEN) return { ok: false, status: 400, error: `Die Antwort ist zu lang (höchstens ${MAX_ANTWORT_ZEICHEN} Zeichen).` };
   const lead = ladeLead(leadId);
   if (!lead) return { ok: false, status: 404, error: 'Lead nicht gefunden' };
+  // Schreibregeln (Gedankenstriche, Trenn-Bindestriche, Klammern): ohne ausdrückliches „trotzdem“ wird nicht gesendet. Die Wahrheitsregel
+  // gilt hier nicht, weil mit dem Lead ein Gespräch stattgefunden haben kann; sie wirkt nur als Warnung in Vorlagen und KI-Entwürfen.
+  if ((opt.schreibregeln ?? schreibregelnAktiv()) && !opt.trotzdem) {
+    const verstoesse = pruefeSchreibregeln(text, { gespraech: false }).filter(istStilVerstoss);
+    if (verstoesse.length > 0) return { ok: false, status: 422, error: `${SCHREIBREGELN_BLOCKER} (${verstossLabels(verstoesse).join(', ')}). Bitte umformulieren oder „Trotzdem senden“ wählen.`, verstoesse };
+  }
   const jetzt = opt.now ?? new Date();
   try {
     const t = leadThreads(lead);
@@ -210,11 +222,11 @@ export async function sendeAntwort(leadId: number, textRoh: string, threadWunsch
 
 // ---------------------------------------------------------------- Route-Handler (mit austauschbaren Abhängigkeiten)
 
-const antwortSchema = z.object({ text: z.string(), threadId: z.string().min(1).max(200).optional() });
+const antwortSchema = z.object({ text: z.string(), threadId: z.string().min(1).max(200).optional(), trotzdemSenden: z.boolean().optional() });
 
 type RouteKontext = { params: Promise<{ id: string }> };
 
-/** POST /api/leads/[id]/antworten {text, threadId?}; `opt` ersetzt Gmail (Tests). */
+/** POST /api/leads/[id]/antworten {text, threadId?, trotzdemSenden?}; `opt` ersetzt Gmail (Tests). */
 export function antwortHandler(opt: AntwortOptionen = {}) {
   return async (req: Request, ctx: RouteKontext): Promise<Response> => {
     const id = Number((await ctx.params).id);
@@ -225,9 +237,9 @@ export function antwortHandler(opt: AntwortOptionen = {}) {
     } catch {
       return NextResponse.json({ ok: false, error: 'Ungültige Eingabe: {text} erwartet.' }, { status: 400 });
     }
-    const res = await sendeAntwort(id, body.text, body.threadId ?? null, opt);
+    const res = await sendeAntwort(id, body.text, body.threadId ?? null, { ...opt, trotzdem: opt.trotzdem ?? body.trotzdemSenden });
     if (res.ok) return NextResponse.json({ ok: true, threadId: res.threadId });
-    return NextResponse.json({ ok: false, error: res.error }, { status: res.status });
+    return NextResponse.json({ ok: false, error: res.error, ...(res.verstoesse ? { schreibregeln: true, verstoesse: res.verstoesse } : {}) }, { status: res.status });
   };
 }
 
