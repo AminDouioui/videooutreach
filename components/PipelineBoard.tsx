@@ -35,7 +35,7 @@ async function patch(leadId: number, body: Record<string, unknown>): Promise<str
 }
 
 /** Kanban-Ansicht der Pipeline: Spalten je Lead-Status, Drag-and-drop (HTML5) und Status-Dropdown als Fallback. */
-export function PipelineBoard({ leads: initial, kampagnen, campaignId, jetzt }: { leads: PipelineKarte[]; kampagnen: { id: number; name: string }[]; campaignId: number | null; jetzt: number }) {
+export function PipelineBoard({ leads: initial, kampagnen, campaignId, jetzt, lesend = false }: { leads: PipelineKarte[]; kampagnen: { id: number; name: string }[]; campaignId: number | null; jetzt: number; lesend?: boolean }) {
   const router = useRouter();
   const [leads, setLeads] = useState(initial);
   const [fehler, setFehler] = useState<string | null>(null);
@@ -107,7 +107,7 @@ export function PipelineBoard({ leads: initial, kampagnen, campaignId, jetzt }: 
               key={sp.status}
               data-testid={`spalte-${sp.status}`}
               onDragOver={(e) => {
-                if (ziehend === null) return;
+                if (ziehend === null || lesend) return;
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
                 if (ueber !== sp.status) setUeber(sp.status);
@@ -117,6 +117,7 @@ export function PipelineBoard({ leads: initial, kampagnen, campaignId, jetzt }: 
               }}
               onDrop={(e) => {
                 e.preventDefault();
+                if (lesend) return;
                 const id = Number(e.dataTransfer.getData('text/plain')) || ziehend;
                 setUeber(null);
                 setZiehend(null);
@@ -140,7 +141,7 @@ export function PipelineBoard({ leads: initial, kampagnen, campaignId, jetzt }: 
               {!eingeklappt && (
                 <ul className="space-y-2">
                   {sp.leads.map((l) => (
-                    <Karte key={l.id} lead={l} jetzt={jetzt} ziehend={ziehend === l.id} onDragStart={() => setZiehend(l.id)} onDragEnd={() => { setZiehend(null); setUeber(null); }} onStatus={(s) => verschieben(l.id, s)} onDeal={speichereDeal} />
+                    <Karte key={l.id} lesend={lesend} lead={l} jetzt={jetzt} ziehend={ziehend === l.id} onDragStart={() => setZiehend(l.id)} onDragEnd={() => { setZiehend(null); setUeber(null); }} onStatus={(s) => verschieben(l.id, s)} onDeal={speichereDeal} />
                   ))}
                   {sp.leads.length === 0 && <li className="px-1 py-3 text-center text-xs text-slate-400">Keine Leads</li>}
                 </ul>
@@ -153,7 +154,7 @@ export function PipelineBoard({ leads: initial, kampagnen, campaignId, jetzt }: 
   );
 }
 
-function Karte({ lead, jetzt, ziehend, onDragStart, onDragEnd, onStatus, onDeal }: { lead: PipelineKarte; jetzt: number; ziehend: boolean; onDragStart: () => void; onDragEnd: () => void; onStatus: (s: LeadStatus) => void; onDeal: (id: number, wert: string, notiz: string) => Promise<string | null> }) {
+function Karte({ lesend, lead, jetzt, ziehend, onDragStart, onDragEnd, onStatus, onDeal }: { lesend: boolean; lead: PipelineKarte; jetzt: number; ziehend: boolean; onDragStart: () => void; onDragEnd: () => void; onStatus: (s: LeadStatus) => void; onDeal: (id: number, wert: string, notiz: string) => Promise<string | null> }) {
   const [bearbeiten, setBearbeiten] = useState(false);
   const [wert, setWert] = useState(dealWertEingabe(lead.dealWert));
   const [notiz, setNotiz] = useState(lead.dealNotiz ?? '');
@@ -172,7 +173,7 @@ function Karte({ lead, jetzt, ziehend, onDragStart, onDragEnd, onStatus, onDeal 
 
   return (
     <li
-      draggable
+      draggable={!lesend}
       data-testid={`karte-${lead.id}`}
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', String(lead.id));
@@ -180,7 +181,7 @@ function Karte({ lead, jetzt, ziehend, onDragStart, onDragEnd, onStatus, onDeal 
         onDragStart();
       }}
       onDragEnd={onDragEnd}
-      className={`cursor-grab rounded-md border border-slate-200 bg-white p-2.5 text-sm shadow-sm ${ziehend ? 'opacity-50' : ''}`}
+      className={`${lesend ? '' : 'cursor-grab'} rounded-md border border-slate-200 bg-white p-2.5 text-sm shadow-sm ${ziehend ? 'opacity-50' : ''}`}
     >
       <Link href={`/leads/${lead.id}`} className="block break-words font-medium text-indigo-700 hover:underline">
         {lead.firma}
@@ -208,12 +209,12 @@ function Karte({ lead, jetzt, ziehend, onDragStart, onDragEnd, onStatus, onDeal 
             </button>
           </div>
         </div>
-      ) : (
+      ) : lesend ? null : (
         <button onClick={() => { setWert(dealWertEingabe(lead.dealWert)); setNotiz(lead.dealNotiz ?? ''); setBearbeiten(true); }} className="mt-1 text-xs text-indigo-600 hover:underline">
           Deal bearbeiten
         </button>
       )}
-      <select value={lead.leadStatus} onChange={(e) => onStatus(e.target.value as LeadStatus)} aria-label={`Status von ${lead.firma}`} className="mt-2 w-full rounded-md border border-slate-300 bg-white px-1.5 py-1 text-xs">
+      <select value={lead.leadStatus} onChange={(e) => onStatus(e.target.value as LeadStatus)} aria-label={`Status von ${lead.firma}`} disabled={lesend} className="mt-2 w-full rounded-md border border-slate-300 bg-white px-1.5 py-1 text-xs">
         {LEAD_STATUS.map((s) => (
           <option key={s} value={s}>
             {LEAD_STATUS_INFO[s].label}

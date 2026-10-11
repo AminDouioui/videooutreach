@@ -5,10 +5,13 @@ import { validiereImport } from '@/lib/import-server';
 import { importBodySchema } from '@/lib/import-schema';
 import { fehler, parseJson } from '@/lib/request';
 import { eq } from 'drizzle-orm';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const kampagne = getDb().select({ id: schema.campaigns.id }).from(schema.campaigns).where(eq(schema.campaigns.id, id)).get();

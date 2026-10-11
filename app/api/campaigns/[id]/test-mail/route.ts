@@ -8,6 +8,7 @@ import { parseJson } from '@/lib/request';
 import { buildLeadMime } from '@/lib/send';
 import { STANDARD_VARIANTE } from '@/lib/varianten';
 import { ladeVarianten } from '@/lib/varianten-db';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,6 +17,8 @@ const bodySchema = z.object({ leadId: z.number().int().optional(), variante: z.s
 
 /** Testmail vom gewählten Postfach an dessen eigene Adresse („[TEST]“ im Betreff). Ändert keinen Lead-Status. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   const fail = (error: string, status = 200) => NextResponse.json({ ok: false, error }, { status });
   if (!Number.isInteger(id)) return fail('Ungültige Kampagne', 404);

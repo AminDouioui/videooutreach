@@ -6,6 +6,7 @@ import { getDb, schema } from '@/lib/db';
 import { fehler, parseJson } from '@/lib/request';
 import { MAX_VARIANTEN } from '@/lib/varianten';
 import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
@@ -36,6 +37,8 @@ const bodySchema = z.object({
 
 /** Follow-up-Schritte der Kampagne speichern (ersetzt alle bisherigen) */
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const k = getDb().select({ id: schema.campaigns.id }).from(schema.campaigns).where(eq(schema.campaigns.id, id)).get();

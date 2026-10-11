@@ -8,6 +8,7 @@ import { deleteMedia } from '@/lib/media';
 import { parseDealWert } from '@/lib/pipeline';
 import { fehler, parseJson } from '@/lib/request';
 import { kanonischeZeitzone } from '@/lib/time';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
@@ -35,6 +36,8 @@ async function ladeId(params: Promise<{ id: string }>) {
 
 /** Notizen speichern, Lead überspringen, Lead-Status setzen oder Antwort als gelesen/ungelesen markieren. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const id = await ladeId(params);
   if (id === null) return fehler('Ungültige ID', 404);
   const parsed = await parseJson(req, patchSchema);
@@ -70,7 +73,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 /** Lead inkl. Events (Cascade) und Mediendateien löschen. */
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const id = await ladeId(params);
   if (id === null) return fehler('Ungültige ID', 404);
   const db = getDb();

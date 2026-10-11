@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getDb, schema } from '@/lib/db';
 import { fehler, parseJson } from '@/lib/request';
 import { pruefeVariante, varianteSchema } from '@/lib/varianten-db';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
@@ -16,6 +17,8 @@ async function lade(params: Promise<{ id: string; vid: string }>) {
 
 /** Variante ändern (Betreff, Text, aktiv) */
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string; vid: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const v = await lade(params);
   if (!v) return fehler('Variante nicht gefunden', 404);
   const parsed = await parseJson(req, varianteSchema);
@@ -31,7 +34,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 }
 
 /** Variante löschen – nur, solange kein Lead sie bekommen hat (sonst nur deaktivieren) */
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; vid: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string; vid: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const v = await lade(params);
   if (!v) return fehler('Variante nicht gefunden', 404);
   const n = getDb()

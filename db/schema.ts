@@ -351,6 +351,46 @@ export const apiSchluessel = sqliteTable('api_schluessel', {
   widerrufenAt: ts('widerrufen_at'),
 });
 
+export const BENUTZER_ROLLEN = ['admin', 'mitglied', 'lesen'] as const;
+
+/**
+ * Team-Zugänge. Der Zugang über ADMIN_PASSWORD ist kein Benutzer in dieser Tabelle (Session mit benutzerId 0).
+ * `sessionVersion` steckt im Session-Token; wer sie erhöht (Deaktivieren, Rollenwechsel, Passwortwechsel), entwertet
+ * alle bestehenden Sessions des Benutzers sofort.
+ */
+export const benutzer = sqliteTable('benutzer', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  // Immer klein geschrieben gespeichert
+  email: text('email').notNull().unique(),
+  name: text('name').notNull(),
+  // scrypt, Format `salz:hash` (hex), siehe lib/passwort.ts
+  passwortHash: text('passwort_hash').notNull(),
+  rolle: text('rolle', { enum: BENUTZER_ROLLEN }).notNull().default('mitglied'),
+  aktiv: integer('aktiv', { mode: 'boolean' }).notNull().default(true),
+  sessionVersion: integer('session_version').notNull().default(0),
+  letzterLoginAt: ts('letzter_login_at'),
+  createdAt: ts('created_at').notNull().default(jetzt),
+});
+
+/** Einmal-Einladungen (auch für „Passwort zurücksetzen“). Nur der sha256-Hash des Tokens wird gespeichert. */
+export const einladungen = sqliteTable(
+  'einladungen',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    email: text('email').notNull(),
+    rolle: text('rolle', { enum: BENUTZER_ROLLEN }).notNull().default('mitglied'),
+    tokenHash: text('token_hash').notNull().unique(),
+    ablaufAt: ts('ablauf_at').notNull(),
+    angenommenAt: ts('angenommen_at'),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [index('einladungen_email_idx').on(t.email)],
+);
+
+export type Benutzer = typeof benutzer.$inferSelect;
+export type Einladung = typeof einladungen.$inferSelect;
+export type BenutzerRolle = (typeof BENUTZER_ROLLEN)[number];
+
 export type Absender = typeof absender.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type Variante = typeof varianten.$inferSelect;

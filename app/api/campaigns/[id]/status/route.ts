@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { ladeKampagnenStatus } from '@/lib/render-queue';
 import { fehler } from '@/lib/request';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /** Render- und Versandfortschritt einer Kampagne (Polling durch die UI). */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'lesen');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const status = ladeKampagnenStatus(id);

@@ -15,6 +15,9 @@ import { gmailThreadUrl } from '@/lib/lead-status';
 import { setzeAntwortGelesen } from '@/lib/lead-status-db';
 import { zeitzoneOderStandard } from '@/lib/time';
 import { leadPageUrl, thumbnailUrl, videoUrl } from '@/lib/media';
+import { Schreibschutz } from '@/components/Schreibschutz';
+import { hatRolle } from '@/lib/auth';
+import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +39,8 @@ const EVENT_LABEL: Record<string, string> = {
 const zeit = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'medium' });
 
 export default async function LeadDetail({ params }: { params: Promise<{ id: string }> }) {
+  const me = await erforderSeitenRolle();
+  const schreiben = hatRolle(me.rolle, 'mitglied');
   const id = Number((await params).id);
   if (!Number.isInteger(id)) notFound();
   const db = getDb();
@@ -46,7 +51,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const events = db.select().from(schema.events).where(eq(schema.events.leadId, id)).orderBy(asc(schema.events.createdAt), asc(schema.events.id)).all();
 
   // Öffnen des Lead-Details markiert eine Antwort als gelesen
-  if (lead.flowStopp === 'beantwortet' && !lead.antwortGelesen) setzeAntwortGelesen(lead.id, true);
+  if (schreiben && lead.flowStopp === 'beantwortet' && !lead.antwortGelesen) setzeAntwortGelesen(lead.id, true);
 
   const herkunft = lead.herkunftLeadId !== null ? db.select({ id: schema.leads.id, campaignId: schema.leads.campaignId, kampagne: schema.campaigns.name }).from(schema.leads).innerJoin(schema.campaigns, eq(schema.campaigns.id, schema.leads.campaignId)).where(eq(schema.leads.id, lead.herkunftLeadId)).get() : undefined;
   const weiterleitungen = db
@@ -134,7 +139,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           {lead.renderError && <p className="mt-2 text-sm text-red-700">Render-Fehler: {lead.renderError}</p>}
           {lead.sendError && <p className="mt-2 text-sm text-red-700">Versand-Fehler: {lead.sendError}</p>}
         </div>
-        <LeadActions leadId={lead.id} campaignId={kampagne.id} sendStatus={lead.sendStatus} />
+        {schreiben && <LeadActions leadId={lead.id} campaignId={kampagne.id} sendStatus={lead.sendStatus} />}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -186,11 +191,15 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Lead-Status &amp; Antwort</h2>
           <div className="space-y-3 text-sm">
             <div className="flex flex-wrap items-center gap-3">
-              <LeadStatusSelect leadId={lead.id} status={lead.leadStatus} />
+              <Schreibschutz gesperrt={!schreiben}>
+                <LeadStatusSelect leadId={lead.id} status={lead.leadStatus} />
+              </Schreibschutz>
               {lead.leadStatusAt && <span className="text-xs text-slate-500">gesetzt am {zeit.format(lead.leadStatusAt)}</span>}
             </div>
             <p className="text-xs text-slate-500">Nicht interessiert, falscher Ansprechpartner, Termin gebucht, Gewonnen und Verloren beenden den Flow (keine Follow-ups mehr).</p>
-            <ZeitzoneFeld leadId={lead.id} initial={lead.zeitzone ?? ''} kampagneZone={zeitzoneOderStandard(kampagne.zeitzone)} />
+            <Schreibschutz gesperrt={!schreiben}>
+              <ZeitzoneFeld leadId={lead.id} initial={lead.zeitzone ?? ''} kampagneZone={zeitzoneOderStandard(kampagne.zeitzone)} />
+            </Schreibschutz>
             <p>
               <span className="text-slate-500">Erstmail-Variante:</span> {lead.variante ?? '–'}
             </p>
@@ -208,7 +217,11 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
                 {lead.abwesendBis ? `, Follow-ups warten bis ${zeit.format(lead.abwesendBis)}` : ' (Follow-ups nicht verschoben)'}. Zählt nicht als Antwort.
               </p>
             )}
-            {ki && (lead.flowStopp === 'beantwortet' || lead.kiEinordnung) && <KiEinordnung key={lead.id} aktiv leadId={lead.id} einordnung={lead.kiEinordnung ?? null} />}
+            {ki && (lead.flowStopp === 'beantwortet' || lead.kiEinordnung) && (
+              <Schreibschutz gesperrt={!schreiben}>
+                <KiEinordnung key={lead.id} aktiv leadId={lead.id} einordnung={lead.kiEinordnung ?? null} />
+              </Schreibschutz>
+            )}
             {lead.gmailThreadId && (
               <a href={gmailThreadUrl(lead.antwortThreadId ?? lead.gmailThreadId)} target="_blank" rel="noopener noreferrer" className="inline-block rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
                 In Gmail öffnen
@@ -224,7 +237,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               leadId={lead.id}
               threads={verlauf.threads}
               start={verlauf.start}
-              antwortenErlaubt={lead.flowStopp === 'beantwortet'}
+              antwortenErlaubt={schreiben && lead.flowStopp === 'beantwortet'}
               postfachEmail={verlauf.postfach.email}
               gmailUrl={lead.gmailThreadId ? gmailThreadUrl(lead.antwortThreadId ?? lead.gmailThreadId) : null}
               kiAktiv={ki}
@@ -239,12 +252,16 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
 
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Pipeline</h2>
-          <DealFeld leadId={lead.id} wert={lead.dealWert} notiz={lead.dealNotiz ?? ''} />
+          <Schreibschutz gesperrt={!schreiben}>
+            <DealFeld leadId={lead.id} wert={lead.dealWert} notiz={lead.dealNotiz ?? ''} />
+          </Schreibschutz>
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Notizen</h2>
-          <NotizFeld leadId={lead.id} initial={lead.notizen ?? ''} />
+          <Schreibschutz gesperrt={!schreiben}>
+            <NotizFeld leadId={lead.id} initial={lead.notizen ?? ''} />
+          </Schreibschutz>
         </section>
       </div>
     </div>

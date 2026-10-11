@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { aktualisiereAbsender, entferneAbsender, ladeAbsenderMitId } from '@/lib/absender';
 import { widerrufeToken } from '@/lib/gmail';
 import { fehler, parseJson } from '@/lib/request';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,8 @@ function parseId(raw: string): number | null {
 
 /** Postfach bearbeiten: Name, Tageslimit, Signatur (null/leer = globale), aktiv (pausieren), Rampen-Beginn. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'admin');
+  if (!auth.ok) return auth.response;
   const id = parseId((await params).id);
   if (id === null || !ladeAbsenderMitId(id)) return fehler('Postfach nicht gefunden', 404);
   const parsed = await parseJson(req, bodySchema);
@@ -37,7 +40,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
  * Postfach entfernen: Token wird bei Google widerrufen und lokal gelöscht. Hängen Leads oder Mails daran, bleibt der
  * Eintrag deaktiviert erhalten (dann wartet deren Follow-up), sonst wird er gelöscht.
  */
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'admin');
+  if (!auth.ok) return auth.response;
   const id = parseId((await params).id);
   const a = id === null ? null : ladeAbsenderMitId(id);
   if (id === null || !a) return fehler('Postfach nicht gefunden', 404);

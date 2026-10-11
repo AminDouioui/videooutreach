@@ -12,10 +12,15 @@ import { kiAktiv } from '@/lib/ki';
 import { ladeFollowups } from '@/lib/send';
 import { STANDARD_VARIANTE } from '@/lib/varianten';
 import { ladeVarianten, variantenZaehler } from '@/lib/varianten-db';
+import { Schreibschutz } from '@/components/Schreibschutz';
+import { hatRolle } from '@/lib/auth';
+import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
 
 export const dynamic = 'force-dynamic';
 
 export default async function VorlagePage({ params }: { params: Promise<{ id: string }> }) {
+  const me = await erforderSeitenRolle();
+  const gesperrt = !hatRolle(me.rolle, 'mitglied');
   const id = Number((await params).id);
   if (!Number.isInteger(id)) notFound();
   const db = getDb();
@@ -46,6 +51,7 @@ export default async function VorlagePage({ params }: { params: Promise<{ id: st
         Schritt 1 ist die Erstmail{k.mitVideo ? ' mit dem persönlichen Video' : ''}. Danach folgen optional Follow-ups im selben Thread, bis der Lead antwortet.
       </p>
 
+      <Schreibschutz gesperrt={gesperrt} hinweis="Nur Ansicht: Mit Ihrer Rolle können Sie den E-Mail-Flow nicht ändern.">
       <h2 className="mb-3 text-base font-semibold">Schritt 1 · Erstmail (Variante A)</h2>
       <TemplateEditor campaignId={id} subject={k.emailSubjectTemplate} body={k.emailBodyTemplate} postfaecher={postfaecher} leads={leadOptionen} mitVideo={k.mitVideo} extraSpalten={extraSpalten} kiAktiv={ki} />
 
@@ -54,6 +60,7 @@ export default async function VorlagePage({ params }: { params: Promise<{ id: st
 
       <h2 className="mb-3 mt-10 text-base font-semibold">Follow-ups</h2>
       <FollowupEditor campaignId={id} initial={followups} leads={leadOptionen} varianten={[STANDARD_VARIANTE, ...zusatz.map((v) => v.kuerzel)]} mitVideo={k.mitVideo} extraSpalten={extraSpalten} kiAktiv={ki} />
+      </Schreibschutz>
     </div>
   );
 }

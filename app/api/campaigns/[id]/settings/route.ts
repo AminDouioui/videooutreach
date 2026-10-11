@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getDb, schema } from '@/lib/db';
 import { fehler, parseJson } from '@/lib/request';
 import { formatSendDays, kanonischeZeitzone, parseHHMM } from '@/lib/time';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
@@ -44,6 +45,8 @@ const bodySchema = z
 
 /** Kampagnen-Einstellungen speichern (Name, Termin-Link, Limit, Fenster, Versandtage, Startdatum, Pixel) */
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const parsed = await parseJson(req, bodySchema);

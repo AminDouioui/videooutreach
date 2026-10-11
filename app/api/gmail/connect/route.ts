@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { kannThreadLesen, ladeAbsender, ladeAbsenderMitId } from '@/lib/absender';
 import { getEnv } from '@/lib/env';
 import { buildAuthUrl, oauthConfigured } from '@/lib/gmail';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,8 @@ const STATE_COOKIE = 'vo_gmail_state';
  * nur dann SENDER_EMAIL, wenn es noch kein Postfach gibt (sonst würde das erste Konto vorgeschlagen).
  */
 export async function GET(req: NextRequest) {
+  const auth = await erfordereRolle(req, 'admin');
+  if (!auth.ok) return auth.response;
   const base = getEnv().APP_URL.replace(/\/$/, '');
   if (!oauthConfigured()) return NextResponse.redirect(`${base}/einstellungen?gmail=nicht_konfiguriert`);
   const absenderId = Number(req.nextUrl.searchParams.get('absender'));

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { STANDARD_BETREFF, STANDARD_BETREFF_OHNE_VIDEO, STANDARD_TEXT, STANDARD_TEXT_OHNE_VIDEO } from '@/lib/campaigns';
 import { getDb, schema } from '@/lib/db';
 import { parseJson } from '@/lib/request';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
@@ -12,11 +13,15 @@ const createSchema = z.object({
   mitVideo: z.boolean().default(true),
 });
 
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await erfordereRolle(req, 'lesen');
+  if (!auth.ok) return auth.response;
   return NextResponse.json(getDb().select().from(schema.campaigns).all());
 }
 
 export async function POST(req: Request) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const parsed = await parseJson(req, createSchema);
   if ('response' in parsed) return parsed.response;
   const [kampagne] = getDb()

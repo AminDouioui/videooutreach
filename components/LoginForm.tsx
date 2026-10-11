@@ -3,6 +3,7 @@
 import { useState } from 'react';
 
 export function LoginForm() {
+  const [email, setEmail] = useState('');
   const [passwort, setPasswort] = useState('');
   const [fehler, setFehler] = useState('');
   const [laedt, setLaedt] = useState(false);
@@ -15,7 +16,7 @@ export function LoginForm() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: passwort }),
+        body: JSON.stringify({ email: email.trim(), password: passwort }),
       });
       if (res.ok) {
         // Nur interne Pfade als Ziel zulassen (kein Open Redirect)
@@ -34,10 +35,23 @@ export function LoginForm() {
   return (
     <form onSubmit={absenden} className="space-y-4">
       <label className="block text-sm font-medium text-slate-700">
+        E-Mail <span className="font-normal text-slate-400">(leer lassen für den Admin-Zugang)</span>
+        <input
+          type="email"
+          name="email"
+          autoComplete="username"
+          autoFocus
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+        />
+      </label>
+      <label className="block text-sm font-medium text-slate-700">
         Passwort
         <input
           type="password"
-          autoFocus
+          name="password"
+          autoComplete="current-password"
           required
           value={passwort}
           onChange={(e) => setPasswort(e.target.value)}

@@ -6,6 +6,7 @@ import { hatVerbundenesPostfach, kannAntwortenPruefen, ladeAbsender, postfachVer
 import { fehler, parseJson } from '@/lib/request';
 import { brecheVersandAb, countSentToday, effektivesGlobalLimit, ladeFollowups } from '@/lib/send';
 import { isWithinWindow, todayBerlin } from '@/lib/time';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,9 @@ function laden(id: number) {
 }
 
 /** Versandstatus der Kampagne für die Anzeige (Heute gesendet, nächster Versand …). */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'lesen');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const k = laden(id);
@@ -56,6 +59,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 /** Versand starten / pausieren / fortsetzen / abbrechen */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const k = laden(id);

@@ -6,10 +6,14 @@ import { UntersequenzenVerwaltung } from '@/components/UntersequenzenVerwaltung'
 import { getDb, schema } from '@/lib/db';
 import { parseSendDays } from '@/lib/time';
 import { ladeRegeln } from '@/lib/untersequenzen-db';
+import { Schreibschutz } from '@/components/Schreibschutz';
+import { hatRolle } from '@/lib/auth';
+import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
 
 export const dynamic = 'force-dynamic';
 
 export default async function KampagnenEinstellungen({ params }: { params: Promise<{ id: string }> }) {
+  const me = await erforderSeitenRolle();
   const id = Number((await params).id);
   if (!Number.isInteger(id)) notFound();
   const k = getDb().select().from(schema.campaigns).where(eq(schema.campaigns.id, id)).get();
@@ -24,6 +28,7 @@ export default async function KampagnenEinstellungen({ params }: { params: Promi
         <Link href={`/kampagnen/${id}`} className="text-slate-500 hover:underline">{k.name}</Link> / Einstellungen
       </p>
       <h1 className="mb-4 text-xl font-semibold">Kampagnen-Einstellungen</h1>
+      <Schreibschutz gesperrt={!hatRolle(me.rolle, 'mitglied')} hinweis="Nur Ansicht: Mit Ihrer Rolle können Sie die Einstellungen nicht ändern.">
       <CampaignSettingsForm
         campaignId={id}
         initial={{
@@ -46,6 +51,7 @@ export default async function KampagnenEinstellungen({ params }: { params: Promi
         }}
       />
       <UntersequenzenVerwaltung campaignId={id} regeln={ladeRegeln(id)} ziele={ziele} />
+      </Schreibschutz>
     </div>
   );
 }

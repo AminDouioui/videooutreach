@@ -9,12 +9,14 @@ import { getDb, schema } from '@/lib/db';
 import { leadStatusLabel } from '@/lib/lead-status';
 import { ladeFollowups } from '@/lib/send';
 import { ladeVariantenStatistik } from '@/lib/varianten-statistik';
+import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
 
 export const dynamic = 'force-dynamic';
 
 const prozent = (r: number) => `${(r * 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
 
 export default async function AnalysePage({ params }: { params: Promise<{ id: string }> }) {
+  await erforderSeitenRolle();
   const id = Number((await params).id);
   if (!Number.isInteger(id)) notFound();
   const k = getDb().select().from(schema.campaigns).where(eq(schema.campaigns.id, id)).get();

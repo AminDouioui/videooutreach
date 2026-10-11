@@ -3,11 +3,14 @@ import { z } from 'zod';
 import { ladeEinstellungen } from '@/lib/settings-view';
 import { parseJson } from '@/lib/request';
 import { deleteSetting, KI_AUTO_STATUS, setSetting, type SettingKey } from '@/lib/settings';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await erfordereRolle(req, 'lesen');
+  if (!auth.ok) return auth.response;
   return NextResponse.json(ladeEinstellungen());
 }
 
@@ -34,6 +37,8 @@ function setOrDelete(key: SettingKey, value: string) {
 }
 
 export async function PUT(req: Request) {
+  const auth = await erfordereRolle(req, 'admin');
+  if (!auth.ok) return auth.response;
   const parsed = await parseJson(req, bodySchema);
   if ('response' in parsed) return parsed.response;
   const d = parsed.data;

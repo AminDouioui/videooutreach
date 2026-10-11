@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { fehler, parseJson } from '@/lib/request';
 import { ladeRegeln, legeRegelAn, type RegelFehler } from '@/lib/untersequenzen-db';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
@@ -20,7 +21,9 @@ async function ladeId(params: Promise<{ id: string }>) {
   return Number.isInteger(id) ? id : null;
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'lesen');
+  if (!auth.ok) return auth.response;
   const id = await ladeId(params);
   if (id === null) return fehler('Ungültige Kampagne', 404);
   return NextResponse.json({ regeln: ladeRegeln(id) });
@@ -28,6 +31,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 /** Regel anlegen: Lead-Status → Ziel-Kampagne */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const id = await ladeId(params);
   if (id === null) return fehler('Ungültige Kampagne', 404);
   const parsed = await parseJson(req, bodySchema);

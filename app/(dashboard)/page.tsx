@@ -7,10 +7,13 @@ import { KampagnenTabelle, type KampagnenZeile } from '@/components/KampagnenTab
 import { ladeUebersicht } from '@/lib/analyse';
 import { ladeKennzahlen } from '@/lib/campaigns';
 import { getDb, schema } from '@/lib/db';
+import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
+import { hatRolle } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-export default function KampagnenUebersicht() {
+export default async function KampagnenUebersicht() {
+  const me = await erforderSeitenRolle();
   const kampagnen = getDb().select().from(schema.campaigns).orderBy(desc(schema.campaigns.createdAt)).all();
   const kennzahlen = ladeKennzahlen();
   const uebersicht = ladeUebersicht();
@@ -83,9 +86,11 @@ export default function KampagnenUebersicht() {
 
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Kampagnen</h1>
-        <Link href="/kampagnen/neu" className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">
-          Neue Kampagne
-        </Link>
+        {hatRolle(me.rolle, 'mitglied') && (
+          <Link href="/kampagnen/neu" className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+            Neue Kampagne
+          </Link>
+        )}
       </div>
 
       {kampagnen.length === 0 ? (
