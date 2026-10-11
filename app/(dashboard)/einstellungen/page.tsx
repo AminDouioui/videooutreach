@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { GlobalSettingsForm } from '@/components/GlobalSettingsForm';
 import { PostfaecherVerwaltung } from '@/components/PostfaecherVerwaltung';
 import { SuppressionList } from '@/components/SuppressionList';
@@ -14,6 +15,13 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
   return (
     <div className="max-w-3xl space-y-6">
       <h1 className="text-xl font-semibold">Einstellungen</h1>
+      <Link href="/einstellungen/integrationen" className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-5 py-3 hover:bg-slate-50">
+        <span>
+          <span className="block text-base font-semibold">Integrationen</span>
+          <span className="block text-xs text-slate-500">Webhooks und API-Schlüssel für die REST-API</span>
+        </span>
+        <span className="text-slate-400">→</span>
+      </Link>
       <PostfaecherVerwaltung postfaecher={e.postfaecher} konfiguriert={e.gmailKonfiguriert} hinweis={sp.gmail} detail={sp.detail} />
       <GlobalSettingsForm
         initial={{

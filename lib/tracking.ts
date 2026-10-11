@@ -4,6 +4,7 @@ import { hashIp } from './crypto';
 import { getDb, schema } from './db';
 import { clientIp } from './request';
 import { berechneScore } from './score';
+import { webhookAusloesen } from './webhooks';
 
 export type EventTyp = (typeof schema.EVENT_TYPEN)[number];
 
@@ -46,6 +47,28 @@ export function recordEvent(args: {
     })
     .run();
   aktualisiereScore(args.leadId);
+  if (!args.isBot) loeseWebhookAus(args.leadId, args.type, args.meta ?? null);
+}
+
+/**
+ * Webhooks zu einem Tracking-Event (nie für Bots). `video_angesehen` und `video_gestartet` gibt es je Lead nur beim
+ * ersten Mal; Termin- und Link-Klicks bei jedem (nicht-Bot-)Klick.
+ */
+function loeseWebhookAus(leadId: number, type: EventTyp, meta: Record<string, unknown> | null): void {
+  try {
+    if (type === 'cta_click') webhookAusloesen('termin_klick', { leadId });
+    else if (type === 'link_click') webhookAusloesen('link_klick', { leadId, url: typeof meta?.url === 'string' ? meta.url : null });
+    else if (type === 'page_view' || type === 'play') {
+      const n = getDb()
+        .select({ n: sql<number>`count(*)` })
+        .from(schema.events)
+        .where(and(eq(schema.events.leadId, leadId), eq(schema.events.type, type), eq(schema.events.isBot, false)))
+        .get()?.n;
+      if (n === 1) webhookAusloesen(type === 'page_view' ? 'video_angesehen' : 'video_gestartet', { leadId });
+    }
+  } catch (e) {
+    console.error('[webhook] Tracking-Ereignis:', e instanceof Error ? e.message : e);
+  }
 }
 
 /** true, wenn für diesen Lead und Typ in den letzten `ms` Millisekunden schon ein Event existiert. */

@@ -5,7 +5,7 @@ import { summarize } from '@/lib/import';
 import { validiereImport } from '@/lib/import-server';
 import { importBodySchema } from '@/lib/import-schema';
 import { fehler, parseJson } from '@/lib/request';
-import { createSlug } from '@/lib/slug';
+import { legeLeadsAn } from '@/lib/lead-anlegen';
 
 export const runtime = 'nodejs';
 
@@ -21,32 +21,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   // Serverseitig erneut validieren; importiert werden nur gültige Zeilen
   const validiert = await validiereImport(id, parsed.data);
-  const gueltig = validiert.filter((r) => r.status === 'ok');
 
-  const importiert = db.transaction((tx) => {
-    const vergeben = new Set<string>();
-    const slugExists = (s: string) => vergeben.has(s) || !!tx.select({ id: schema.leads.id }).from(schema.leads).where(eq(schema.leads.slug, s)).get();
-    for (const { lead } of gueltig) {
-      const slug = createSlug(lead.firma, slugExists);
-      vergeben.add(slug);
-      tx.insert(schema.leads)
-        .values({
-          campaignId: id,
-          firma: lead.firma,
-          anrede: lead.anrede || null,
-          vorname: lead.vorname || null,
-          nachname: lead.nachname || null,
-          email: lead.email,
-          position: lead.position || null,
-          website: lead.website || null,
-          zeitzone: lead.zeitzone || null,
-          extra: Object.keys(lead.extra).length ? lead.extra : null,
-          slug,
-        })
-        .run();
-    }
-    return gueltig.length;
-  });
+  const importiert = legeLeadsAn(id, validiert).size;
 
   return NextResponse.json({ imported: importiert, summary: summarize(validiert) });
 }

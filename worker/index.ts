@@ -2,6 +2,7 @@
 import { getDb } from '../lib/db';
 import { bundleRemotion, pruefeTeaserCache, recoverRenderJobs, startRenderLoop } from './render';
 import { startSendLoop } from './send';
+import { startWebhookLoop } from './webhooks';
 
 const SHUTDOWN_MAX_MS = 30_000;
 
@@ -18,7 +19,11 @@ async function main() {
   const versand = startSendLoop();
   stoppers.push(() => versand.stop());
 
-  console.log('[worker] Läuft – Render- und Versand-Schleife aktiv.');
+  // Webhook-Zustellung (worker/webhooks.ts)
+  const webhooks = startWebhookLoop();
+  stoppers.push(() => webhooks.stop());
+
+  console.log('[worker] Läuft – Render-, Versand- und Webhook-Schleife aktiv.');
 
   let beendet = false;
   const beenden = (signal: string) => {

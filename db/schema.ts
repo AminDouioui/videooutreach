@@ -302,6 +302,55 @@ export const suppressionList = sqliteTable('suppression_list', {
   createdAt: ts('created_at').notNull().default(jetzt),
 });
 
+// ---------------------------------------------------------------- Webhooks & API (Paket 14)
+
+export const WEBHOOK_EREIGNISSE = ['mail_gesendet', 'antwort', 'bounce', 'abwesenheit', 'abmeldung', 'lead_status', 'video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick'] as const;
+export const ZUSTELL_STATUS = ['offen', 'ok', 'fehler'] as const;
+export const API_RECHTE = ['lesen', 'schreiben'] as const;
+
+/** Ausgehende Webhooks. Das Geheimnis (HMAC-Signatur) wird mit lib/crypto.ts verschlüsselt gespeichert. */
+export const webhooks = sqliteTable('webhooks', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  url: text('url').notNull(),
+  ereignisse: text('ereignisse', { mode: 'json' }).$type<string[]>().notNull(),
+  geheimnis: text('geheimnis').notNull(),
+  aktiv: integer('aktiv', { mode: 'boolean' }).notNull().default(true),
+  createdAt: ts('created_at').notNull().default(jetzt),
+});
+
+/** Zustellungen (Warteschlange und Protokoll). 'test' ist zusätzlich zu den Ereignissen der Liste möglich. */
+export const webhookZustellungen = sqliteTable(
+  'webhook_zustellungen',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    webhookId: integer('webhook_id')
+      .notNull()
+      .references(() => webhooks.id, { onDelete: 'cascade' }),
+    ereignis: text('ereignis').notNull(),
+    payload: text('payload', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+    status: text('status', { enum: ZUSTELL_STATUS }).notNull().default('offen'),
+    versuche: integer('versuche').notNull().default(0),
+    naechsterVersuchAt: ts('naechster_versuch_at'),
+    letzterFehler: text('letzter_fehler'),
+    httpStatus: integer('http_status'),
+    createdAt: ts('created_at').notNull().default(jetzt),
+    zugestelltAt: ts('zugestellt_at'),
+  },
+  (t) => [index('webhook_zustellungen_webhook_idx').on(t.webhookId, t.createdAt), index('webhook_zustellungen_faellig_idx').on(t.status, t.naechsterVersuchAt)],
+);
+
+/** API-Schlüssel der REST-API. Nur der sha256-Hash wird gespeichert; `praefix` (erste 8 Zeichen) dient der Anzeige. */
+export const apiSchluessel = sqliteTable('api_schluessel', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  praefix: text('praefix').notNull(),
+  hash: text('hash').notNull().unique(),
+  rechte: text('rechte', { enum: API_RECHTE }).notNull().default('lesen'),
+  letzteNutzungAt: ts('letzte_nutzung_at'),
+  createdAt: ts('created_at').notNull().default(jetzt),
+  widerrufenAt: ts('widerrufen_at'),
+});
+
 export type Absender = typeof absender.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type Variante = typeof varianten.$inferSelect;

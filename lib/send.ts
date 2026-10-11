@@ -15,6 +15,7 @@ import { STANDARD_VARIABLEN, verwendeteVariablen } from './vorlage';
 import { isSuppressed } from './suppression';
 import { startOfDayBerlinMs, todayBerlin } from './time';
 import { kampagneMitVariante, waehleVarianteFuerKampagne } from './varianten-db';
+import { webhookAusloesen } from './webhooks';
 import { staerkeresErgebnis } from './followup-varianten';
 import { threadsDesLeads, waehleFollowupVariante } from './followup-varianten-db';
 import type { ThreadErgebnis } from './gmail';
@@ -276,6 +277,7 @@ export async function sendLead(leadId: number, opts: SendOptions = {}): Promise<
         .values({ leadId: lead.id, campaignId: lead.campaignId, step: 0, variante, gmailMessageId: res.id, gmailThreadId: res.threadId, absenderId: postfach.id, sentAt: jetzt })
         .run();
     });
+    webhookAusloesen('mail_gesendet', { leadId: lead.id, schritt: 0, variante }, jetzt);
     return { ok: true, messageId: res.id, threadId: res.threadId, absenderId: postfach.id };
   } catch (e) {
     const info = fehlerInfo(e);
@@ -333,6 +335,7 @@ export function merkeAbwesenheit(lead: Pick<typeof schema.leads.$inferSelect, 'i
     tx.update(schema.leads).set({ abwesendAt: jetzt, abwesendBis: bis }).where(eq(schema.leads.id, lead.id)).run();
     tx.insert(schema.events).values({ leadId: lead.id, type: 'abwesenheit', meta: { bis: bis ? bis.getTime() : null, tage }, isBot: false, createdAt: jetzt }).run();
   });
+  webhookAusloesen('abwesenheit', { leadId: lead.id, bis: bis ? bis.toISOString() : null }, jetzt);
 }
 
 /** Wartet das Follow-up dieses Leads wegen einer Abwesenheitsnotiz noch? */
@@ -370,10 +373,12 @@ export async function pruefeAntwort(
     stoppeFlow(lead.id, 'beantwortet', jetzt);
     getDb().update(schema.leads).set({ antwortAt: jetzt, antwortGelesen: false, antwortThreadId: antwortThread !== lead.gmailThreadId ? antwortThread : null }).where(eq(schema.leads.id, lead.id)).run();
     stoppeFirma(lead.id, jetzt);
+    webhookAusloesen('antwort', { leadId: lead.id }, jetzt);
   }
   else if (ergebnis === 'bounce') {
     stoppeFlow(lead.id, 'bounce', jetzt);
     pruefeBounceSchutz(lead);
+    webhookAusloesen('bounce', { leadId: lead.id }, jetzt);
   } else if (ergebnis === 'abwesenheit') {
     // Abwesenheit stoppt den Flow nicht und zählt nicht als Antwort; Follow-ups warten nur
     merkeAbwesenheit(lead, jetzt);
@@ -438,6 +443,7 @@ export async function sendFollowup(leadId: number, opts: SendOptions = {}): Prom
         .values({ leadId: lead.id, campaignId: lead.campaignId, step: lead.followupsSent + 1, variante: wahl.kuerzel, gmailMessageId: res.id, gmailThreadId: res.threadId, absenderId: postfach.id, sentAt: jetzt })
         .run();
     });
+    webhookAusloesen('mail_gesendet', { leadId: lead.id, schritt: lead.followupsSent + 1, variante: wahl.kuerzel }, jetzt);
     return { ok: true, messageId: res.id, threadId: res.threadId, absenderId: postfach.id };
   } catch (e) {
     const info = fehlerInfo(e);

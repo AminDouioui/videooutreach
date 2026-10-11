@@ -1,6 +1,7 @@
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { getDb, schema } from './db';
 import { wendeUntersequenzenAn } from './untersequenzen-db';
+import { webhookAusloesen } from './webhooks';
 import { FIRMA_HAT_GEANTWORTET, firmenDomain, statusPatch, type LeadStatus } from './lead-status';
 
 // Datenbankzugriffe für Lead-Status, Antworten und Firmen-Stopp
@@ -20,10 +21,11 @@ export function setzeLeadStatus(leadId: number, status: LeadStatus, jetzt: Date 
       .set({ ...patch, leadStatus: status, leadStatusAt: status === 'offen' ? null : jetzt })
       .where(eq(schema.leads.id, leadId))
       .run();
-    return { geaendert: lead.leadStatus !== status };
+    return { geaendert: lead.leadStatus !== status, alt: lead.leadStatus };
   });
   if (!ergebnis) return false;
   if (ergebnis.geaendert) {
+    webhookAusloesen('lead_status', { leadId, alt: ergebnis.alt, neu: status }, jetzt);
     try {
       wendeUntersequenzenAn(leadId, status, jetzt);
     } catch (e) {
