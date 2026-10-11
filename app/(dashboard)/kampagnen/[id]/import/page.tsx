@@ -3,10 +3,12 @@ import { eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { ImportWizard } from '@/components/ImportWizard';
 import { getDb, schema } from '@/lib/db';
+import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ImportPage({ params }: { params: Promise<{ id: string }> }) {
+  await erforderSeitenRolle('mitglied');
   const id = Number((await params).id);
   if (!Number.isInteger(id)) notFound();
   const kampagne = getDb().select().from(schema.campaigns).where(eq(schema.campaigns.id, id)).get();

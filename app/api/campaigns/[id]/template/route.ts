@@ -5,6 +5,7 @@ import { getDb, schema } from '@/lib/db';
 import { kampagnenExtraSpalten } from '@/lib/campaigns';
 import { fehler, parseJson } from '@/lib/request';
 import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
@@ -15,6 +16,8 @@ const bodySchema = z.object({
 
 /** Mail-Vorlage (Betreff + Text) der Kampagne speichern */
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const parsed = await parseJson(req, bodySchema);

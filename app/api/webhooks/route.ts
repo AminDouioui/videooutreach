@@ -4,6 +4,7 @@ import { fehler, parseJson } from '@/lib/request';
 import { pruefeWebhookZiel } from '@/lib/webhook-logik';
 import { legeWebhookAn, webhookGeheimnis } from '@/lib/webhooks';
 import { WEBHOOK_EREIGNISSE } from '@/db/schema';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
@@ -14,6 +15,8 @@ const webhookBodySchema = z.object({
 
 /** Webhook anlegen; die Antwort enthält das Geheimnis (danach über „Geheimnis anzeigen“ abrufbar). */
 export async function POST(req: Request) {
+  const auth = await erfordereRolle(req, 'admin');
+  if (!auth.ok) return auth.response;
   const parsed = await parseJson(req, webhookBodySchema);
   if ('response' in parsed) return parsed.response;
   const ziel = await pruefeWebhookZiel(parsed.data.url);

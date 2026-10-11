@@ -5,6 +5,7 @@ import { fehler } from '@/lib/request';
 import { buildLeadEmail } from '@/lib/send';
 import { STANDARD_VARIANTE } from '@/lib/varianten';
 import { kampagneMitVariante, ladeVarianten, vorschauVariante } from '@/lib/varianten-db';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,8 @@ function gueltigeVariante(campaignId: number, v: unknown): string | null {
  * beim Versand bekäme; mit `?variante=B` eine bestimmte.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'lesen');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültiger Lead', 404);
   const db = getDb();
@@ -35,6 +38,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
 /** Vorschau mit noch nicht gespeicherter Vorlage: Body { subject, body, followupBody?, followupBetreff?, variante? } (mit followupBody: Follow-up im Thread, mit followupBetreff als neuer Thread; ohne subject/body gilt die Vorlage der Variante) */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'lesen');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültiger Lead', 404);
   const db = getDb();

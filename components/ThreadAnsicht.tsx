@@ -92,7 +92,7 @@ export function ThreadAnsicht({
     [leadId, text, threadId, sendet],
   );
 
-  if (threads.length === 0) return <p className="text-sm text-slate-500">Zu diesem Lead gibt es noch keinen Gmail-Thread.</p>;
+  if (threads.length === 0) return <p className="text-sm text-slate-500">Zu diesem Lead gibt es noch keinen Mail-Verlauf.</p>;
 
   return (
     <div className="space-y-3">

@@ -4,10 +4,12 @@ import { WebhooksVerwaltung } from '@/components/WebhooksVerwaltung';
 import { listeSchluessel } from '@/lib/api-schluessel';
 import { privateZieleErlaubt } from '@/lib/webhook-logik';
 import { ladeProtokoll, listeWebhooks } from '@/lib/webhooks';
+import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
 
 export const dynamic = 'force-dynamic';
 
-export default function IntegrationenPage() {
+export default async function IntegrationenPage() {
+  await erforderSeitenRolle('admin');
   const hooks = listeWebhooks();
   const protokoll = ladeProtokoll(hooks.map((h) => h.id));
   const webhooks = hooks.map((h) => ({

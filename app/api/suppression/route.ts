@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { fehler, parseJson } from '@/lib/request';
 import { addSuppression, listSuppression, removeSuppression } from '@/lib/suppression';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,11 +19,15 @@ const emailSchema = z.object({
 });
 const addSchema = emailSchema.extend({ reason: z.string().trim().max(200).optional() });
 
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await erfordereRolle(req, 'lesen');
+  if (!auth.ok) return auth.response;
   return NextResponse.json(listSuppression());
 }
 
 export async function POST(req: Request) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const parsed = await parseJson(req, addSchema);
   if ('response' in parsed) return parsed.response;
   addSuppression(parsed.data.email, parsed.data.reason || 'manuell');
@@ -30,6 +35,8 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const parsed = await parseJson(req, emailSchema);
   if ('response' in parsed) return parsed.response;
   if (!parsed.data.email) return fehler('E-Mail fehlt');

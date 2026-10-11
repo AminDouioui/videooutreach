@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LEAD_STATUS as SCHEMA_STATUS } from '@/db/schema';
-import { emailDomain, firmenDomain, FLOW_ENDENDE_STATUS, gmailThreadUrl, istFreemail, LEAD_STATUS, LEAD_STATUS_INFO, statusBeendetFlow, statusPatch } from './lead-status';
+import { emailDomain, firmenDomain, FLOW_ENDENDE_STATUS, gmailLink, gmailThreadUrl, istFreemail, LEAD_STATUS, LEAD_STATUS_INFO, statusBeendetFlow, statusPatch } from './lead-status';
 
 const jetzt = new Date('2026-07-15T09:00:00Z');
 
@@ -64,5 +64,12 @@ describe('Firmen-Domain', () => {
 
   it('baut den Gmail-Link', () => {
     expect(gmailThreadUrl('18c3abc')).toBe('https://mail.google.com/mail/u/0/#all/18c3abc');
+    // Gmail-Link nur für Gmail-Postfächer: SMTP-Threads haben keinen
+    expect(gmailLink('18c3abc', 'gmail')).toBe('https://mail.google.com/mail/u/0/#all/18c3abc');
+    expect(gmailLink('18c3abc')).toBe('https://mail.google.com/mail/u/0/#all/18c3abc');
+    expect(gmailLink('18c3abc', 'smtp')).toBeNull();
+    expect(gmailLink('smtp:<a@b.de>', 'gmail')).toBeNull();
+    expect(gmailLink('smtp:<a@b.de>')).toBeNull();
+    expect(gmailLink(null, 'gmail')).toBeNull();
   });
 });

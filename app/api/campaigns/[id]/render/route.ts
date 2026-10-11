@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getDb, schema } from '@/lib/db';
 import { fordereRenderAn, stoppeRender } from '@/lib/render-queue';
 import { fehler, parseJson } from '@/lib/request';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
@@ -11,6 +12,8 @@ const bodySchema = z.object({ mode: z.enum(['all', 'failed', 'stop']) });
 
 /** Leads einer Kampagne in die Render-Warteschlange stellen bzw. das Rendern stoppen ('stop'). */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const k = getDb().select({ id: schema.campaigns.id }).from(schema.campaigns).where(eq(schema.campaigns.id, id)).get();

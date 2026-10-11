@@ -1,11 +1,15 @@
 import Link from 'next/link';
 import { LogoutButton } from '@/components/LogoutButton';
 import { zaehleUngeleseneAntworten } from '@/lib/lead-status-db';
+import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
+import { ROLLEN_NAME } from '@/lib/session';
 
 // Der Zähler ungelesener Antworten muss bei jedem Aufruf frisch sein
 export const dynamic = 'force-dynamic';
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  // Ungültige oder entwertete Session (Benutzer deaktiviert/gelöscht, Rolle geändert) → zurück zum Login
+  const me = await erforderSeitenRolle();
   const ungelesen = zaehleUngeleseneAntworten();
   return (
     <div className="min-h-screen bg-slate-50">
@@ -32,7 +36,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link href="/einstellungen" className="text-slate-600 hover:text-slate-900">
             Einstellungen
           </Link>
-          <span className="ml-auto">
+          <span className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1">
+            <Link href="/konto" className="text-xs font-normal text-slate-500 hover:text-slate-900" title="Mein Konto" data-testid="angemeldet-als">
+              Angemeldet als {me.name} ({ROLLEN_NAME[me.rolle]})
+            </Link>
             <LogoutButton />
           </span>
         </nav>

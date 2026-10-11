@@ -73,6 +73,7 @@ export function LeadsTable({
   abTest = false,
   mehrerePostfaecher = false,
   mehrereZeitzonen = false,
+  lesend = false,
 }: {
   leads: LeadRow[];
   baseUrl: string;
@@ -88,6 +89,8 @@ export function LeadsTable({
   mehrerePostfaecher?: boolean;
   /** Leads in verschiedenen Zeitzonen: Spalte „Ortszeit“ anzeigen */
   mehrereZeitzonen?: boolean;
+  /** Rolle „lesen“: keine Aktionen anbieten */
+  lesend?: boolean;
 }) {
   const flowGesamt = 1 + followupSchritte;
   const filter_ = FILTER.filter((f) => mitVideo || (f.key !== 'mit_play' && f.key !== 'termin'));
@@ -245,17 +248,17 @@ export function LeadsTable({
               <span>
                 {offeneDuplikate} weitere Kontakt(e) von Firmen, die schon in der Kampagne sind.
               </span>
-              <button onClick={() => duplikatAktion('ausschliessen')} disabled={busy} className="rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-60">
+              {!lesend && <button onClick={() => duplikatAktion('ausschliessen')} disabled={busy} className="rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-60">
                 Duplikate nicht anschreiben
-              </button>
+              </button>}
             </>
           )}
           {ausgeschlossen > 0 && (
             <>
               <span>{ausgeschlossen} Firmen-Duplikat(e) ausgeschlossen.</span>
-              <button onClick={() => duplikatAktion('aufheben')} disabled={busy} className="rounded-md border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60">
+              {!lesend && <button onClick={() => duplikatAktion('aufheben')} disabled={busy} className="rounded-md border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60">
                 Ausschluss aufheben
-              </button>
+              </button>}
             </>
           )}
           {meldung && <span className="text-xs">{meldung}</span>}

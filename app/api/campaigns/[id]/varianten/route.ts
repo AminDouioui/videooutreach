@@ -4,6 +4,7 @@ import { getDb, schema } from '@/lib/db';
 import { fehler, parseJson } from '@/lib/request';
 import { naechstesKuerzel } from '@/lib/varianten';
 import { ladeVarianten, pruefeVariante, varianteSchema } from '@/lib/varianten-db';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,7 +21,9 @@ function verwendung(campaignId: number): Map<string, number> {
 }
 
 /** Zusatzvarianten (B, C …) der Kampagne samt Anzahl Leads, die sie bekommen haben */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'lesen');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const k = getDb().select({ id: schema.campaigns.id }).from(schema.campaigns).where(eq(schema.campaigns.id, id)).get();
@@ -31,6 +34,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 /** Neue Variante anlegen (nächstes freies Kürzel, höchstens 5 Varianten insgesamt) */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const k = getDb().select({ id: schema.campaigns.id }).from(schema.campaigns).where(eq(schema.campaigns.id, id)).get();

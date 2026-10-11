@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
-import { kannAntwortenPruefen, ladeAbsender, ladePostfachZustaende, markiereAuthFehler, postfachFuerLead, setzeNaechstenVersand } from './absender';
+import { kannAntwortenPruefen, ladeAbsender, ladePostfachZustaende, markiereAuthFehler, postfachFuerLead, postfachVerbunden, setzeNaechstenVersand } from './absender';
 import { getDb, schema } from './db';
 import { getEnv } from './env';
 import { GmailSendError, type GmailSender, type ThreadLader, type ThreadPruefer } from './gmail';
@@ -81,7 +81,7 @@ function laufendeFlows(campaignId: number, anzahlFollowups: number) {
  * damit sie die übrigen nicht aufhalten.
  */
 async function pruefeEinenThread(jetzt: Date, deps: TickDeps): Promise<void> {
-  const postfaecher = ladeAbsender().filter((a) => !a.fehler && (deps.pruefer ? !!a.refreshTokenEnc : kannAntwortenPruefen(a)));
+  const postfaecher = ladeAbsender().filter((a) => !a.fehler && (deps.pruefer ? postfachVerbunden(a) : kannAntwortenPruefen(a)));
   if (postfaecher.length === 0) return;
   const ids = postfaecher.map((a) => a.id);
   // Altbestand ohne Zuordnung läuft über das älteste aktive Postfach (siehe postfachFuerLead)

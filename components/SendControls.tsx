@@ -30,7 +30,7 @@ function zeit(ms: number): string {
 }
 
 /** Versandsteuerung der Kampagne: starten, pausieren, fortsetzen + Tagesstand. */
-export function SendControls({ campaignId, readyCount }: { campaignId: number; readyCount: number }) {
+export function SendControls({ campaignId, readyCount, lesend = false }: { campaignId: number; readyCount: number; lesend?: boolean }) {
   const router = useRouter();
   const [s, setS] = useState<Status | null>(null);
   const [laedt, setLaedt] = useState(false);
@@ -77,22 +77,22 @@ export function SendControls({ campaignId, readyCount }: { campaignId: number; r
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-center gap-2">
-        {!laeuft && status !== 'pausiert' && (
+        {!lesend && !laeuft && status !== 'pausiert' && (
           <button onClick={() => aktion('start')} disabled={laedt || readyCount === 0} title={readyCount === 0 ? 'Noch keine versandbereiten Leads' : undefined} className={`${knopf} bg-indigo-600 text-white hover:bg-indigo-700`}>
             Kampagne starten
           </button>
         )}
-        {laeuft && (
+        {!lesend && laeuft && (
           <button onClick={() => aktion('pause')} disabled={laedt} className={`${knopf} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}>
             Kampagne pausieren
           </button>
         )}
-        {status === 'pausiert' && (
+        {!lesend && status === 'pausiert' && (
           <button onClick={() => aktion('resume')} disabled={laedt} className={`${knopf} bg-indigo-600 text-white hover:bg-indigo-700`}>
             Fortsetzen
           </button>
         )}
-        {(laeuft || status === 'pausiert') && (
+        {!lesend && (laeuft || status === 'pausiert') && (
           <button onClick={() => aktion('stop')} disabled={laedt} className={`${knopf} border border-red-200 bg-white text-red-700 hover:bg-red-50`}>
             Kampagne abbrechen
           </button>

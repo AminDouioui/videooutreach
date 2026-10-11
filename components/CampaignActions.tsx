@@ -7,10 +7,12 @@ import { useState } from 'react';
 const sekundaer = 'rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50';
 
 /** Aktionsleiste der Kampagne: Import, Rendern (nur Video-Kampagnen), E-Mail-Flow, Einstellungen, Duplizieren, Löschen. */
-export function CampaignActions({ campaignId, campaignName, leadCount, mitVideo }: { campaignId: number; campaignName: string; leadCount: number; mitVideo: boolean }) {
+export function CampaignActions({ campaignId, campaignName, leadCount, mitVideo, rolle = 'admin' }: { campaignId: number; campaignName: string; leadCount: number; mitVideo: boolean; rolle?: 'admin' | 'mitglied' | 'lesen' }) {
   const router = useRouter();
   const [busy, setBusy] = useState<'all' | 'failed' | 'loeschen' | 'duplizieren' | null>(null);
   const [meldung, setMeldung] = useState<string | null>(null);
+  // Nur Komfort – die Berechtigung prüfen die API-Routen: Importieren/Rendern/Duplizieren ab „mitglied“, Löschen nur „admin“
+  const schreiben = rolle !== 'lesen';
 
   async function rendern(mode: 'all' | 'failed') {
     setBusy(mode);
@@ -70,15 +72,15 @@ export function CampaignActions({ campaignId, campaignName, leadCount, mitVideo 
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Link href={`/kampagnen/${campaignId}/import`} className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">
+      {schreiben && <Link href={`/kampagnen/${campaignId}/import`} className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">
         Leads importieren
-      </Link>
-      {mitVideo && leadCount > 0 && (
+      </Link>}
+      {schreiben && mitVideo && leadCount > 0 && (
         <button onClick={() => rendern('all')} disabled={busy !== null} className={sekundaer}>
           {busy === 'all' ? 'Wird eingereiht …' : 'Alle rendern'}
         </button>
       )}
-      {mitVideo && (
+      {schreiben && mitVideo && (
         <button onClick={() => rendern('failed')} disabled={busy !== null} className={sekundaer}>
           {busy === 'failed' ? 'Wird eingereiht …' : 'Fehlgeschlagene erneut rendern'}
         </button>
@@ -92,16 +94,18 @@ export function CampaignActions({ campaignId, campaignName, leadCount, mitVideo 
       <Link href={`/kampagnen/${campaignId}/einstellungen`} className={sekundaer}>
         Einstellungen
       </Link>
-      <button onClick={duplizieren} disabled={busy !== null} className={sekundaer}>
-        {busy === 'duplizieren' ? 'Wird dupliziert …' : 'Duplizieren'}
-      </button>
-      <button
+      {schreiben && (
+        <button onClick={duplizieren} disabled={busy !== null} className={sekundaer}>
+          {busy === 'duplizieren' ? 'Wird dupliziert …' : 'Duplizieren'}
+        </button>
+      )}
+      {rolle === 'admin' && <button
         onClick={loeschen}
         disabled={busy !== null}
         className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
       >
         {busy === 'loeschen' ? 'Wird gelöscht …' : 'Löschen'}
-      </button>
+      </button>}
       {meldung && <span className="text-sm text-slate-500">{meldung}</span>}
     </div>
   );

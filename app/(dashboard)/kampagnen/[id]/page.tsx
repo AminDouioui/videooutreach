@@ -17,10 +17,14 @@ import { ladeFollowups } from '@/lib/send';
 import { ladeVariantenStatistik } from '@/lib/varianten-statistik';
 import { VariantenTabelle } from '@/components/VariantenTabelle';
 import { ladeLeadMetriken } from '@/lib/tracking';
+import { Schreibschutz } from '@/components/Schreibschutz';
+import { hatRolle } from '@/lib/auth';
+import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
 
 export const dynamic = 'force-dynamic';
 
 export default async function KampagnenDetail({ params }: { params: Promise<{ id: string }> }) {
+  const me = await erforderSeitenRolle();
   const id = Number((await params).id);
   if (!Number.isInteger(id)) notFound();
   const db = getDb();
@@ -84,22 +88,27 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
             {followupSchritte > 0 ? `Flow: Erstmail + ${followupSchritte} Follow-up${followupSchritte === 1 ? '' : 's'}` : 'Nur Erstmail'} · Termin-Link: {kampagne.ctaUrl}
           </p>
         </div>
-        <CampaignActions campaignId={kampagne.id} campaignName={kampagne.name} leadCount={leads.length} mitVideo={kampagne.mitVideo} />
+        <CampaignActions campaignId={kampagne.id} campaignName={kampagne.name} leadCount={leads.length} mitVideo={kampagne.mitVideo} rolle={me.rolle} />
       </div>
       {kampagne.status === 'pausiert' && kampagne.pausiertGrund && (
         <div role="alert" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
           <strong>Automatisch pausiert.</strong> {kampagne.pausiertGrund}
         </div>
       )}
-      {kampagne.mitVideo && <RenderProgress campaignId={kampagne.id} initial={ladeKampagnenStatus(kampagne.id)!} />}
+      {kampagne.mitVideo && (
+        <Schreibschutz gesperrt={!hatRolle(me.rolle, 'mitglied')}>
+          <RenderProgress campaignId={kampagne.id} initial={ladeKampagnenStatus(kampagne.id)!} />
+        </Schreibschutz>
+      )}
       <div className="mb-4">
-        <SendControls campaignId={kampagne.id} readyCount={versandbereit} />
+        <SendControls campaignId={kampagne.id} readyCount={versandbereit} lesend={!hatRolle(me.rolle, 'mitglied')} />
       </div>
       {abTest && <VariantenTabelle statistik={variantenStatistik} mitVideo={kampagne.mitVideo} />}
       <LeadsTable
         leads={rows}
         baseUrl={getEnv().APP_URL}
         campaignId={kampagne.id}
+        lesend={!hatRolle(me.rolle, 'mitglied')}
         trackingPixel={kampagne.trackingPixel}
         mitVideo={kampagne.mitVideo}
         followupSchritte={followupSchritte}

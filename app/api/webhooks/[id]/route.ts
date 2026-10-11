@@ -5,6 +5,7 @@ import { WEBHOOK_EREIGNISSE } from '@/db/schema';
 import { getDb, schema } from '@/lib/db';
 import { fehler, parseJson } from '@/lib/request';
 import { pruefeWebhookZiel } from '@/lib/webhook-logik';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
@@ -17,6 +18,8 @@ const patchSchema = z
   .refine((v) => v.aktiv !== undefined || v.url !== undefined || v.ereignisse !== undefined, 'Nichts zu ändern');
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'admin');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige ID', 404);
   const parsed = await parseJson(req, patchSchema);
@@ -36,7 +39,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 /** Webhook samt Protokoll löschen (Cascade). */
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'admin');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige ID', 404);
   const res = getDb().delete(schema.webhooks).where(eq(schema.webhooks.id, id)).run();

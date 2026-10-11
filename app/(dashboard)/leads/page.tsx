@@ -5,6 +5,7 @@ import { ladeAbsender } from '@/lib/absender';
 import { getDb, schema } from '@/lib/db';
 import { LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
 import { ladeLeadsSeite, LEADS_PRO_SEITE, parseLeadsFilter, SEND_STATUS_WERTE, type LeadsFilter } from '@/lib/lead-listen';
+import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,7 @@ function query(f: LeadsFilter, patch: Partial<LeadsFilter> = {}): string {
 }
 
 export default async function LeadsSeite({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  await erforderSeitenRolle();
   const f = parseLeadsFilter(await searchParams);
   const { zeilen, total, seiten, seite } = ladeLeadsSeite(f);
   const mehrerePostfaecher = ladeAbsender().length > 1;

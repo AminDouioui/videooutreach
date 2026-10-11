@@ -1,12 +1,15 @@
 import { asc, eq, or, ne } from 'drizzle-orm';
 import { PipelineBoard, type PipelineKarte } from '@/components/PipelineBoard';
 import { getDb, schema } from '@/lib/db';
+import { hatRolle } from '@/lib/auth';
+import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
 
 export const dynamic = 'force-dynamic';
 
 type SP = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function Pipeline({ searchParams }: { searchParams: SP }) {
+  const me = await erforderSeitenRolle();
   const sp = await searchParams;
   const roh = Number(Array.isArray(sp.kampagne) ? sp.kampagne[0] : sp.kampagne);
   const db = getDb();
@@ -42,7 +45,7 @@ export default async function Pipeline({ searchParams }: { searchParams: SP }) {
       <p className="mb-4 text-sm text-slate-500">
         Leads mit Antwort oder Lead-Status nach Status. Karten per Drag-and-drop in eine andere Spalte ziehen oder den Status auf der Karte wählen – es gelten dieselben Regeln wie überall (z. B. beendet „Verloren“ den Flow).
       </p>
-      <PipelineBoard leads={leads} kampagnen={kampagnen} campaignId={campaignId} jetzt={Date.now()} />
+      <PipelineBoard leads={leads} kampagnen={kampagnen} campaignId={campaignId} jetzt={Date.now()} lesend={!hatRolle(me.rolle, 'mitglied')} />
     </div>
   );
 }

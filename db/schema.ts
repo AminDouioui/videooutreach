@@ -24,8 +24,9 @@ export const EVENT_TYPEN = [
 ] as const;
 
 /**
- * Absender-Postfächer (Gmail). Erstmails rotieren über die aktiven Postfächer; Follow-ups und Antwortprüfung laufen
- * immer über das Postfach der Erstmail (leads.absender_id). Der Token wird verschlüsselt gespeichert; leer = getrennt.
+ * Absender-Postfächer (Gmail oder SMTP/IMAP, siehe `typ`). Erstmails rotieren über die aktiven Postfächer; Follow-ups und Antwortprüfung laufen
+ * immer über das Postfach der Erstmail (leads.absender_id). Gmail: Token verschlüsselt, leer = getrennt. SMTP: Passwörter
+ * verschlüsselt in zugangsdaten_enc, leer = getrennt.
  */
 export const absender = sqliteTable('absender', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -48,6 +49,22 @@ export const absender = sqliteTable('absender', {
   fehler: text('fehler'),
   // Erster Tag der Aufwärmrampe ('YYYY-MM-DD'); null = Tag der ersten Mail dieses Postfachs
   rampeBeginn: text('rampe_beginn'),
+  // Postfach-Typ: 'gmail' (OAuth, Gmail-API) oder 'smtp' (SMTP-Versand + IMAP-Lesen, z. B. Outlook/IONOS/Strato)
+  typ: text('typ', { enum: ['gmail', 'smtp'] }).notNull().default('gmail'),
+  // Nur typ 'smtp': Server und Benutzer (Passwörter stehen verschlüsselt in zugangsdatenEnc)
+  smtpHost: text('smtp_host'),
+  smtpPort: integer('smtp_port'),
+  // 'ssl' (implizites TLS), 'starttls' oder 'keine' (unverschlüsselt, nur mit Warnhinweis)
+  smtpSicherheit: text('smtp_sicherheit', { enum: ['ssl', 'starttls', 'keine'] }),
+  smtpBenutzer: text('smtp_benutzer'),
+  imapHost: text('imap_host'),
+  imapPort: integer('imap_port'),
+  imapSicherheit: text('imap_sicherheit', { enum: ['ssl', 'starttls', 'keine'] }),
+  imapBenutzer: text('imap_benutzer'),
+  // AES-verschlüsseltes JSON {smtpPasswort, imapPasswort}; '' = nicht gesetzt/getrennt
+  zugangsdatenEnc: text('zugangsdaten_enc').notNull().default(''),
+  // Gesendete Mails zusätzlich per IMAP im „Gesendet“-Ordner ablegen (nötig, wenn der Server das nicht selbst tut)
+  imapKopieGesendet: integer('imap_kopie_gesendet', { mode: 'boolean' }).notNull().default(true),
   createdAt: ts('created_at').notNull().default(jetzt),
 });
 
@@ -350,6 +367,46 @@ export const apiSchluessel = sqliteTable('api_schluessel', {
   createdAt: ts('created_at').notNull().default(jetzt),
   widerrufenAt: ts('widerrufen_at'),
 });
+
+export const BENUTZER_ROLLEN = ['admin', 'mitglied', 'lesen'] as const;
+
+/**
+ * Team-Zugänge. Der Zugang über ADMIN_PASSWORD ist kein Benutzer in dieser Tabelle (Session mit benutzerId 0).
+ * `sessionVersion` steckt im Session-Token; wer sie erhöht (Deaktivieren, Rollenwechsel, Passwortwechsel), entwertet
+ * alle bestehenden Sessions des Benutzers sofort.
+ */
+export const benutzer = sqliteTable('benutzer', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  // Immer klein geschrieben gespeichert
+  email: text('email').notNull().unique(),
+  name: text('name').notNull(),
+  // scrypt, Format `salz:hash` (hex), siehe lib/passwort.ts
+  passwortHash: text('passwort_hash').notNull(),
+  rolle: text('rolle', { enum: BENUTZER_ROLLEN }).notNull().default('mitglied'),
+  aktiv: integer('aktiv', { mode: 'boolean' }).notNull().default(true),
+  sessionVersion: integer('session_version').notNull().default(0),
+  letzterLoginAt: ts('letzter_login_at'),
+  createdAt: ts('created_at').notNull().default(jetzt),
+});
+
+/** Einmal-Einladungen (auch für „Passwort zurücksetzen“). Nur der sha256-Hash des Tokens wird gespeichert. */
+export const einladungen = sqliteTable(
+  'einladungen',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    email: text('email').notNull(),
+    rolle: text('rolle', { enum: BENUTZER_ROLLEN }).notNull().default('mitglied'),
+    tokenHash: text('token_hash').notNull().unique(),
+    ablaufAt: ts('ablauf_at').notNull(),
+    angenommenAt: ts('angenommen_at'),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [index('einladungen_email_idx').on(t.email)],
+);
+
+export type Benutzer = typeof benutzer.$inferSelect;
+export type Einladung = typeof einladungen.$inferSelect;
+export type BenutzerRolle = (typeof BENUTZER_ROLLEN)[number];
 
 export type Absender = typeof absender.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;

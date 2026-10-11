@@ -8,8 +8,11 @@ import { leadThreads } from '@/lib/antworten';
 import { getDb, schema } from '@/lib/db';
 import { kiAktiv } from '@/lib/ki';
 import { KI_KATEGORIE_LABEL, type KiKategorie } from '@/lib/ki-kategorien';
-import { gmailThreadUrl, LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
+import { gmailLink, LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
 import { ladeAntworten, parseAntwortFilter } from '@/lib/lead-listen';
+import { Schreibschutz } from '@/components/Schreibschutz';
+import { hatRolle } from '@/lib/auth';
+import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +30,8 @@ function href(gelesen: string, status: string, lead?: number) {
 }
 
 export default async function Antworten({ searchParams }: { searchParams: SP }) {
+  const me = await erforderSeitenRolle();
+  const schreiben = hatRolle(me.rolle, 'mitglied');
   const sp = await searchParams;
   const filter = parseAntwortFilter(sp);
   const eintraege = ladeAntworten(filter);
@@ -117,7 +122,7 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
           {!auswahl ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">Antwort in der Liste auswählen, um den Verlauf zu sehen.</div>
           ) : (
-            <Detail lead={auswahl.lead} kampagne={auswahl.kampagne} zurueck={href(filter.gelesen, filter.leadStatus)} ki={ki} />
+            <Detail lead={auswahl.lead} kampagne={auswahl.kampagne} zurueck={href(filter.gelesen, filter.leadStatus)} ki={ki} schreiben={schreiben} />
           )}
         </section>
       </div>
@@ -125,14 +130,14 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
   );
 }
 
-function Detail({ lead, kampagne, zurueck, ki }: { lead: typeof schema.leads.$inferSelect; kampagne: string; zurueck: string; ki: boolean }) {
+function Detail({ lead, kampagne, zurueck, ki, schreiben }: { lead: typeof schema.leads.$inferSelect; kampagne: string; zurueck: string; ki: boolean; schreiben: boolean }) {
   const t = leadThreads(lead);
-  const gmailUrl = lead.gmailThreadId ? gmailThreadUrl(lead.antwortThreadId ?? lead.gmailThreadId) : null;
+  const gmailUrl = gmailLink(lead.antwortThreadId ?? lead.gmailThreadId, t.postfach?.typ);
   const personName = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
   const wann = lead.antwortAt ?? lead.flowStoppAt;
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <AutoGelesen key={lead.id} leadId={lead.id} gelesen={lead.antwortGelesen} />
+      {schreiben && <AutoGelesen key={lead.id} leadId={lead.id} gelesen={lead.antwortGelesen} />}
       <Link href={zurueck} className="mb-3 inline-block text-sm text-indigo-600 hover:underline lg:hidden">
         ← Zurück zur Liste
       </Link>
@@ -149,10 +154,12 @@ function Detail({ lead, kampagne, zurueck, ki }: { lead: typeof schema.leads.$in
             · {wann ? zeit.format(wann) : 'Zeitpunkt unbekannt'}
           </p>
         </div>
-        <LeadStatusSelect leadId={lead.id} status={lead.leadStatus} />
+        <Schreibschutz gesperrt={!schreiben}>
+          <LeadStatusSelect leadId={lead.id} status={lead.leadStatus} />
+        </Schreibschutz>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 border-b border-slate-100 pb-3 text-sm">
-        <GelesenButton leadId={lead.id} gelesen={lead.antwortGelesen} />
+        {schreiben && <GelesenButton leadId={lead.id} gelesen={lead.antwortGelesen} />}
         <Link href={`/leads/${lead.id}`} className="text-indigo-600 hover:underline">
           Lead-Details
         </Link>
@@ -164,12 +171,14 @@ function Detail({ lead, kampagne, zurueck, ki }: { lead: typeof schema.leads.$in
       </div>
       {ki && (
         <div className="mt-3">
-          <KiEinordnung key={lead.id} aktiv leadId={lead.id} einordnung={lead.kiEinordnung ?? null} />
+          <Schreibschutz gesperrt={!schreiben}>
+            <KiEinordnung key={lead.id} aktiv leadId={lead.id} einordnung={lead.kiEinordnung ?? null} />
+          </Schreibschutz>
         </div>
       )}
       <div className="mt-3">
         {t.lesezugriff && t.postfach ? (
-          <ThreadAnsicht leadId={lead.id} threads={t.threads} start={t.start} antwortenErlaubt postfachEmail={t.postfach.email} gmailUrl={gmailUrl} kiAktiv={ki} />
+          <ThreadAnsicht leadId={lead.id} threads={t.threads} start={t.start} antwortenErlaubt={schreiben} postfachEmail={t.postfach.email} gmailUrl={gmailUrl} kiAktiv={ki} />
         ) : (
           <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             <p className="font-medium">Verlauf nur in Gmail</p>

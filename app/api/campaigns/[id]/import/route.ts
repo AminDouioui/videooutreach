@@ -6,10 +6,13 @@ import { validiereImport } from '@/lib/import-server';
 import { importBodySchema } from '@/lib/import-schema';
 import { fehler, parseJson } from '@/lib/request';
 import { legeLeadsAn } from '@/lib/lead-anlegen';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const db = getDb();

@@ -19,19 +19,30 @@ export function ladeAbsenderMitId(id: number): Absender | null {
   return getDb().select().from(schema.absender).where(eq(schema.absender.id, id)).get() ?? null;
 }
 
-/** Hat das Postfach einen gespeicherten Token? (entfernte/getrennte Postfächer: nein) */
-export function postfachVerbunden(a: Pick<Absender, 'refreshTokenEnc'>): boolean {
-  return a.refreshTokenEnc !== '';
+/** Felder, die über „verbunden“ entscheiden: Gmail = Token, SMTP/IMAP = gespeicherte Zugangsdaten */
+type Verbindungsfelder = Pick<Absender, 'refreshTokenEnc'> & Partial<Pick<Absender, 'typ' | 'zugangsdatenEnc'>>;
+
+/** Ist das ein SMTP/IMAP-Postfach? (Bestand ohne Angabe = Gmail) */
+export function istSmtp(a: Partial<Pick<Absender, 'typ'>>): boolean {
+  return a.typ === 'smtp';
 }
 
-/** Darf die App Threads dieses Postfachs auf Antworten prüfen? (Verbindung vor der Follow-up-Funktion hat nur gmail.send) */
-export function kannAntwortenPruefen(a: Pick<Absender, 'refreshTokenEnc' | 'scopes'>): boolean {
-  return postfachVerbunden(a) && a.scopes.includes(GMAIL_METADATA_SCOPE);
+/** Hat das Postfach gespeicherte Zugangsdaten (Gmail: Token, SMTP: Passwörter)? Entfernte/getrennte Postfächer: nein. */
+export function postfachVerbunden(a: Verbindungsfelder): boolean {
+  return istSmtp(a) ? (a.zugangsdatenEnc ?? '') !== '' : a.refreshTokenEnc !== '';
 }
 
-/** Hat das Postfach den optionalen Lesezugriff (gmail.readonly) für die Unibox? Ohne bleibt alles beim Alten. */
-export function kannThreadLesen(a: Pick<Absender, 'refreshTokenEnc' | 'scopes'>): boolean {
-  return postfachVerbunden(a) && a.scopes.includes(GMAIL_READONLY_SCOPE);
+/**
+ * Darf die App Threads dieses Postfachs auf Antworten prüfen? Gmail: nur mit gmail.metadata (Verbindung vor der
+ * Follow-up-Funktion hat nur gmail.send). SMTP: immer, sobald IMAP-Zugangsdaten gespeichert sind.
+ */
+export function kannAntwortenPruefen(a: Verbindungsfelder & Pick<Absender, 'scopes'>): boolean {
+  return postfachVerbunden(a) && (istSmtp(a) || a.scopes.includes(GMAIL_METADATA_SCOPE));
+}
+
+/** Kann die Unibox Threads lesen? Gmail: optionaler Lesezugriff (gmail.readonly). SMTP: über IMAP, sobald verbunden. */
+export function kannThreadLesen(a: Verbindungsfelder & Pick<Absender, 'scopes'>): boolean {
+  return postfachVerbunden(a) && (istSmtp(a) || a.scopes.includes(GMAIL_READONLY_SCOPE));
 }
 
 /** Mindestens ein Postfach ist verbunden (unabhängig von aktiv/pausiert) */
@@ -55,14 +66,15 @@ export function absenderSignatur(a: Pick<Absender, 'signatur'> | null | undefine
  */
 export function postfachFuerLead(lead: { absenderId: number | null }): Absender | null {
   if (lead.absenderId !== null && lead.absenderId !== undefined) return ladeAbsenderMitId(lead.absenderId);
-  return ladeAbsender().find((a) => a.aktiv && postfachVerbunden(a)) ?? null;
+  // Altbestand stammt aus der Gmail-Zeit: nur ein Gmail-Postfach kann dessen Threads kennen
+  return ladeAbsender().find((a) => a.aktiv && !istSmtp(a) && postfachVerbunden(a)) ?? null;
 }
 
 /** Warum ein Postfach (für Follow-ups, Antwortprüfung, Testmail) nicht zum Senden taugt; null = nutzbar. */
 export function postfachNichtNutzbar(a: Absender): string | null {
   if (!a.aktiv) return `Postfach ${a.email} ist pausiert`;
   if (!postfachVerbunden(a)) return `Postfach ${a.email} ist nicht verbunden`;
-  if (a.fehler) return `Postfach ${a.email} hat einen Fehler und ist pausiert (bitte neu verbinden): ${a.fehler}`;
+  if (a.fehler) return `Postfach ${a.email} hat einen Fehler und ist pausiert (${istSmtp(a) ? 'bitte Zugangsdaten prüfen' : 'bitte neu verbinden'}): ${a.fehler}`;
   return null;
 }
 
@@ -138,6 +150,7 @@ export function speichereVerbindung(v: { email: string; refreshTokenEnc: string;
   const db = getDb();
   const email = v.email.trim().toLowerCase();
   const vorhanden = db.select().from(schema.absender).where(eq(schema.absender.email, email)).get();
+  if (vorhanden && istSmtp(vorhanden)) throw new Error(`${email} ist bereits als SMTP/IMAP-Postfach angelegt. Bitte dieses zuerst entfernen, wenn es über Gmail verbunden werden soll.`);
   if (!vorhanden) {
     const row = db.insert(schema.absender).values({ email, refreshTokenEnc: v.refreshTokenEnc, scopes: v.scopes, aktiv: true }).returning().get();
     return { absender: row, neu: true };
@@ -193,6 +206,6 @@ export function entferneAbsender(id: number): 'geloescht' | 'getrennt' | null {
     db.delete(schema.absender).where(eq(schema.absender.id, id)).run();
     return 'geloescht';
   }
-  db.update(schema.absender).set({ refreshTokenEnc: '', scopes: '', aktiv: false, fehler: null, nextSendAt: null }).where(eq(schema.absender.id, id)).run();
+  db.update(schema.absender).set({ refreshTokenEnc: '', scopes: '', zugangsdatenEnc: '', aktiv: false, fehler: null, nextSendAt: null }).where(eq(schema.absender.id, id)).run();
   return 'getrennt';
 }

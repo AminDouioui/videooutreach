@@ -5,6 +5,7 @@ import { postfachStatus, type PostfachStatus } from './rotation';
 import { effektivesGlobalLimit } from './send';
 import { kiAktiv } from './ki';
 import { bounceSchwellePostfach, getSetting, globalDailyLimit, kiAutoStatus, rampeEinstellung } from './settings';
+import type { Sicherheit } from './smtp-vorlagen';
 import { todayBerlin } from './time';
 
 export type PostfachAnzeige = {
@@ -22,12 +23,17 @@ export type PostfachAnzeige = {
   heuteGesendet: number;
   /** Eigene Signatur (leer = Standard-Signatur) */
   signatur: string;
-  /** Kann Antworten erkennen (gmail.metadata erteilt) */
+  /** Kann Antworten erkennen (Gmail: gmail.metadata erteilt; SMTP: IMAP-Zugang vorhanden) */
   antwortPruefung: boolean;
-  /** Lesezugriff (gmail.readonly) für die Unibox erteilt */
+  /** Unibox kann den Verlauf lesen (Gmail: gmail.readonly erteilt; SMTP: IMAP-Zugang vorhanden) */
   unibox: boolean;
   rampeBeginn: string;
   leads: number;
+  /** Postfach-Typ: Gmail (OAuth) oder SMTP/IMAP */
+  typ: 'gmail' | 'smtp';
+  /** Nur SMTP/IMAP: Verbindungsangaben OHNE Passwörter (die verlassen den Server nie) */
+  smtp: { host: string; port: number; sicherheit: Sicherheit; benutzer: string } | null;
+  imap: { host: string; port: number; sicherheit: Sicherheit; benutzer: string; kopieGesendet: boolean } | null;
 };
 
 export function ladePostfachListe(jetzt: Date = new Date()): PostfachAnzeige[] {
@@ -48,6 +54,9 @@ export function ladePostfachListe(jetzt: Date = new Date()): PostfachAnzeige[] {
     unibox: kannThreadLesen(a),
     rampeBeginn: a.rampeBeginn ?? '',
     leads: anzahlZuordnungen(a.id).leads,
+    typ: a.typ,
+    smtp: a.typ === 'smtp' && a.smtpHost && a.smtpPort && a.smtpSicherheit ? { host: a.smtpHost, port: a.smtpPort, sicherheit: a.smtpSicherheit, benutzer: a.smtpBenutzer ?? a.email } : null,
+    imap: a.typ === 'smtp' && a.imapHost && a.imapPort && a.imapSicherheit ? { host: a.imapHost, port: a.imapPort, sicherheit: a.imapSicherheit, benutzer: a.imapBenutzer ?? a.email, kopieGesendet: a.imapKopieGesendet } : null,
   }));
 }
 

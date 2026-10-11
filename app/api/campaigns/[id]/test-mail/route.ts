@@ -3,11 +3,13 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getDb, schema } from '@/lib/db';
 import { ladeAbsender, ladeAbsenderMitId, postfachFuerLead, postfachNichtNutzbar, type Absender } from '@/lib/absender';
-import { GmailSendError, sendRaw } from '@/lib/gmail';
+import { GmailSendError } from '@/lib/gmail';
+import { treiberFuer } from '@/lib/postfach-treiber';
 import { parseJson } from '@/lib/request';
 import { buildLeadMime } from '@/lib/send';
 import { STANDARD_VARIANTE } from '@/lib/varianten';
 import { ladeVarianten } from '@/lib/varianten-db';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,6 +18,8 @@ const bodySchema = z.object({ leadId: z.number().int().optional(), variante: z.s
 
 /** Testmail vom gewählten Postfach an dessen eigene Adresse („[TEST]“ im Betreff). Ändert keinen Lead-Status. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'mitglied');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   const fail = (error: string, status = 200) => NextResponse.json({ ok: false, error }, { status });
   if (!Number.isInteger(id)) return fail('Ungültige Kampagne', 404);
@@ -36,12 +40,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   let absender: Absender | null | undefined;
   if (parsed.data.absenderId !== undefined) absender = ladeAbsenderMitId(parsed.data.absenderId);
   else absender = (lead.absenderId !== null ? postfachFuerLead(lead) : null) ?? ladeAbsender().find((a) => !postfachNichtNutzbar(a));
-  if (!absender) return fail(ladeAbsender().length === 0 ? 'Gmail nicht verbunden – bitte unter Einstellungen ein Postfach verbinden' : 'Postfach nicht gefunden');
+  if (!absender) return fail(ladeAbsender().length === 0 ? 'Kein Postfach verbunden – bitte unter Einstellungen ein Postfach verbinden' : 'Postfach nicht gefunden');
   const grund = postfachNichtNutzbar(absender);
   if (grund) return fail(grund);
 
   try {
-    await sendRaw(buildLeadMime(lead, kampagne, { to: absender.email, subjectPrefix: `[TEST${variante === STANDARD_VARIANTE ? '' : ` ${variante}`}] `, variante, absender, vorschau: true }), undefined, absender);
+    await treiberFuer(absender).senden(buildLeadMime(lead, kampagne, { to: absender.email, subjectPrefix: `[TEST${variante === STANDARD_VARIANTE ? '' : ` ${variante}`}] `, variante, absender, vorschau: true }), undefined, absender);
     return NextResponse.json({ ok: true, to: absender.email });
   } catch (e) {
     return fail(e instanceof GmailSendError ? e.message : e instanceof Error ? e.message : 'Senden fehlgeschlagen');

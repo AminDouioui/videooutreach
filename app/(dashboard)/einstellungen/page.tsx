@@ -4,10 +4,15 @@ import { PostfaecherVerwaltung } from '@/components/PostfaecherVerwaltung';
 import { SuppressionList } from '@/components/SuppressionList';
 import { ladeEinstellungen } from '@/lib/settings-view';
 import { listSuppression } from '@/lib/suppression';
+import { Schreibschutz } from '@/components/Schreibschutz';
+import { hatRolle } from '@/lib/auth';
+import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
 
 export const dynamic = 'force-dynamic';
 
 export default async function EinstellungenPage({ searchParams }: { searchParams: Promise<{ gmail?: string; detail?: string }> }) {
+  const me = await erforderSeitenRolle();
+  const istAdmin = hatRolle(me.rolle, 'admin');
   const sp = await searchParams;
   const e = ladeEinstellungen();
   const sperrliste = listSuppression().map((r) => ({ email: r.email, reason: r.reason, createdAt: r.createdAt.toISOString() }));
@@ -15,13 +20,25 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
   return (
     <div className="max-w-3xl space-y-6">
       <h1 className="text-xl font-semibold">Einstellungen</h1>
-      <Link href="/einstellungen/integrationen" className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-5 py-3 hover:bg-slate-50">
-        <span>
-          <span className="block text-base font-semibold">Integrationen</span>
-          <span className="block text-xs text-slate-500">Webhooks und API-Schlüssel für die REST-API</span>
-        </span>
-        <span className="text-slate-400">→</span>
-      </Link>
+      {istAdmin && (
+        <>
+          <Link href="/einstellungen/integrationen" className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-5 py-3 hover:bg-slate-50">
+            <span>
+              <span className="block text-base font-semibold">Integrationen</span>
+              <span className="block text-xs text-slate-500">Webhooks und API-Schlüssel für die REST-API</span>
+            </span>
+            <span className="text-slate-400">→</span>
+          </Link>
+          <Link href="/einstellungen/benutzer" className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-5 py-3 hover:bg-slate-50">
+            <span>
+              <span className="block text-base font-semibold">Benutzer</span>
+              <span className="block text-xs text-slate-500">Team einladen, Rollen vergeben, Zugänge sperren</span>
+            </span>
+            <span className="text-slate-400">→</span>
+          </Link>
+        </>
+      )}
+      <Schreibschutz gesperrt={!istAdmin} hinweis="Nur Ansicht: Postfächer und globale Einstellungen ändern nur Admins.">
       <PostfaecherVerwaltung postfaecher={e.postfaecher} konfiguriert={e.gmailKonfiguriert} hinweis={sp.gmail} detail={sp.detail} />
       <GlobalSettingsForm
         initial={{
@@ -40,7 +57,10 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
         kiAktiv={e.kiAktiv}
         heuteErlaubt={e.heuteErlaubt}
       />
-      <SuppressionList eintraege={sperrliste} />
+      </Schreibschutz>
+      <Schreibschutz gesperrt={!hatRolle(me.rolle, 'mitglied')}>
+        <SuppressionList eintraege={sperrliste} />
+      </Schreibschutz>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { leadStatusLabel } from '@/lib/lead-status';
 import { leadPageUrl } from '@/lib/media';
 import { fehler } from '@/lib/request';
 import { ladeLeadMetriken } from '@/lib/tracking';
+import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,7 +19,9 @@ function zelle(v: unknown): string {
 const datum = (d: Date | null) => (d ? new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' }).format(d) : '');
 
 /** CSV-Export: `;` getrennt, UTF-8 mit BOM (Excel). */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await erfordereRolle(req, 'lesen');
+  if (!auth.ok) return auth.response;
   const id = Number((await params).id);
   if (!Number.isInteger(id)) return fehler('Ungültige Kampagne', 404);
   const db = getDb();
