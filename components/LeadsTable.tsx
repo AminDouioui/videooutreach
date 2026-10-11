@@ -63,6 +63,9 @@ const FILTER: { key: FilterKey; label: string }[] = [
 
 const datumFormat = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' });
 
+/** Zeilen pro „Seite“ – weitere werden per Button nachgeladen */
+const SEITE = 50;
+
 export function LeadsTable({
   leads,
   baseUrl,
@@ -102,6 +105,8 @@ export function LeadsTable({
   const [ohneDuplikate, setOhneDuplikate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [meldung, setMeldung] = useState<string | null>(null);
+  // Nur die ersten Zeilen rendern, weitere per Button nachladen (Filter/Sortierung setzen zurück)
+  const [anzahl, setAnzahl] = useState(SEITE);
   const router = useRouter();
   const duplikate = leads.filter((l) => l.firmenDuplikat);
   const offeneDuplikate = duplikate.filter((l) => !l.duplikatAusgeschlossen && l.sendStatus !== 'gesendet' && l.sendStatus !== 'uebersprungen').length;
@@ -172,7 +177,10 @@ export function LeadsTable({
     });
   }, [leads, sortKey, sortAsc, filter, suche, ohneDuplikate, statusFilter]);
 
+  const angezeigt = sichtbar.slice(0, anzahl);
+
   function sortieren(key: SortKey) {
+    setAnzahl(SEITE);
     if (key === sortKey) setSortAsc(!sortAsc);
     else {
       setSortKey(key);
@@ -194,7 +202,10 @@ export function LeadsTable({
         <input
           type="search"
           value={suche}
-          onChange={(e) => setSuche(e.target.value)}
+          onChange={(e) => {
+            setSuche(e.target.value);
+            setAnzahl(SEITE);
+          }}
           placeholder="Suche nach Firma, Name oder E-Mail"
           className="w-64 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
         />
@@ -202,7 +213,10 @@ export function LeadsTable({
           {filter_.map((f) => (
             <button
               key={f.key}
-              onClick={() => setFilter(f.key)}
+              onClick={() => {
+                setFilter(f.key);
+                setAnzahl(SEITE);
+              }}
               className={`rounded-full px-3 py-1 text-xs font-medium ${filter === f.key ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50'}`}
             >
               {f.label}
@@ -211,7 +225,10 @@ export function LeadsTable({
         </div>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setAnzahl(SEITE);
+          }}
           aria-label="Nach Lead-Status filtern"
           className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
         >
@@ -224,7 +241,14 @@ export function LeadsTable({
         </select>
         {duplikate.length > 0 && (
           <label className="flex items-center gap-1.5 text-xs text-slate-600">
-            <input type="checkbox" checked={ohneDuplikate} onChange={(e) => setOhneDuplikate(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={ohneDuplikate}
+              onChange={(e) => {
+                setOhneDuplikate(e.target.checked);
+                setAnzahl(SEITE);
+              }}
+            />
             Firmen-Duplikate ausblenden ({duplikate.length})
           </label>
         )}
@@ -277,7 +301,7 @@ export function LeadsTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {sichtbar.map((l) => (
+            {angezeigt.map((l) => (
               <tr key={l.id} className="hover:bg-slate-50">
                 <td className="px-3 py-2 font-medium">
                   {l.firma}
@@ -362,6 +386,26 @@ export function LeadsTable({
           </tbody>
         </table>
       </div>
+      {sichtbar.length > SEITE && (
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+          <span className="text-slate-500">
+            {angezeigt.length} von {sichtbar.length} angezeigt
+          </span>
+          {angezeigt.length < sichtbar.length && (
+            <>
+              <button
+                onClick={() => setAnzahl((n) => n + SEITE)}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Nächste {Math.min(SEITE, sichtbar.length - angezeigt.length)} laden
+              </button>
+              <button onClick={() => setAnzahl(sichtbar.length)} className="text-xs text-indigo-600 hover:underline">
+                Alle anzeigen
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
