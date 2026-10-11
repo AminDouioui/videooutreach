@@ -10,7 +10,7 @@ import { DealFeld, LeadActions, MailVorschau, NotizFeld, ZeitzoneFeld } from '@/
 import { ladeAbsenderMitId, postfachVerbunden } from '@/lib/absender';
 import { leadThreads } from '@/lib/antworten';
 import { getDb, schema } from '@/lib/db';
-import { kiAktiv } from '@/lib/ki';
+import { klassifizierungVerfuegbar, schreibhilfeVerfuegbar } from '@/lib/ki';
 import { gmailLink } from '@/lib/lead-status';
 import { setzeAntwortGelesen } from '@/lib/lead-status-db';
 import { zeitzoneOderStandard } from '@/lib/time';
@@ -67,7 +67,8 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const name = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
   const link = leadPageUrl(lead.slug);
   const fertig = lead.renderStatus === 'fertig';
-  const ki = kiAktiv();
+  const ki = klassifizierungVerfuegbar();
+  const schreibhilfe = schreibhilfeVerfuegbar();
 
   return (
     <div>
@@ -242,7 +243,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               antwortenErlaubt={schreiben && lead.flowStopp === 'beantwortet'}
               postfachEmail={verlauf.postfach.email}
               gmailUrl={gmailUrl}
-              kiAktiv={ki}
+              kiAktiv={schreibhilfe}
             />
           </section>
         )}

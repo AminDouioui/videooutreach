@@ -3,8 +3,8 @@ import { getEnv } from './env';
 import { oauthConfigured } from './gmail';
 import { postfachStatus, type PostfachStatus } from './rotation';
 import { effektivesGlobalLimit } from './send';
-import { kiAktiv } from './ki';
-import { bounceSchwellePostfach, getSetting, globalDailyLimit, kiAutoStatus, rampeEinstellung } from './settings';
+import { klassifizierungVerfuegbar, schreibhilfeVerfuegbar } from './ki';
+import { bounceSchwellePostfach, getSetting, globalDailyLimit, kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, rampeEinstellung, verfuegbareEntwurfAnbieter, verfuegbareKlassifizierer } from './settings';
 import type { Sicherheit } from './smtp-vorlagen';
 import { todayBerlin } from './time';
 
@@ -78,9 +78,15 @@ export function ladeEinstellungen() {
     impressumUrl: getSetting('impressum_url') ?? env.IMPRESSUM_URL ?? '',
     datenschutzUrl: getSetting('datenschutz_url') ?? env.DATENSCHUTZ_URL ?? '',
     gmailKonfiguriert: oauthConfigured(),
-    // KI-Funktionen (optional): ohne Schlüssel ist alles aus und unsichtbar
-    kiAktiv: kiAktiv(),
+    // KI-Funktionen (optional): ohne Schlüssel ist alles aus und unsichtbar. kiAktiv = irgendeine KI-Funktion verfügbar (Einordnung: Anthropic oder
+    // Jev), kiSchreibhilfe = Schreibhilfe/Entwurf (OpenAI oder Anthropic)
+    kiAktiv: klassifizierungVerfuegbar() || schreibhilfeVerfuegbar(),
+    kiSchreibhilfe: schreibhilfeVerfuegbar(),
     kiAutoStatus: kiAutoStatus(),
+    kiKlassifizierer: kiKlassifizierer(),
+    kiKlassifiziererOptionen: verfuegbareKlassifizierer(),
+    kiEntwurfAnbieter: kiEntwurfAnbieter(),
+    kiEntwurfAnbieterOptionen: verfuegbareEntwurfAnbieter(),
     postfaecher: ladePostfachListe(),
   };
 }

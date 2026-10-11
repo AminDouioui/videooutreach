@@ -19,7 +19,11 @@ export type SettingKey =
   // Bounce-Schutz je Postfach: Schwelle in Prozent (letzte 50 Erstmails des Postfachs)
   | 'bounce_schwelle_postfach'
   // KI-Einordnung von Antworten: 'aus' | 'vorschlagen' (Standard) | 'automatisch'
-  | 'ki_auto_status';
+  | 'ki_auto_status'
+  // Klassifizierer der Einordnung: 'anthropic' | 'jev' (Standard: Jev, wenn OPENROUTER_API_KEY gesetzt ist)
+  | 'ki_klassifizierer'
+  // Anbieter für Texte/Entwürfe (Antwort-Entwurf, Schreibhilfe): 'openai' | 'anthropic' (Standard: OpenAI, wenn OPENAI_API_KEY gesetzt ist)
+  | 'ki_entwurf_anbieter';
 
 export function getSetting(key: SettingKey): string | null {
   const row = getDb().select().from(schema.settings).where(eq(schema.settings.key, key)).get();
@@ -86,4 +90,41 @@ export type KiAutoStatus = (typeof KI_AUTO_STATUS)[number];
 export function kiAutoStatus(): KiAutoStatus {
   const v = getSetting('ki_auto_status');
   return (KI_AUTO_STATUS as readonly string[]).includes(v ?? '') ? (v as KiAutoStatus) : 'vorschlagen';
+}
+
+export const KI_KLASSIFIZIERER = ['anthropic', 'jev'] as const;
+export type KiKlassifizierer = (typeof KI_KLASSIFIZIERER)[number];
+
+/** Welche Klassifizierer haben einen Schlüssel? */
+export function verfuegbareKlassifizierer(): KiKlassifizierer[] {
+  const env = getEnv();
+  return [...(env.ANTHROPIC_API_KEY ? (['anthropic'] as const) : []), ...(env.OPENROUTER_API_KEY ? (['jev'] as const) : [])];
+}
+
+/**
+ * Gewählter Klassifizierer: die Einstellung, sofern deren Schlüssel gesetzt ist; sonst Jev (wenn OPENROUTER_API_KEY
+ * gesetzt ist), sonst Anthropic. null = keiner verfügbar.
+ */
+export function kiKlassifizierer(): KiKlassifizierer | null {
+  const frei = verfuegbareKlassifizierer();
+  const v = getSetting('ki_klassifizierer');
+  if (v && (frei as readonly string[]).includes(v)) return v as KiKlassifizierer;
+  return frei.includes('jev') ? 'jev' : (frei[0] ?? null);
+}
+
+export const KI_ENTWURF_ANBIETER = ['openai', 'anthropic'] as const;
+export type KiEntwurfAnbieter = (typeof KI_ENTWURF_ANBIETER)[number];
+
+/** Welche Anbieter für Texte/Entwürfe haben einen Schlüssel? */
+export function verfuegbareEntwurfAnbieter(): KiEntwurfAnbieter[] {
+  const env = getEnv();
+  return [...(env.OPENAI_API_KEY ? (['openai'] as const) : []), ...(env.ANTHROPIC_API_KEY ? (['anthropic'] as const) : [])];
+}
+
+/** Gewählter Anbieter für Texte/Entwürfe: die Einstellung, sofern deren Schlüssel gesetzt ist; sonst OpenAI, sonst Anthropic. null = keiner. */
+export function kiEntwurfAnbieter(): KiEntwurfAnbieter | null {
+  const frei = verfuegbareEntwurfAnbieter();
+  const v = getSetting('ki_entwurf_anbieter');
+  if (v && (frei as readonly string[]).includes(v)) return v as KiEntwurfAnbieter;
+  return frei[0] ?? null;
 }

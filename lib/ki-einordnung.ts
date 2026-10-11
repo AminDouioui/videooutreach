@@ -3,20 +3,23 @@ import { kannThreadLesen, ladeAbsender, postfachFuerLead } from './absender';
 import { fehlerText, ladeThread, leadThreads, UniboxFehler } from './antworten';
 import { getDb, schema } from './db';
 import type { ThreadLader } from './gmail';
-import { anthropicClient, entwerfeAntwort, kiAktiv, KiFehler, kiFehlerAus, MAX_EINORDNUNG_ZEICHEN, ordneAntwortEin, type Einordnung, type KiClient } from './ki';
+import { anthropicClient, entwerfeAntwort, klassifizierungVerfuegbar, KiFehler, KLASSIFIZIERUNG_NICHT_AKTIV, kiFehlerAus, MAX_EINORDNUNG_ZEICHEN, ordneAntwortEin, type Einordnung, type KiClient } from './ki';
+import { ordneAntwortMitJev, type JevFetch } from './ki-jev';
+import { openaiClient } from './ki-openai';
 import type { KiKategorie } from './ki-kategorien';
 import type { LeadStatus } from './lead-status';
 import { setzeLeadStatus } from './lead-status-db';
 import type { ThreadNachricht } from './mail-parse';
 import { merkeAbwesenheit } from './send';
-import { kiAutoStatus } from './settings';
+import { kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, type KiKlassifizierer } from './settings';
 import { unsubscribeBySlug } from './suppression';
 
 // Einordnung von Antworten mit KI: letzte fremde Nachricht lesen, klassifizieren, speichern (leads.kiEinordnung) und je
 // nach Einstellung `ki_auto_status` nur vorschlagen oder automatisch anwenden. Fehler der KI dürfen den Versand und die
 // Antwort-Erkennung nie blockieren: die Warteschlange fängt alles ab und versucht es höchstens 3x erneut.
 
-export type KiOptionen = { ki?: KiClient; lader?: ThreadLader; jetzt?: Date };
+// `ki` ersetzt den Anthropic-Client, `jevFetch`/`openaiFetch` das fetch für Jev bzw. OpenAI (Tests); wer einen davon übergibt, nutzt diesen Klassifizierer.
+export type KiOptionen = { ki?: KiClient; jevFetch?: JevFetch; openaiFetch?: JevFetch; lader?: ThreadLader; jetzt?: Date };
 type Lead = typeof schema.leads.$inferSelect;
 
 /** Ab dieser Konfidenz wird im Modus „automatisch“ angewendet */
@@ -46,6 +49,36 @@ export function letzteFremdeNachricht(nachrichten: ThreadNachricht[]): string | 
     if (!n.eigene && n.text.trim()) return n.text.trim().slice(0, MAX_EINORDNUNG_ZEICHEN * 2);
   }
   return null;
+}
+
+/** Letzte fremde Nachricht mit Betreff (für Jev, das den Betreff mitbekommt) */
+function letzteFremdeMitBetreff(nachrichten: ThreadNachricht[]): { text: string; betreff: string } | null {
+  const text = letzteFremdeNachricht(nachrichten);
+  if (!text) return null;
+  const n = [...nachrichten].reverse().find((x) => !x.eigene && x.text.trim());
+  return { text, betreff: n?.betreff ?? '' };
+}
+
+/** Welcher Klassifizierer gilt? Injizierter Client/fetch gewinnt, sonst Einstellung + vorhandene Schlüssel. null = keiner. */
+export function waehleKlassifizierer(opt: KiOptionen = {}): KiKlassifizierer | null {
+  if (opt.ki) return 'anthropic';
+  if (opt.jevFetch) return 'jev';
+  return kiKlassifizierer();
+}
+
+/** Client für Texte/Entwürfe: injizierter Client/fetch gewinnt, sonst Einstellung + vorhandene Schlüssel (OpenAI oder Anthropic). */
+export function schreibClient(opt: Pick<KiOptionen, 'ki' | 'openaiFetch'> = {}): KiClient {
+  if (opt.ki) return opt.ki;
+  if (opt.openaiFetch) return openaiClient(opt.openaiFetch);
+  return kiEntwurfAnbieter() === 'openai' ? openaiClient() : anthropicClient;
+}
+
+/** Ordnet mit dem gewählten Klassifizierer ein; liefert zusätzlich, womit. */
+async function klassifiziere(m: { text: string; betreff: string }, opt: KiOptionen): Promise<{ e: Einordnung; modell: KiKlassifizierer }> {
+  const modell = waehleKlassifizierer(opt);
+  if (!modell) throw new KiFehler(KLASSIFIZIERUNG_NICHT_AKTIV, 'deaktiviert');
+  const e = modell === 'jev' ? await ordneAntwortMitJev(m.text, m.betreff, opt.jevFetch) : await ordneAntwortEin(m.text, opt.ki ?? anthropicClient);
+  return { e, modell };
 }
 
 // ---------------------------------------------------------------- Anwenden
@@ -89,8 +122,8 @@ export function automatischAnwenden(e: Pick<Einordnung, 'konfidenz' | 'kategorie
   return e.kategorie !== 'sonstiges' && e.konfidenz >= KI_SCHWELLE;
 }
 
-function speichere(leadId: number, e: Einordnung, jetzt: Date, angewendet: boolean): NonNullable<Lead['kiEinordnung']> {
-  const wert = { kategorie: e.kategorie, konfidenz: e.konfidenz, begruendung: e.begruendung, at: jetzt.getTime(), angewendet };
+function speichere(leadId: number, e: Einordnung, jetzt: Date, angewendet: boolean, modell: KiKlassifizierer): NonNullable<Lead['kiEinordnung']> {
+  const wert = { kategorie: e.kategorie, konfidenz: e.konfidenz, begruendung: e.begruendung, at: jetzt.getTime(), angewendet, modell };
   getDb().update(schema.leads).set({ kiEinordnung: wert }).where(eq(schema.leads.id, leadId)).run();
   return wert;
 }
@@ -123,11 +156,11 @@ export async function ordneLeadEin(leadId: number, opt: KiOptionen = {}): Promis
   if (!lead) return { ok: false, status: 404, error: 'Lead nicht gefunden' };
   const jetzt = opt.jetzt ?? new Date();
   try {
-    const text = letzteFremdeNachricht(await ladeVerlauf(lead, opt));
-    if (!text) throw new UniboxFehler('Im Thread gibt es keine Nachricht des Leads, die eingeordnet werden könnte.');
-    const e = await ordneAntwortEin(text, opt.ki ?? anthropicClient);
+    const m = letzteFremdeMitBetreff(await ladeVerlauf(lead, opt));
+    if (!m) throw new UniboxFehler('Im Thread gibt es keine Nachricht des Leads, die eingeordnet werden könnte.');
+    const { e, modell } = await klassifiziere(m, opt);
     const angewendet = kiAutoStatus() === 'automatisch' && automatischAnwenden(e) && wendeEinordnungAn(leadId, e.kategorie, jetzt);
-    return { ok: true, einordnung: speichere(leadId, e, jetzt, angewendet), angewendet };
+    return { ok: true, einordnung: speichere(leadId, e, jetzt, angewendet, modell), angewendet };
   } catch (err) {
     return { ok: false, ...fehlerAus(err) };
   }
@@ -154,7 +187,7 @@ export async function entwerfeLeadAntwort(leadId: number, opt: KiOptionen = {}):
     const verlauf = await ladeVerlauf(lead, opt);
     const kampagne = getDb().select({ cta: schema.campaigns.ctaUrl }).from(schema.campaigns).where(eq(schema.campaigns.id, lead.campaignId)).get();
     const postfach = postfachFuerLead(lead);
-    const text = await entwerfeAntwort({ verlauf, ctaUrl: kampagne?.cta ?? '', absenderName: postfach?.name ?? undefined }, opt.ki ?? anthropicClient);
+    const text = await entwerfeAntwort({ verlauf, ctaUrl: kampagne?.cta ?? '', absenderName: postfach?.name ?? undefined }, schreibClient(opt));
     return { ok: true, text };
   } catch (err) {
     return { ok: false, ...fehlerAus(err) };
@@ -164,14 +197,14 @@ export async function entwerfeLeadAntwort(leadId: number, opt: KiOptionen = {}):
 // ---------------------------------------------------------------- Warteschlange (Worker)
 
 /**
- * Ordnet höchstens eine neue Antwort pro Aufruf ein (aus dem Versand-Durchlauf). Voraussetzungen: Schlüssel (oder
- * injizierter Client), Einstellung ≠ „aus“, Postfach mit Lesezugriff, Antwort der letzten 14 Tage ohne Einordnung.
+ * Ordnet höchstens eine neue Antwort pro Aufruf ein (aus dem Versand-Durchlauf). Voraussetzungen: Schlüssel (Anthropic oder
+ * OpenRouter/Jev, oder injizierter Client), Einstellung ≠ „aus“, Postfach mit Lesezugriff, Antwort der letzten 14 Tage ohne Einordnung.
  * Fehler werden abgefangen und gezählt (höchstens 3 Versuche, mit wachsender Wartezeit) – sie blockieren nichts.
  * Liefert die Lead-ID, wenn ein Versuch stattfand.
  */
 export async function verarbeiteKiWarteschlange(opt: KiOptionen & { log?: (msg: string) => void } = {}): Promise<number | null> {
   try {
-    if (!opt.ki && !kiAktiv()) return null;
+    if (!opt.ki && !opt.jevFetch && !klassifizierungVerfuegbar()) return null;
     if (kiAutoStatus() === 'aus') return null;
     const jetzt = opt.jetzt ?? new Date();
     const lesbar = ladeAbsender().filter(kannThreadLesen).map((a) => a.id);

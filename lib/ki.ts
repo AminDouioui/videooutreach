@@ -10,19 +10,27 @@ import { pruefeVorlage, STANDARD_VARIABLEN, verwendeteVariablen } from './vorlag
 
 // ---------------------------------------------------------------- Konfiguration
 
-/** Gibt es einen API-Schlüssel? Ohne Schlüssel sind alle KI-Funktionen aus und in der Oberfläche unsichtbar. */
-export function kiAktiv(): boolean {
-  return !!getEnv().ANTHROPIC_API_KEY;
+/** Schreibhilfe und Antwort-Entwurf: mit OpenAI- oder Anthropic-Schlüssel. Ohne Schlüssel sind diese Funktionen aus und unsichtbar. */
+export function schreibhilfeVerfuegbar(): boolean {
+  const env = getEnv();
+  return !!env.ANTHROPIC_API_KEY || !!env.OPENAI_API_KEY;
 }
 
-export const KI_NICHT_AKTIV = 'Die KI-Funktionen sind nicht aktiviert (ANTHROPIC_API_KEY nicht gesetzt).';
+/** Einordnung von Antworten: mit Anthropic- oder OpenRouter-Schlüssel (Jev). */
+export function klassifizierungVerfuegbar(): boolean {
+  const env = getEnv();
+  return !!env.ANTHROPIC_API_KEY || !!env.OPENROUTER_API_KEY;
+}
+
+export const KI_NICHT_AKTIV = 'Die KI-Funktionen sind nicht aktiviert (weder ANTHROPIC_API_KEY noch OPENAI_API_KEY gesetzt).';
+export const KLASSIFIZIERUNG_NICHT_AKTIV = 'Die KI-Einordnung ist nicht aktiviert (weder ANTHROPIC_API_KEY noch OPENROUTER_API_KEY gesetzt).';
 
 /** Zeitlimit je Anfrage (ms) */
 export const KI_ZEITLIMIT_MS = 30_000;
 
 // ---------------------------------------------------------------- Fehler
 
-export type KiFehlerArt = 'deaktiviert' | 'schluessel' | 'limit' | 'ueberlast' | 'zeit' | 'verbindung' | 'anfrage' | 'antwort';
+export type KiFehlerArt = 'deaktiviert' | 'schluessel' | 'guthaben' | 'limit' | 'ueberlast' | 'zeit' | 'verbindung' | 'anfrage' | 'antwort';
 
 /** Fehler mit verständlicher deutscher Meldung; `wiederholbar` = später erneut versuchen lohnt sich. */
 export class KiFehler extends Error {

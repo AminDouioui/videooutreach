@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { KI_KATEGORIE_LABEL, type KiKategorie } from '@/lib/ki-kategorien';
 
-// Optionale KI-Bausteine (nur mit ANTHROPIC_API_KEY): Der Server reicht `aktiv` durch; ohne Schlüssel rendert nichts davon.
+// Optionale KI-Bausteine (Schreibhilfe/Entwurf mit OPENAI_API_KEY oder ANTHROPIC_API_KEY, Einordnung mit ANTHROPIC_API_KEY oder OPENROUTER_API_KEY): Der Server reicht `aktiv` durch; ohne Schlüssel rendert nichts davon.
 
 const zeit = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' });
 const knopf = 'rounded-md border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50';
@@ -84,7 +84,7 @@ export function KiVorschlag({
             <button type="button" onClick={erzeugen} disabled={laedt || !beschreibung.trim()} className="rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50">
               {laedt ? 'Wird erzeugt …' : 'Vorschlag erzeugen'}
             </button>
-            <span className="text-xs text-slate-500">Die Beschreibung geht an Anthropic. Nichts wird ohne „Übernehmen“ geändert.</span>
+            <span className="text-xs text-slate-500">Die Beschreibung geht an den gewählten KI-Anbieter (Einstellungen). Nichts wird ohne „Übernehmen“ geändert.</span>
           </div>
           {fehler && (
             <p role="alert" className="text-sm text-red-700">
@@ -124,7 +124,7 @@ export function KiVorschlag({
   );
 }
 
-export type KiEinordnungDaten = { kategorie: string; konfidenz: number; begruendung: string; at: number; angewendet?: boolean };
+export type KiEinordnungDaten = { kategorie: string; konfidenz: number; begruendung: string; at: number; angewendet?: boolean; modell?: string };
 
 /** Anzeige der gespeicherten KI-Einordnung mit „Mit KI einordnen“ und „Vorschlag übernehmen“. */
 export function KiEinordnung({ aktiv, leadId, einordnung }: { aktiv: boolean; leadId: number; einordnung: KiEinordnungDaten | null }) {
@@ -156,6 +156,11 @@ export function KiEinordnung({ aktiv, leadId, einordnung }: { aktiv: boolean; le
             <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-900">{label}</span>
             <span className="text-xs text-slate-600">Sicherheit {Math.round(einordnung.konfidenz * 100)} %</span>
             <span className="text-xs text-slate-500">{zeit.format(new Date(einordnung.at))}</span>
+            {einordnung.modell && (
+              <span className="text-xs text-slate-500" data-testid="ki-modell">
+                eingeordnet mit {einordnung.modell === 'jev' ? 'Jev' : 'Claude'}
+              </span>
+            )}
             {einordnung.angewendet ? <span className="rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-800">angewendet</span> : einordnung.kategorie !== 'sonstiges' && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">Vorschlag</span>}
           </p>
           <p className="mt-1 break-words text-slate-800">{einordnung.begruendung}</p>
