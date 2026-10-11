@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { decrypt, encrypt } from './crypto';
 import { getDb, schema } from './db';
 import { getEnv } from './env';
 
@@ -23,7 +24,14 @@ export type SettingKey =
   // Klassifizierer der Einordnung: 'anthropic' | 'jev' (Standard: Jev, wenn OPENROUTER_API_KEY gesetzt ist)
   | 'ki_klassifizierer'
   // Anbieter für Texte/Entwürfe (Antwort-Entwurf, Schreibhilfe): 'openai' | 'anthropic' (Standard: OpenAI, wenn OPENAI_API_KEY gesetzt ist)
-  | 'ki_entwurf_anbieter';
+  | 'ki_entwurf_anbieter'
+  // API-Schlüssel der KI-Anbieter (AES-GCM verschlüsselt, siehe lib/crypto.ts; nie im Klartext in DB oder Logs)
+  | 'anthropic_api_key'
+  | 'openrouter_api_key'
+  | 'openai_api_key'
+  // Modell-IDs (Klartext, optional; leer = Standard aus .env bzw. eingebauter Standard)
+  | 'openai_model'
+  | 'jev_modell';
 
 export function getSetting(key: SettingKey): string | null {
   const row = getDb().select().from(schema.settings).where(eq(schema.settings.key, key)).get();
@@ -92,13 +100,81 @@ export function kiAutoStatus(): KiAutoStatus {
   return (KI_AUTO_STATUS as readonly string[]).includes(v ?? '') ? (v as KiAutoStatus) : 'vorschlagen';
 }
 
+// ---------------------------------------------------------------- KI-Schlüssel und -Modelle (Einstellung vor .env)
+
+export const KI_ANBIETER = ['openrouter', 'openai', 'anthropic'] as const;
+export type KiAnbieter = (typeof KI_ANBIETER)[number];
+export const KI_ANBIETER_LABEL: Record<KiAnbieter, string> = { openrouter: 'OpenRouter (Jev)', openai: 'OpenAI', anthropic: 'Claude (Anthropic)' };
+
+const SCHLUESSEL_SETTING: Record<KiAnbieter, SettingKey> = { anthropic: 'anthropic_api_key', openrouter: 'openrouter_api_key', openai: 'openai_api_key' };
+
+export type KiSchluesselQuelle = 'app' | 'env';
+
+/** Entschlüsselter Schlüssel aus der Datenbank; null = keiner (oder nicht entschlüsselbar, z. B. nach Wechsel des ENCRYPTION_KEY). */
+function appSchluessel(anbieter: KiAnbieter): string | null {
+  const roh = getSetting(SCHLUESSEL_SETTING[anbieter]);
+  if (!roh) return null;
+  try {
+    return decrypt(roh) || null;
+  } catch {
+    return null;
+  }
+}
+
+function envSchluessel(anbieter: KiAnbieter): string | undefined {
+  const env = getEnv();
+  return anbieter === 'anthropic' ? env.ANTHROPIC_API_KEY : anbieter === 'openrouter' ? env.OPENROUTER_API_KEY : env.OPENAI_API_KEY;
+}
+
+/** Wirksamer Schlüssel und woher er kommt: die Einstellung in der App hat Vorrang vor der .env. Wird bei jedem Aufruf neu gelesen (kein Cache). */
+export function kiSchluesselMitQuelle(anbieter: KiAnbieter): { schluessel: string; quelle: KiSchluesselQuelle } | null {
+  const app = appSchluessel(anbieter);
+  if (app) return { schluessel: app, quelle: 'app' };
+  const env = envSchluessel(anbieter);
+  return env ? { schluessel: env, quelle: 'env' } : null;
+}
+
+/** Wirksamer API-Schlüssel des Anbieters (App-Einstellung vor .env) oder undefined. */
+export function kiSchluessel(anbieter: KiAnbieter): string | undefined {
+  return kiSchluesselMitQuelle(anbieter)?.schluessel;
+}
+
+/** Prüft die Eingabe leicht: nicht leer, keine Leerzeichen/Steuerzeichen, höchstens 300 Zeichen. Liefert den getrimmten Wert oder eine Fehlermeldung. */
+export function pruefeKiSchluessel(roh: string): { ok: true; wert: string } | { ok: false; fehler: string } {
+  const wert = roh.trim();
+  if (!wert) return { ok: false, fehler: 'Bitte einen Schlüssel eingeben.' };
+  if (wert.length > 300) return { ok: false, fehler: 'Der Schlüssel ist zu lang (höchstens 300 Zeichen).' };
+  if (/[\s\u0000-\u001f\u007f]/.test(wert)) return { ok: false, fehler: 'Der Schlüssel darf keine Leerzeichen oder Zeilenumbrüche enthalten.' };
+  return { ok: true, wert };
+}
+
+/** Speichert den Schlüssel verschlüsselt (AES-GCM). Die Eingabe muss vorher mit pruefeKiSchluessel geprüft sein. */
+export function setzeKiSchluessel(anbieter: KiAnbieter, wert: string): void {
+  setSetting(SCHLUESSEL_SETTING[anbieter], encrypt(wert));
+}
+
+/** Entfernt nur den in der App gespeicherten Schlüssel; ein .env-Wert bleibt wirksam. */
+export function loescheKiSchluessel(anbieter: KiAnbieter): void {
+  deleteSetting(SCHLUESSEL_SETTING[anbieter]);
+}
+
+/** „…abcd“: nur die letzten 4 Zeichen (bei sehr kurzen Werten gar keine, damit nichts Wesentliches verraten wird). */
+export function maskiereSchluessel(wert: string): string {
+  return wert.length >= 12 ? `…${wert.slice(-4)}` : '…';
+}
+
+/** Modell-ID: Einstellung in der App vor .env vor eingebautem Standard. */
+export function kiModell(art: 'openai' | 'jev'): string {
+  const env = getEnv();
+  return art === 'openai' ? getSetting('openai_model')?.trim() || env.OPENAI_MODEL : getSetting('jev_modell')?.trim() || env.JEV_MODELL;
+}
+
 export const KI_KLASSIFIZIERER = ['anthropic', 'jev'] as const;
 export type KiKlassifizierer = (typeof KI_KLASSIFIZIERER)[number];
 
 /** Welche Klassifizierer haben einen Schlüssel? */
 export function verfuegbareKlassifizierer(): KiKlassifizierer[] {
-  const env = getEnv();
-  return [...(env.ANTHROPIC_API_KEY ? (['anthropic'] as const) : []), ...(env.OPENROUTER_API_KEY ? (['jev'] as const) : [])];
+  return [...(kiSchluessel('anthropic') ? (['anthropic'] as const) : []), ...(kiSchluessel('openrouter') ? (['jev'] as const) : [])];
 }
 
 /**
@@ -117,8 +193,7 @@ export type KiEntwurfAnbieter = (typeof KI_ENTWURF_ANBIETER)[number];
 
 /** Welche Anbieter für Texte/Entwürfe haben einen Schlüssel? */
 export function verfuegbareEntwurfAnbieter(): KiEntwurfAnbieter[] {
-  const env = getEnv();
-  return [...(env.OPENAI_API_KEY ? (['openai'] as const) : []), ...(env.ANTHROPIC_API_KEY ? (['anthropic'] as const) : [])];
+  return [...(kiSchluessel('openai') ? (['openai'] as const) : []), ...(kiSchluessel('anthropic') ? (['anthropic'] as const) : [])];
 }
 
 /** Gewählter Anbieter für Texte/Entwürfe: die Einstellung, sofern deren Schlüssel gesetzt ist; sonst OpenAI, sonst Anthropic. null = keiner. */

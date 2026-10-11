@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { KI_KATEGORIE_LABEL, type KiKategorie } from '@/lib/ki-kategorien';
 
-// Optionale KI-Bausteine (Schreibhilfe/Entwurf mit OPENAI_API_KEY oder ANTHROPIC_API_KEY, Einordnung mit ANTHROPIC_API_KEY oder OPENROUTER_API_KEY): Der Server reicht `aktiv` durch; ohne Schlüssel rendert nichts davon.
+// Optionale KI-Bausteine (Schreibhilfe/Entwurf mit OpenAI- oder Anthropic-Schlüssel, Einordnung mit Anthropic- oder OpenRouter-Schlüssel; Schlüssel unter Einstellungen → KI oder in der .env): Der Server reicht `aktiv` durch; ohne Schlüssel rendert nichts davon.
 
 const zeit = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' });
 const knopf = 'rounded-md border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50';

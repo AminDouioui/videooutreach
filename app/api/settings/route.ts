@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ladeEinstellungen } from '@/lib/settings-view';
 import { parseJson } from '@/lib/request';
 import { deleteSetting, KI_AUTO_STATUS, KI_ENTWURF_ANBIETER, KI_KLASSIFIZIERER, verfuegbareEntwurfAnbieter, verfuegbareKlassifizierer, setSetting, type SettingKey } from '@/lib/settings';
+import { hatRolle } from '@/lib/auth';
 import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
@@ -11,7 +12,8 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   const auth = await erfordereRolle(req, 'lesen');
   if (!auth.ok) return auth.response;
-  return NextResponse.json(ladeEinstellungen());
+  // Die letzten 4 Zeichen der KI-Schlüssel sehen nur Admins; alle anderen bekommen nur „gesetzt“ ja/nein
+  return NextResponse.json(ladeEinstellungen(hatRolle(auth.benutzer.rolle, 'admin')));
 }
 
 const urlOderLeer = z.union([z.literal(''), z.string().trim().url('Muss eine gültige URL sein').max(1000)]);
@@ -31,6 +33,9 @@ const bodySchema = z.object({
   kiAutoStatus: z.enum(KI_AUTO_STATUS).optional(),
   kiKlassifizierer: z.enum(KI_KLASSIFIZIERER).optional(),
   kiEntwurfAnbieter: z.enum(KI_ENTWURF_ANBIETER).optional(),
+  // Modell-IDs (leer = Standard); fehlt das Feld, bleibt die Einstellung unverändert
+  openaiModell: z.string().trim().max(200).regex(/^[^\s]*$/, 'Die Modell-ID darf keine Leerzeichen enthalten').optional(),
+  jevModell: z.string().trim().max(200).regex(/^[^\s]*$/, 'Die Modell-ID darf keine Leerzeichen enthalten').optional(),
 });
 
 function setOrDelete(key: SettingKey, value: string) {
@@ -63,5 +68,7 @@ export async function PUT(req: Request) {
   if (d.kiAutoStatus) setSetting('ki_auto_status', d.kiAutoStatus);
   if (d.kiKlassifizierer) setSetting('ki_klassifizierer', d.kiKlassifizierer);
   if (d.kiEntwurfAnbieter) setSetting('ki_entwurf_anbieter', d.kiEntwurfAnbieter);
+  if (d.openaiModell !== undefined) setOrDelete('openai_model', d.openaiModell);
+  if (d.jevModell !== undefined) setOrDelete('jev_modell', d.jevModell);
   return NextResponse.json({ ok: true });
 }

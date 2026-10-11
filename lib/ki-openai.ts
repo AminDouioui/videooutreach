@@ -1,4 +1,5 @@
 import { getEnv } from './env';
+import { kiModell, kiSchluessel } from './settings';
 import { KI_ZEITLIMIT_MS, KiFehler, type KiClient } from './ki';
 
 // OpenAI als Anbieter für Texte/Entwürfe (Antwort-Entwurf, Schreibhilfe): POST {OPENAI_BASE_URL}/responses (Responses API,
@@ -31,26 +32,26 @@ async function httpFehler(res: Response): Promise<KiFehler> {
   const code = `${typeof err.code === 'string' ? err.code : ''} ${typeof err.type === 'string' ? err.type : ''}`;
   const s = res.status;
   if (code.includes('insufficient_quota')) return new KiFehler('Das OpenAI-Guthaben bzw. Kontingent ist aufgebraucht (insufficient_quota). Bitte Abrechnung bei OpenAI prüfen.', 'guthaben');
-  if (code.includes('model_not_found') || s === 404) return new KiFehler('Das OpenAI-Modell wurde nicht gefunden (model not found). Bitte OPENAI_MODEL prüfen, siehe platform.openai.com/docs/models.', 'anfrage');
-  if (s === 401 || s === 403) return new KiFehler('Der OpenAI-API-Schlüssel ist ungültig oder hat keine Berechtigung. Bitte OPENAI_API_KEY prüfen.', 'schluessel');
+  if (code.includes('model_not_found') || s === 404) return new KiFehler('Das OpenAI-Modell wurde nicht gefunden (model not found). Bitte das Modell (Einstellungen → KI bzw. OPENAI_MODEL) prüfen, siehe platform.openai.com/docs/models.', 'anfrage');
+  if (s === 401 || s === 403) return new KiFehler('Der OpenAI-API-Schlüssel ist ungültig oder hat keine Berechtigung. Bitte den Schlüssel unter Einstellungen → KI (bzw. OPENAI_API_KEY) prüfen.', 'schluessel');
   if (s === 429) return new KiFehler('OpenAI meldet zu viele Anfragen (Rate-Limit). Bitte in einer Minute erneut versuchen.', 'limit', true);
   if (s >= 500) return new KiFehler(`Der OpenAI-Dienst hat einen Serverfehler gemeldet (${s}). Bitte später erneut versuchen.`, 'ueberlast', true);
   return new KiFehler(`OpenAI hat die Anfrage abgelehnt (${s}).`, 'anfrage');
 }
 
-/** Client über die Responses API. `f` ist injizierbar (Tests). Das Modell kommt aus OPENAI_MODEL. */
+/** Client über die Responses API. `f` ist injizierbar (Tests). Das Modell kommt aus der Einstellung (sonst OPENAI_MODEL). */
 export function openaiClient(f: typeof fetch = fetch): KiClient {
   return async (a) => {
     const env = getEnv();
-    const key = env.OPENAI_API_KEY;
-    if (!key) throw new KiFehler('OpenAI ist nicht aktiviert (OPENAI_API_KEY nicht gesetzt).', 'deaktiviert');
+    const key = kiSchluessel('openai');
+    if (!key) throw new KiFehler('OpenAI ist nicht aktiviert (kein OpenAI-Schlüssel hinterlegt).', 'deaktiviert');
     let res: Response;
     try {
       res = await f(`${env.OPENAI_BASE_URL.replace(/\/+$/, '')}/responses`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: env.OPENAI_MODEL,
+          model: kiModell('openai'),
           instructions: a.system,
           input: a.nutzer,
           // Großzügig, weil Denk-Tokens mitzählen

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { GlobalSettingsForm } from '@/components/GlobalSettingsForm';
+import { KiSchluessel } from '@/components/KiSchluessel';
 import { PostfaecherVerwaltung } from '@/components/PostfaecherVerwaltung';
 import { SuppressionList } from '@/components/SuppressionList';
 import { ladeEinstellungen } from '@/lib/settings-view';
@@ -14,7 +15,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
   const me = await erforderSeitenRolle();
   const istAdmin = hatRolle(me.rolle, 'admin');
   const sp = await searchParams;
-  const e = ladeEinstellungen();
+  const e = ladeEinstellungen(istAdmin);
   const sperrliste = listSuppression().map((r) => ({ email: r.email, reason: r.reason, createdAt: r.createdAt.toISOString() }));
 
   return (
@@ -38,6 +39,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           </Link>
         </>
       )}
+      <KiSchluessel initial={e.kiSchluessel} istAdmin={istAdmin} />
       <Schreibschutz gesperrt={!istAdmin} hinweis="Nur Ansicht: Postfächer und globale Einstellungen ändern nur Admins.">
       <PostfaecherVerwaltung postfaecher={e.postfaecher} konfiguriert={e.gmailKonfiguriert} hinweis={sp.gmail} detail={sp.detail} />
       <GlobalSettingsForm
@@ -55,10 +57,13 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           kiAutoStatus: e.kiAutoStatus,
           kiKlassifizierer: e.kiKlassifizierer ?? 'anthropic',
           kiEntwurfAnbieter: e.kiEntwurfAnbieter ?? 'anthropic',
+          openaiModell: e.openaiModell,
+          jevModell: e.jevModell,
         }}
         kiAktiv={e.kiAktiv}
         klassifiziererOptionen={e.kiKlassifiziererOptionen}
         entwurfOptionen={e.kiEntwurfAnbieterOptionen}
+        modellStandard={{ openai: e.openaiModellStandard, jev: e.jevModellStandard }}
         heuteErlaubt={e.heuteErlaubt}
       />
       </Schreibschutz>

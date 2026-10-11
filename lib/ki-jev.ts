@@ -1,4 +1,5 @@
 import { getEnv } from './env';
+import { kiModell, kiSchluessel } from './settings';
 import { KI_KATEGORIEN, KI_KATEGORIE_LABEL, type KiKategorie } from './ki-kategorien';
 import { KI_ZEITLIMIT_MS, KiFehler, kuerzeMailtext, MAX_EINORDNUNG_ZEICHEN, type Einordnung } from './ki';
 
@@ -106,9 +107,9 @@ export function jevBegruendung(g: Gelesen): string {
 // ---------------------------------------------------------------- HTTP
 
 function httpFehler(status: number): KiFehler {
-  if (status === 401 || status === 403) return new KiFehler('Der OpenRouter-API-Schlüssel ist ungültig oder hat keine Berechtigung. Bitte OPENROUTER_API_KEY prüfen.', 'schluessel');
+  if (status === 401 || status === 403) return new KiFehler('Der OpenRouter-API-Schlüssel ist ungültig oder hat keine Berechtigung. Bitte den Schlüssel unter Einstellungen → KI (bzw. OPENROUTER_API_KEY) prüfen.', 'schluessel');
   if (status === 402) return new KiFehler('Das OpenRouter-Guthaben ist aufgebraucht. Bitte Guthaben aufladen.', 'guthaben');
-  if (status === 404) return new KiFehler('Das Jev-Modell oder der Endpunkt wurde nicht gefunden (404). Bitte JEV_MODELL und JEV_BASE_URL prüfen.', 'anfrage');
+  if (status === 404) return new KiFehler('Das Jev-Modell oder der Endpunkt wurde nicht gefunden (404). Bitte das Jev-Modell (Einstellungen → KI bzw. JEV_MODELL) und JEV_BASE_URL prüfen.', 'anfrage');
   if (status === 429) return new KiFehler('OpenRouter meldet zu viele Anfragen (Rate-Limit). Bitte in einer Minute erneut versuchen.', 'limit', true);
   if (status >= 500) return new KiFehler(`Der Jev-Dienst hat einen Serverfehler gemeldet (${status}). Bitte später erneut versuchen.`, 'ueberlast', true);
   return new KiFehler(`Der Jev-Dienst hat die Anfrage abgelehnt (${status}).`, 'anfrage');
@@ -120,8 +121,8 @@ function httpFehler(status: number): KiFehler {
  */
 export async function ordneAntwortMitJev(text: string, betreff = '', f: JevFetch = fetch): Promise<Einordnung> {
   const env = getEnv();
-  const key = env.OPENROUTER_API_KEY;
-  if (!key) throw new KiFehler('Jev ist nicht aktiviert (OPENROUTER_API_KEY nicht gesetzt).', 'deaktiviert');
+  const key = kiSchluessel('openrouter');
+  if (!key) throw new KiFehler('Jev ist nicht aktiviert (kein OpenRouter-Schlüssel hinterlegt).', 'deaktiviert');
   const inhalt = kuerzeMailtext(text, MAX_EINORDNUNG_ZEICHEN);
   if (!inhalt) throw new KiFehler('Die Antwort enthält keinen lesbaren Text, der eingeordnet werden könnte.', 'antwort');
 
@@ -131,7 +132,7 @@ export async function ordneAntwortMitJev(text: string, betreff = '', f: JevFetch
     res = await f(url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(jevAnfrage(betreff.trim().slice(0, 300), inhalt, env.JEV_MODELL)),
+      body: JSON.stringify(jevAnfrage(betreff.trim().slice(0, 300), inhalt, kiModell('jev'))),
       signal: AbortSignal.timeout(KI_ZEITLIMIT_MS),
     });
   } catch (e) {
