@@ -176,39 +176,27 @@ export function WebhooksVerwaltung({ webhooks, privatErlaubt }: { webhooks: Hook
                   {h.zustellungen.length === 0 ? (
                     <p className="mt-2 text-sm text-slate-500">Noch keine Zustellungen.</p>
                   ) : (
-                    <div className="mt-2 overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead className="text-slate-500">
-                          <tr>
-                            <th className="py-1 pr-3 font-medium">Zeit</th>
-                            <th className="py-1 pr-3 font-medium">Ereignis</th>
-                            <th className="py-1 pr-3 font-medium">Status</th>
-                            <th className="py-1 pr-3 font-medium">HTTP</th>
-                            <th className="py-1 pr-3 font-medium">Versuche</th>
-                            <th className="py-1 pr-3 font-medium">Fehler</th>
-                            <th />
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {h.zustellungen.map((z) => (
-                            <tr key={z.id} className="border-t border-slate-100 align-top">
-                              <td className="whitespace-nowrap py-1 pr-3">{zeit.format(new Date(z.createdAt))}</td>
-                              <td className="py-1 pr-3">{EREIGNIS_LABEL[z.ereignis] ?? z.ereignis}</td>
-                              <td className="py-1 pr-3">
-                                <span className={`rounded-full px-2 py-0.5 font-medium ${STATUS[z.status][1]}`}>{STATUS[z.status][0]}</span>
-                                {z.status === 'offen' && z.versuche > 0 && z.naechsterVersuchAt && <div className="mt-0.5 whitespace-nowrap text-slate-500">nächster Versuch {zeit.format(new Date(z.naechsterVersuchAt))}</div>}
-                              </td>
-                              <td className="py-1 pr-3">{z.httpStatus ?? '–'}</td>
-                              <td className="py-1 pr-3">{z.versuche}</td>
-                              <td className="min-w-40 break-words py-1 pr-3 text-slate-600">{z.letzterFehler ?? ''}</td>
-                              <td className="py-1 text-right">
-                                <button onClick={() => erneut(h, z)} className="whitespace-nowrap font-medium text-indigo-600 hover:underline">Erneut senden</button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <ul className="mt-2 divide-y divide-slate-100 text-xs">
+                      {h.zustellungen.map((z) => (
+                        <li key={z.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 py-2">
+                          <div className="min-w-0 flex-1 basis-56 space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                              <span className={`rounded-full px-2 py-0.5 font-medium ${STATUS[z.status][1]}`}>{STATUS[z.status][0]}</span>
+                              <span className="font-medium text-slate-800">{EREIGNIS_LABEL[z.ereignis] ?? z.ereignis}</span>
+                              <span className="whitespace-nowrap text-slate-500">{zeit.format(new Date(z.createdAt))}</span>
+                            </div>
+                            <div className="text-slate-500">
+                              HTTP {z.httpStatus ?? '–'} · {z.versuche} {z.versuche === 1 ? 'Versuch' : 'Versuche'}
+                              {z.status === 'offen' && z.versuche > 0 && z.naechsterVersuchAt && <> · nächster Versuch {zeit.format(new Date(z.naechsterVersuchAt))}</>}
+                            </div>
+                            {z.letzterFehler && <div className="break-words text-red-700">{z.letzterFehler}</div>}
+                          </div>
+                          <button onClick={() => erneut(h, z)} className="whitespace-nowrap font-medium text-indigo-600 hover:underline">
+                            Erneut senden
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
               </details>

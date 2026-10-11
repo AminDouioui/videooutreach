@@ -71,30 +71,24 @@ export function ApiSchluesselVerwaltung({ schluessel }: { schluessel: Schluessel
       {schluessel.length === 0 ? (
         <p className="text-sm text-slate-500">Noch keine API-Schlüssel.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs text-slate-500">
-              <tr>
-                <th className="py-1 pr-3 font-medium">Name</th>
-                <th className="py-1 pr-3 font-medium">Präfix</th>
-                <th className="py-1 pr-3 font-medium">Rechte</th>
-                <th className="py-1 pr-3 font-medium">Letzte Nutzung</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {schluessel.map((k) => (
-                <tr key={k.id} className="border-t border-slate-100 align-top">
-                  <td className="py-1.5 pr-3 break-words">{k.name}</td>
-                  <td className="py-1.5 pr-3 font-mono text-xs">{k.praefix}…</td>
-                  <td className="py-1.5 pr-3">{k.rechte === 'schreiben' ? 'Schreiben' : 'Lesen'}</td>
-                  <td className="whitespace-nowrap py-1.5 pr-3 text-slate-600">{k.widerrufenAt ? <span className="text-red-600">widerrufen {zeit.format(new Date(k.widerrufenAt))}</span> : k.letzteNutzungAt ? zeit.format(new Date(k.letzteNutzungAt)) : 'noch nie'}</td>
-                  <td className="py-1.5 text-right">{!k.widerrufenAt && <button onClick={() => widerrufen(k)} className="text-xs font-medium text-red-600 hover:underline">Widerrufen</button>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="divide-y divide-slate-100">
+          {schluessel.map((k) => (
+            <li key={k.id} className="flex flex-wrap items-start gap-x-4 gap-y-1 py-2 text-sm">
+              <div className="min-w-0 flex-1 basis-56">
+                <div className="break-words font-medium">{k.name}</div>
+                <div className="text-xs text-slate-500">
+                  <span className="font-mono">{k.praefix}…</span> · {k.rechte === 'schreiben' ? 'Schreiben' : 'Lesen'} · Letzte Nutzung:{' '}
+                  {k.widerrufenAt ? <span className="text-red-600">widerrufen {zeit.format(new Date(k.widerrufenAt))}</span> : k.letzteNutzungAt ? zeit.format(new Date(k.letzteNutzungAt)) : 'noch nie'}
+                </div>
+              </div>
+              {!k.widerrufenAt && (
+                <button onClick={() => widerrufen(k)} className="text-xs font-medium text-red-600 hover:underline">
+                  Widerrufen
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );
