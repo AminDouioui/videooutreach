@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
-import { Badge, LeadStatusBadge } from './Badge';
+import { AbwesendBadge, Badge, LeadStatusBadge } from './Badge';
 import { CopyButton } from './CopyButton';
+import { Ortszeit } from './Ortszeit';
 
 export type LeadRow = {
   id: number;
@@ -35,13 +36,19 @@ export type LeadRow = {
   flowSchritt: number;
   /** Flow beendet: beantwortet, bounce, abgemeldet */
   flowStopp: string | null;
+  /** Abwesenheitsnotiz erkannt (Unix-ms des Erkennens) oder null */
+  abwesendAt: number | null;
+  /** Follow-ups warten bis (Unix-ms) oder null */
+  abwesendBis: number | null;
+  /** Wirksame Zeitzone des Leads (eigene, sonst die der Kampagne) */
+  zeitzone: string;
   /** Weiterer Kontakt einer Firma, die schon einen Lead in der Kampagne hat */
   firmenDuplikat: boolean;
   /** Als Firmen-Duplikat vom Versand ausgeschlossen */
   duplikatAusgeschlossen: boolean;
 };
 
-type SortKey = 'firma' | 'ansprechpartner' | 'email' | 'renderStatus' | 'sendStatus' | 'leadStatus' | 'variante' | 'postfach' | 'flowSchritt' | 'sentAt' | 'aufrufe' | 'maxProgress' | 'terminKlicks' | 'oeffnungen' | 'score';
+type SortKey = 'firma' | 'ansprechpartner' | 'email' | 'renderStatus' | 'sendStatus' | 'leadStatus' | 'variante' | 'postfach' | 'zeitzone' | 'flowSchritt' | 'sentAt' | 'aufrufe' | 'maxProgress' | 'terminKlicks' | 'oeffnungen' | 'score';
 type FilterKey = 'alle' | 'mit_play' | 'nicht_gesendet' | 'beantwortet' | 'duplikate' | 'fehler' | 'termin';
 
 const FILTER: { key: FilterKey; label: string }[] = [
@@ -65,6 +72,7 @@ export function LeadsTable({
   followupSchritte = 0,
   abTest = false,
   mehrerePostfaecher = false,
+  mehrereZeitzonen = false,
 }: {
   leads: LeadRow[];
   baseUrl: string;
@@ -78,6 +86,8 @@ export function LeadsTable({
   abTest?: boolean;
   /** Mehr als ein Postfach: Spalte „Postfach“ anzeigen */
   mehrerePostfaecher?: boolean;
+  /** Leads in verschiedenen Zeitzonen: Spalte „Ortszeit“ anzeigen */
+  mehrereZeitzonen?: boolean;
 }) {
   const flowGesamt = 1 + followupSchritte;
   const filter_ = FILTER.filter((f) => mitVideo || (f.key !== 'mit_play' && f.key !== 'termin'));
@@ -120,6 +130,7 @@ export function LeadsTable({
     ...(followupSchritte > 0 ? [{ key: 'flowSchritt' as SortKey, label: 'Flow' }] : []),
     ...(abTest ? [{ key: 'variante' as SortKey, label: 'Variante' }] : []),
     ...(mehrerePostfaecher ? [{ key: 'postfach' as SortKey, label: 'Postfach' }] : []),
+    ...(mehrereZeitzonen ? [{ key: 'zeitzone' as SortKey, label: 'Ortszeit' }] : []),
     { key: 'sentAt', label: 'Gesendet am' },
     ...(mitVideo
       ? [
@@ -148,8 +159,11 @@ export function LeadsTable({
     });
     const dir = sortAsc ? 1 : -1;
     return [...gefiltert].sort((a, b) => {
-      const va = a[sortKey] ?? -1;
-      const vb = b[sortKey] ?? -1;
+      const va = a[sortKey];
+      const vb = b[sortKey];
+      // Leere Werte (z. B. noch nicht gesendet) stehen in jeder Richtung am Ende
+      if (va == null || va === '') return vb == null || vb === '' ? a.firma.localeCompare(b.firma, 'de') : 1;
+      if (vb == null || vb === '') return -1;
       const c = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb), 'de');
       return c * dir || a.firma.localeCompare(b.firma, 'de');
     });
@@ -282,6 +296,11 @@ export function LeadsTable({
                 </td>
                 <td className="px-3 py-2">
                   <LeadStatusBadge status={l.leadStatus} />
+                  {l.abwesendAt !== null && (
+                    <span className="ml-1.5">
+                      <AbwesendBadge bis={l.abwesendBis} />
+                    </span>
+                  )}
                 </td>
                 {followupSchritte > 0 && (
                   <td className="whitespace-nowrap px-3 py-2">
@@ -301,6 +320,11 @@ export function LeadsTable({
                   </td>
                 )}
                 {mehrerePostfaecher && <td className="whitespace-nowrap px-3 py-2 text-slate-600">{l.postfach ?? '–'}</td>}
+                {mehrereZeitzonen && (
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                    <Ortszeit zone={l.zeitzone} />
+                  </td>
+                )}
                 <td className="whitespace-nowrap px-3 py-2 text-slate-600">{l.sentAt ? datumFormat.format(l.sentAt) : '–'}</td>
                 {mitVideo && (
                   <>

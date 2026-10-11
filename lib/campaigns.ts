@@ -21,15 +21,22 @@ ich melde mich kurz bei Ihnen, weil …
 
 Wenn das für Sie interessant ist, freue ich mich über eine kurze Rückmeldung oder einen 15-Minuten-Termin.`;
 
-export type FollowupEingabe = { waitDays: number; body: string };
+export type FollowupVarianteEingabe = { kuerzel: string; text: string; betreff?: string | null; aktiv?: boolean };
+/** Variante A = body/betreff des Schritts; `varianten` sind B–E. Betreff gesetzt = neuer Thread statt „Re: …“. */
+export type FollowupEingabe = { waitDays: number; body: string; betreff?: string | null; varianten?: FollowupVarianteEingabe[] };
 
-/** Follow-up-Schritte einer Kampagne komplett ersetzen (Reihenfolge = Position). */
+const leerZuNull = (b: string | null | undefined) => (b && b.trim() ? b.trim() : null);
+
+/** Follow-up-Schritte einer Kampagne komplett ersetzen (Reihenfolge = Position), samt Varianten. */
 export function speichereFollowups(campaignId: number, schritte: FollowupEingabe[]): void {
   const db = getDb();
   db.transaction((tx) => {
     tx.delete(schema.followups).where(eq(schema.followups.campaignId, campaignId)).run();
     schritte.forEach((s, i) => {
-      tx.insert(schema.followups).values({ campaignId, position: i + 1, waitDays: s.waitDays, body: s.body }).run();
+      const f = tx.insert(schema.followups).values({ campaignId, position: i + 1, waitDays: s.waitDays, body: s.body, betreff: leerZuNull(s.betreff) }).returning().get();
+      for (const v of s.varianten ?? []) {
+        tx.insert(schema.followupVarianten).values({ followupId: f.id, kuerzel: v.kuerzel, text: v.text, betreff: leerZuNull(v.betreff), aktiv: v.aktiv ?? true }).run();
+      }
     });
   });
 }
@@ -52,7 +59,8 @@ export function loescheKampagne(campaignId: number): { leads: number } | null {
 
 /**
  * Kampagne duplizieren: Vorlage, Einstellungen, Follow-ups und Varianten (inkl. aktiv-Status) werden kopiert,
- * Leads nicht. Die Kopie heißt „<Name> (Kopie)“ und startet als Entwurf. Gibt die neue Kampagne zurück.
+ * Leads nicht. Untersequenz-Regeln werden bewusst NICHT kopiert (das Ziel wäre unklar, und eine Regel in die
+ * Original-Kampagne würde ungewollt Leads weiterleiten). Die Kopie heißt „<Name> (Kopie)“ und startet als Entwurf. Gibt die neue Kampagne zurück.
  */
 export function dupliziereKampagne(campaignId: number): typeof schema.campaigns.$inferSelect | null {
   const db = getDb();
@@ -64,11 +72,15 @@ export function dupliziereKampagne(campaignId: number): typeof schema.campaigns.
     delete einstellungen.createdAt;
     const [kopie] = tx
       .insert(schema.campaigns)
-      .values({ ...(einstellungen as Omit<typeof quelle, 'id' | 'createdAt'>), name: `${quelle.name} (Kopie)`.slice(0, 220), status: 'entwurf' })
+      .values({ ...(einstellungen as Omit<typeof quelle, 'id' | 'createdAt'>), name: `${quelle.name} (Kopie)`.slice(0, 220), status: 'entwurf', pausiertGrund: null })
       .returning()
       .all();
     const followups = tx.select().from(schema.followups).where(eq(schema.followups.campaignId, campaignId)).orderBy(schema.followups.position).all();
-    for (const f of followups) tx.insert(schema.followups).values({ campaignId: kopie.id, position: f.position, waitDays: f.waitDays, body: f.body }).run();
+    for (const f of followups) {
+      const neu = tx.insert(schema.followups).values({ campaignId: kopie.id, position: f.position, waitDays: f.waitDays, body: f.body, betreff: f.betreff }).returning().get();
+      const fv = tx.select().from(schema.followupVarianten).where(eq(schema.followupVarianten.followupId, f.id)).orderBy(schema.followupVarianten.kuerzel).all();
+      for (const v of fv) tx.insert(schema.followupVarianten).values({ followupId: neu.id, kuerzel: v.kuerzel, text: v.text, betreff: v.betreff, aktiv: v.aktiv }).run();
+    }
     const varianten = tx.select().from(schema.varianten).where(eq(schema.varianten.campaignId, campaignId)).orderBy(schema.varianten.id).all();
     for (const v of varianten) tx.insert(schema.varianten).values({ campaignId: kopie.id, kuerzel: v.kuerzel, betreff: v.betreff, text: v.text, aktiv: v.aktiv }).run();
     return kopie;

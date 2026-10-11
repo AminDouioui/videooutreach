@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb, schema } from './db';
 import { emailDomain } from './lead-status';
+import { webhookAusloesen } from './webhooks';
 
 // Sperrliste (kampagnenübergreifend) und Abmeldung
 
@@ -62,8 +63,8 @@ export function unsubscribeBySlug(slug: string): boolean {
   const db = getDb();
   const lead = db.select().from(schema.leads).where(eq(schema.leads.slug, slug)).get();
   if (!lead) return false;
+  const schonAbgemeldet = lead.unsubscribed;
   db.transaction((tx) => {
-    const schonAbgemeldet = lead.unsubscribed;
     if (!schonAbgemeldet) {
       tx.update(schema.leads).set({ unsubscribed: true, unsubscribedAt: new Date() }).where(eq(schema.leads.id, lead.id)).run();
       tx.insert(schema.events).values({ leadId: lead.id, type: 'unsubscribe', meta: { quelle: 'abmeldung' }, isBot: false }).run();
@@ -74,5 +75,6 @@ export function unsubscribeBySlug(slug: string): boolean {
       .where(and(eq(schema.leads.email, normalizeEmail(lead.email)), inArray(schema.leads.sendStatus, ['nicht_gesendet', 'geplant'])))
       .run();
   });
+  if (!schonAbgemeldet) webhookAusloesen('abmeldung', { leadId: lead.id });
   return true;
 }

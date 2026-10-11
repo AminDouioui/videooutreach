@@ -15,11 +15,17 @@ export type SendState = {
 
 export type PlanInput = {
   now: Date;
+  /** Heutiges Datum in der Zeitzone der Kampagne (für das Startdatum) */
   today: string;
   campaign: FensterKampagne & { status: string; dailySendLimit: number; startDatum?: string | null };
   globalLimit: number;
   sentTodayGlobal: number;
   sentTodayCampaign: number;
+  /**
+   * Ergebnis der Fensterprüfung pro Lead (Zeitzone des Leads, siehe Versandschleife): true = mindestens ein Kandidat
+   * ist gerade im Fenster. Ohne Angabe gilt das Fenster der Kampagne in deren Zeitzone.
+   */
+  fensterOffen?: boolean;
   /**
    * Nur für den Betrieb mit einem einzigen Zustand (Tests): Abstand und Quota-Stopp gelten seit den mehreren
    * Postfächern je Postfach (absender.nextSendAt / quotaGestopptAm, siehe lib/rotation.ts). Ohne Angabe nicht geprüft.
@@ -44,7 +50,7 @@ export function decideSend(i: PlanInput): PlanResult {
   if (i.state?.quotaStoppedDate === i.today) return { action: 'wait', reason: 'quota_gestoppt', global: true };
   if (i.sentTodayGlobal >= i.globalLimit) return { action: 'wait', reason: 'limit_global', global: true };
   if (i.state && i.state.nextSendAt !== null && i.now.getTime() < i.state.nextSendAt) return { action: 'wait', reason: 'abstand', global: true };
-  if (!isWithinWindow(i.campaign, i.now)) return { action: 'wait', reason: 'fenster_zu', global: false };
+  if (!(i.fensterOffen ?? isWithinWindow(i.campaign, i.now))) return { action: 'wait', reason: 'fenster_zu', global: false };
   if (i.sentTodayCampaign >= i.campaign.dailySendLimit) return { action: 'wait', reason: 'limit_kampagne', global: false };
   return { action: 'send' };
 }

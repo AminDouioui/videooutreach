@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
@@ -21,7 +22,7 @@ export default async function AnalysePage({ params }: { params: Promise<{ id: st
 
   const followups = ladeFollowups(id).length;
   const { trichter, schritte, tage, postfaecher } = ladeKampagnenAnalyse(id, 1 + followups);
-  const stufen = trichter.stufen.filter((s) => k.mitVideo || !s.video);
+  const stufen = trichter.stufen.filter((s) => (k.mitVideo || !s.video) && (k.linkTracking || s.key !== 'linkklick'));
   const stufe = (key: string) => trichter.stufen.find((s) => s.key === key)!;
   const varianten = ladeVariantenStatistik(id);
   const gefuellteStatus = trichter.statusVerteilung.filter((s) => s.anzahl > 0);
@@ -48,7 +49,9 @@ export default async function AnalysePage({ params }: { params: Promise<{ id: st
         <Kachel label="Antworten" wert={trichter.antworten} hinweis={`Antwortrate ${prozent(stufe('antwort').rate ?? 0)}`} />
         {k.mitVideo && <Kachel label="Video-Seite angesehen" wert={stufe('angesehen').anzahl} hinweis={prozent(stufe('angesehen').rate ?? 0)} />}
         {k.mitVideo && <Kachel label="Termin-Klicks" wert={stufe('termin').anzahl} hinweis={prozent(stufe('termin').rate ?? 0)} />}
+        {k.linkTracking && <Kachel label="Link-Klicks" wert={stufe('linkklick').anzahl} hinweis={prozent(stufe('linkklick').rate ?? 0)} />}
         <Kachel label="Bounces" wert={trichter.bounces} hinweis={prozent(trichter.bounceRate)} />
+        <Kachel label="Abwesenheiten" wert={trichter.abwesenheiten} hinweis="zählen nicht als Antwort" />
         <Kachel label="Abmeldungen" wert={trichter.abmeldungen} hinweis={prozent(trichter.abmeldeRate)} />
       </div>
 
@@ -86,12 +89,23 @@ export default async function AnalysePage({ params }: { params: Promise<{ id: st
             </thead>
             <tbody className="divide-y divide-slate-100">
               {schritte.map((s) => (
-                <tr key={s.step}>
-                  <td className="px-3 py-2 font-medium">{s.label}</td>
-                  <td className={`${th} tabular-nums`}>{s.gesendet}</td>
-                  <td className={`${th} tabular-nums`}>{s.antworten}</td>
-                  <td className={`${th} tabular-nums`}>{s.gesendet > 0 ? prozent(s.antwortRate) : '–'}</td>
-                </tr>
+                <Fragment key={s.step}>
+                  <tr>
+                    <td className="px-3 py-2 font-medium">{s.label}</td>
+                    <td className={`${th} tabular-nums`}>{s.gesendet}</td>
+                    <td className={`${th} tabular-nums`}>{s.antworten}</td>
+                    <td className={`${th} tabular-nums`}>{s.gesendet > 0 ? prozent(s.antwortRate) : '–'}</td>
+                  </tr>
+                  {s.varianten.length > 1 &&
+                    s.varianten.map((v) => (
+                      <tr key={`${s.step}-${v.kuerzel}`} className="bg-slate-50/60 text-slate-600">
+                        <td className="py-1.5 pl-7 pr-3">Variante {v.kuerzel}</td>
+                        <td className={`${th} py-1.5 tabular-nums`}>{v.gesendet}</td>
+                        <td className={`${th} py-1.5 tabular-nums`}>{v.antworten}</td>
+                        <td className={`${th} py-1.5 tabular-nums`}>{v.gesendet > 0 ? prozent(v.antwortRate) : '–'}</td>
+                      </tr>
+                    ))}
+                </Fragment>
               ))}
             </tbody>
           </table>

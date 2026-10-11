@@ -2,13 +2,15 @@ import { splitName } from './name';
 import { firmenSchluessel } from './firma';
 import { emailDomain } from './lead-status';
 import type { MxErgebnis } from './mx';
+import { bestimmeZeitzone, type ZeitzoneQuelle } from './zeitzone';
 
 /** Zielfelder des Imports */
-export const IMPORT_FELDER = ['name', 'vorname', 'nachname', 'anrede', 'firma', 'email', 'position', 'website'] as const;
+export const IMPORT_FELDER = ['name', 'vorname', 'nachname', 'anrede', 'firma', 'email', 'position', 'website', 'land', 'zeitzone'] as const;
 export type ImportFeld = (typeof IMPORT_FELDER)[number];
 
 /** Zielfeld → Spaltenname der Datei (oder null = nicht zugeordnet) */
-export type Mapping = Record<ImportFeld, string | null>;
+/** Land und Zeitzone sind optional (ältere Aufrufer kennen sie nicht) */
+export type Mapping = Record<Exclude<ImportFeld, 'land' | 'zeitzone'>, string | null> & Partial<Record<'land' | 'zeitzone', string | null>>;
 export type Row = Record<string, string>;
 
 export const FELD_LABELS: Record<ImportFeld, string> = {
@@ -20,6 +22,8 @@ export const FELD_LABELS: Record<ImportFeld, string> = {
   email: 'E-Mail',
   position: 'Position',
   website: 'Website',
+  land: 'Land (Name oder Code)',
+  zeitzone: 'Zeitzone (z. B. America/New_York)',
 };
 
 const SYNONYME: Record<ImportFeld, string[]> = {
@@ -31,6 +35,8 @@ const SYNONYME: Record<ImportFeld, string[]> = {
   email: ['email', 'mail', 'emailadresse'],
   position: ['position', 'funktion', 'jobtitel'],
   website: ['website', 'webseite', 'url', 'homepage'],
+  land: ['land', 'country', 'staat', 'landescode', 'countrycode'],
+  zeitzone: ['zeitzone', 'timezone', 'tz'],
 };
 
 /** Vergleichsform: lowercase, ohne Leerzeichen/Bindestriche/Unterstriche */
@@ -40,7 +46,7 @@ function norm(s: string): string {
 
 /** Rät die Zuordnung Zielfeld → Spalte anhand der Spaltennamen. Jede Spalte wird höchstens einmal vergeben. */
 export function guessMapping(headers: string[]): Mapping {
-  const mapping = Object.fromEntries(IMPORT_FELDER.map((f) => [f, null])) as Mapping;
+  const mapping = Object.fromEntries(IMPORT_FELDER.map((f) => [f, null])) as Record<ImportFeld, string | null>;
   const belegt = new Set<string>();
   for (const feld of IMPORT_FELDER) {
     const kandidaten = SYNONYME[feld];
@@ -65,10 +71,15 @@ export type MappedLead = {
   email: string;
   position: string;
   website: string;
+  /** Erkannte IANA-Zeitzone; '' = keine Angabe/Schätzung (Kampagnen-Zeitzone) */
+  zeitzone: string;
+  zeitzoneQuelle: ZeitzoneQuelle | null;
+  /** Ungültige Angabe aus der Zeitzone-Spalte (wurde ignoriert) */
+  zeitzoneUngueltig?: string;
   extra: Record<string, string>;
 };
 
-function wert(row: Row, spalte: string | null): string {
+function wert(row: Row, spalte: string | null | undefined): string {
   if (!spalte) return '';
   return (row[spalte] ?? '').toString().trim();
 }
@@ -92,14 +103,21 @@ export function applyMapping(row: Row, mapping: Mapping): MappedLead {
     if (t) extra[spalte] = t;
   }
 
+  const email = wert(row, mapping.email).toLowerCase();
+  const website = wert(row, mapping.website);
+  const zone = bestimmeZeitzone({ zeitzone: wert(row, mapping.zeitzone), land: wert(row, mapping.land), email, website });
+
   return {
     firma: wert(row, mapping.firma),
     anrede: wert(row, mapping.anrede),
     vorname,
     nachname,
-    email: wert(row, mapping.email).toLowerCase(),
+    email,
     position: wert(row, mapping.position),
-    website: wert(row, mapping.website),
+    website,
+    zeitzone: zone.zeitzone ?? '',
+    zeitzoneQuelle: zone.quelle,
+    ...(zone.ungueltig ? { zeitzoneUngueltig: zone.ungueltig } : {}),
     extra,
   };
 }

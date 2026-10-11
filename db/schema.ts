@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 
 const ts = (name: string) => integer(name, { mode: 'timestamp_ms' });
 const jetzt = sql`(unixepoch() * 1000)`;
@@ -17,6 +17,10 @@ export const EVENT_TYPEN = [
   'cta_click',
   'email_open',
   'unsubscribe',
+  'abwesenheit',
+  'link_click',
+  // Lead wurde per Untersequenz-Regel in eine andere Kampagne übernommen (meta: zielCampaignId, zielLeadId)
+  'untersequenz',
 ] as const;
 
 /**
@@ -62,15 +66,27 @@ export const campaigns = sqliteTable('campaigns', {
   sendDays: text('send_days').notNull().default('1,2,3,4,5'),
   // Vor diesem Datum ('YYYY-MM-DD', Berlin) wird nicht gesendet; null = sofort
   startDatum: text('start_datum'),
+  // IANA-Zeitzone der Kampagne (Versandfenster, Versandtage, Startdatum); Leads ohne eigene Zone folgen ihr
+  zeitzone: text('zeitzone').notNull().default('Europe/Berlin'),
   // Höchstens so viele neue Leads (Erstmails) pro Tag; null = unbegrenzt. Follow-ups zählen nicht.
   maxNeueLeadsProTag: integer('max_neue_leads_pro_tag'),
   ctaUrl: text('cta_url').notNull(),
   trackingPixel: integer('tracking_pixel', { mode: 'boolean' }).notNull().default(false),
+  // Klick-Tracking: http(s)-Links im Mailtext laufen über /api/c/<token> (Event link_click); schadet der Zustellbarkeit leicht
+  linkTracking: integer('link_tracking', { mode: 'boolean' }).notNull().default(false),
   status: text('status', { enum: KAMPAGNEN_STATUS }).notNull().default('entwurf'),
   // false = reine Text-Kampagne: kein Rendern, Versand direkt nach dem Import möglich
   mitVideo: integer('mit_video', { mode: 'boolean' }).notNull().default(true),
   // Antwortet jemand einer Firma, werden die Flows aller anderen Leads mit derselben Domain gestoppt
   stoppBeiFirmenAntwort: integer('stopp_bei_firmen_antwort', { mode: 'boolean' }).notNull().default(true),
+  // Follow-ups eines Leads mit erkannter Abwesenheitsnotiz um so viele Tage verschieben (0 = nicht verschieben)
+  abwesenheitVerschiebenTage: integer('abwesenheit_verschieben_tage').notNull().default(7),
+  // Bounce-Schutz: Kampagne pausiert, wenn die Bounce-Quote der letzten `bounceFenster` Erstmails über der Schwelle liegt
+  bounceSchutz: integer('bounce_schutz', { mode: 'boolean' }).notNull().default(true),
+  bounceSchwelleProzent: integer('bounce_schwelle_prozent').notNull().default(5),
+  bounceFenster: integer('bounce_fenster').notNull().default(50),
+  // Warum die Kampagne automatisch pausiert wurde (Bounce-Schutz); null = nicht automatisch pausiert
+  pausiertGrund: text('pausiert_grund'),
 });
 
 /** Follow-up-Schritte einer Kampagne (Schritt 1 ist die Erstmail aus campaigns). Gesendet im selben Thread. */
@@ -86,8 +102,29 @@ export const followups = sqliteTable(
     // Wartezeit nach der vorherigen Mail in Tagen
     waitDays: integer('wait_days').notNull().default(3),
     body: text('body').notNull(),
+    // Eigener Betreff von Variante A; gesetzt = Mail als neuer Thread, leer/null = „Re: …“ im Thread der Erstmail
+    betreff: text('betreff'),
   },
   (t) => [index('followups_campaign_idx').on(t.campaignId)],
+);
+
+/**
+ * Zusätzliche Varianten (B–E) eines Follow-up-Schritts. Variante A ist followups.body/betreff selbst.
+ * `betreff` gesetzt = diese Variante geht als neuer Thread raus.
+ */
+export const followupVarianten = sqliteTable(
+  'followup_varianten',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    followupId: integer('followup_id')
+      .notNull()
+      .references(() => followups.id, { onDelete: 'cascade' }),
+    kuerzel: text('kuerzel').notNull(),
+    text: text('text').notNull(),
+    betreff: text('betreff'),
+    aktiv: integer('aktiv', { mode: 'boolean' }).notNull().default(true),
+  },
+  (t) => [index('followup_varianten_followup_idx').on(t.followupId), uniqueIndex('followup_varianten_kuerzel_idx').on(t.followupId, t.kuerzel)],
 );
 
 /**
@@ -129,6 +166,8 @@ export const leads = sqliteTable(
     email: text('email').notNull(),
     position: text('position'),
     website: text('website'),
+    // IANA-Zeitzone des Leads (Versandfenster/-tage gelten dort); null = Zeitzone der Kampagne
+    zeitzone: text('zeitzone'),
     extra: text('extra', { mode: 'json' }).$type<Record<string, string>>(),
     slug: text('slug').notNull().unique(),
     renderStatus: text('render_status', { enum: RENDER_STATUS }).notNull().default('wartet'),
@@ -158,21 +197,58 @@ export const leads = sqliteTable(
     // Zeitpunkt, an dem die Antwort erkannt wurde
     antwortAt: ts('antwort_at'),
     antwortGelesen: integer('antwort_gelesen', { mode: 'boolean' }).notNull().default(false),
+    // Abwesenheitsnotiz erkannt (zählt nicht als Antwort); Follow-ups warten bis abwesendBis (null = nicht verschoben)
+    abwesendAt: ts('abwesend_at'),
+    abwesendBis: ts('abwesend_bis'),
     // Manueller Vertriebsstatus (wie „Lead Status“ bei Instantly)
     leadStatus: text('lead_status', { enum: LEAD_STATUS }).notNull().default('offen'),
     leadStatusAt: ts('lead_status_at'),
     // Kürzel der beim Versand der Erstmail genutzten Variante (A = Kampagnen-Vorlage); null = noch nicht gesendet
     variante: text('variante'),
+    // Thread, in dem die Antwort erkannt wurde (null = Thread der Erstmail; abweichend bei Follow-ups als neuer Thread)
+    antwortThreadId: text('antwort_thread_id'),
+    // KI-Einordnung der Antwort (optional, nur mit ANTHROPIC_API_KEY): kategorie, konfidenz, begruendung, at, angewendet
+    kiEinordnung: text('ki_einordnung', { mode: 'json' }).$type<{ kategorie: string; konfidenz: number; begruendung: string; at: number; angewendet?: boolean }>(),
+    // Fehlversuche der automatischen Einordnung (höchstens 3) und Zeitpunkt des letzten Versuchs
+    kiVersuche: integer('ki_versuche').notNull().default(0),
+    kiVersuchAt: ts('ki_versuch_at'),
     // Postfach, über das die Erstmail ging (Follow-ups und Antwortprüfung laufen über dasselbe); null = Altbestand
     absenderId: integer('absender_id').references(() => absender.id, { onDelete: 'set null' }),
+    // Pipeline (CRM light): Deal-Wert in Cent (null = keiner) und Notiz zum Deal
+    dealWert: integer('deal_wert'),
+    dealNotiz: text('deal_notiz'),
+    // Per Untersequenz übernommen: Lead, aus dem dieser Datensatz kopiert wurde (null = importiert/angelegt)
+    herkunftLeadId: integer('herkunft_lead_id').references((): AnySQLiteColumn => leads.id, { onDelete: 'set null' }),
     createdAt: ts('created_at').notNull().default(jetzt),
   },
   (t) => [
+    index('leads_herkunft_idx').on(t.herkunftLeadId),
     index('leads_campaign_idx').on(t.campaignId),
     index('leads_email_idx').on(t.email),
     index('leads_flow_stopp_idx').on(t.flowStopp),
     index('leads_absender_idx').on(t.absenderId),
   ],
+);
+
+/**
+ * Untersequenz-Regeln: Wird ein Lead der Quell-Kampagne auf `ausloeserStatus` gesetzt, wird er (als Kopie) in die
+ * Ziel-Kampagne übernommen, wo der Flow neu startet.
+ */
+export const untersequenzen = sqliteTable(
+  'untersequenzen',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    campaignId: integer('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    ausloeserStatus: text('ausloeser_status', { enum: LEAD_STATUS }).notNull(),
+    zielCampaignId: integer('ziel_campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    aktiv: integer('aktiv', { mode: 'boolean' }).notNull().default(true),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [index('untersequenzen_campaign_idx').on(t.campaignId), uniqueIndex('untersequenzen_regel_idx').on(t.campaignId, t.ausloeserStatus, t.zielCampaignId)],
 );
 
 /** Jede gesendete Mail (Erstmail = step 0, Follow-ups = 1, 2 …); Grundlage der Tageslimits. */
@@ -189,6 +265,8 @@ export const sentMessages = sqliteTable(
     step: integer('step').notNull(),
     gmailMessageId: text('gmail_message_id'),
     gmailThreadId: text('gmail_thread_id'),
+    // Kürzel der genutzten Variante (Erstmail und Follow-ups); null = Altbestand (zählt als A)
+    variante: text('variante'),
     // Postfach, von dem die Mail gesendet wurde (Grundlage des Tageslimits je Postfach)
     absenderId: integer('absender_id').references(() => absender.id, { onDelete: 'set null' }),
     sentAt: ts('sent_at').notNull().default(jetzt),
@@ -224,10 +302,61 @@ export const suppressionList = sqliteTable('suppression_list', {
   createdAt: ts('created_at').notNull().default(jetzt),
 });
 
+// ---------------------------------------------------------------- Webhooks & API (Paket 14)
+
+export const WEBHOOK_EREIGNISSE = ['mail_gesendet', 'antwort', 'bounce', 'abwesenheit', 'abmeldung', 'lead_status', 'video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick'] as const;
+export const ZUSTELL_STATUS = ['offen', 'ok', 'fehler'] as const;
+export const API_RECHTE = ['lesen', 'schreiben'] as const;
+
+/** Ausgehende Webhooks. Das Geheimnis (HMAC-Signatur) wird mit lib/crypto.ts verschlüsselt gespeichert. */
+export const webhooks = sqliteTable('webhooks', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  url: text('url').notNull(),
+  ereignisse: text('ereignisse', { mode: 'json' }).$type<string[]>().notNull(),
+  geheimnis: text('geheimnis').notNull(),
+  aktiv: integer('aktiv', { mode: 'boolean' }).notNull().default(true),
+  createdAt: ts('created_at').notNull().default(jetzt),
+});
+
+/** Zustellungen (Warteschlange und Protokoll). 'test' ist zusätzlich zu den Ereignissen der Liste möglich. */
+export const webhookZustellungen = sqliteTable(
+  'webhook_zustellungen',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    webhookId: integer('webhook_id')
+      .notNull()
+      .references(() => webhooks.id, { onDelete: 'cascade' }),
+    ereignis: text('ereignis').notNull(),
+    payload: text('payload', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+    status: text('status', { enum: ZUSTELL_STATUS }).notNull().default('offen'),
+    versuche: integer('versuche').notNull().default(0),
+    naechsterVersuchAt: ts('naechster_versuch_at'),
+    letzterFehler: text('letzter_fehler'),
+    httpStatus: integer('http_status'),
+    createdAt: ts('created_at').notNull().default(jetzt),
+    zugestelltAt: ts('zugestellt_at'),
+  },
+  (t) => [index('webhook_zustellungen_webhook_idx').on(t.webhookId, t.createdAt), index('webhook_zustellungen_faellig_idx').on(t.status, t.naechsterVersuchAt)],
+);
+
+/** API-Schlüssel der REST-API. Nur der sha256-Hash wird gespeichert; `praefix` (erste 8 Zeichen) dient der Anzeige. */
+export const apiSchluessel = sqliteTable('api_schluessel', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  praefix: text('praefix').notNull(),
+  hash: text('hash').notNull().unique(),
+  rechte: text('rechte', { enum: API_RECHTE }).notNull().default('lesen'),
+  letzteNutzungAt: ts('letzte_nutzung_at'),
+  createdAt: ts('created_at').notNull().default(jetzt),
+  widerrufenAt: ts('widerrufen_at'),
+});
+
 export type Absender = typeof absender.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type Variante = typeof varianten.$inferSelect;
 export type Followup = typeof followups.$inferSelect;
+export type FollowupVariante = typeof followupVarianten.$inferSelect;
+export type Untersequenz = typeof untersequenzen.$inferSelect;
 export type Lead = typeof leads.$inferSelect;
 export type NewLead = typeof leads.$inferInsert;
 export type EventRow = typeof events.$inferSelect;

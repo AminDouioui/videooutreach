@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { MAX_VARIANTEN, naechstesKuerzel } from '@/lib/varianten';
 import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
+import { KiVorschlag } from './KiKomponenten';
 import { VorlagenHinweise } from './VorlagenHilfe';
 
 export type VarianteEintrag = { id: number; kuerzel: string; betreff: string; text: string; aktiv: boolean; verwendet: number };
@@ -22,11 +23,13 @@ export function VariantenEditor({
   initial,
   extraSpalten,
   vorschauLeadId,
+  kiAktiv = false,
 }: {
   campaignId: number;
   initial: VarianteEintrag[];
   extraSpalten: string[];
   vorschauLeadId: number | null;
+  kiAktiv?: boolean;
 }) {
   const router = useRouter();
   const [liste, setListe] = useState(initial);
@@ -59,6 +62,7 @@ export function VariantenEditor({
           start={v}
           extraSpalten={extraSpalten}
           vorschauLeadId={vorschauLeadId}
+          kiAktiv={kiAktiv}
           onGeloescht={() => {
             setListe((l) => l.filter((x) => x.id !== v.id));
             router.refresh();
@@ -81,6 +85,7 @@ function VarianteKarte({
   start,
   extraSpalten,
   vorschauLeadId,
+  kiAktiv,
   onGeloescht,
   onGeaendert,
 }: {
@@ -88,6 +93,7 @@ function VarianteKarte({
   start: VarianteEintrag;
   extraSpalten: string[];
   vorschauLeadId: number | null;
+  kiAktiv: boolean;
   onGeloescht: () => void;
   onGeaendert: () => void;
 }) {
@@ -128,7 +134,8 @@ function VarianteKarte({
     };
   }, [zeigeVorschau, vorschauLeadId, betreff, text]);
 
-  async function speichern() {
+  /** true = gespeichert (oder nichts zu speichern); false = Speichern fehlgeschlagen */
+  async function speichern(): Promise<boolean> {
     setStatus(null);
     const res = await fetch(`/api/campaigns/${campaignId}/varianten/${start.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ betreff, text, aktiv }) });
     const data = await res.json().catch(() => ({}));
@@ -137,12 +144,15 @@ function VarianteKarte({
       setStatus({ text: w.length ? `Gespeichert (${w.join(', ')})` : 'Gespeichert', fehler: false });
       setGespeichert({ betreff, text, aktiv });
       onGeaendert();
-    } else setStatus({ text: data.error ?? 'Speichern fehlgeschlagen', fehler: true });
+      return true;
+    }
+    setStatus({ text: data.error ?? 'Speichern fehlgeschlagen', fehler: true });
+    return false;
   }
 
   async function testmail() {
     setStatus({ text: 'Testmail wird gesendet …', fehler: false });
-    if (geaendert) await speichern();
+    if (geaendert && !(await speichern())) return;
     const res = await fetch(`/api/campaigns/${campaignId}/test-mail`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -178,6 +188,15 @@ function VarianteKarte({
           </button>
         </span>
       </div>
+      <KiVorschlag
+        aktiv={kiAktiv}
+        campaignId={campaignId}
+        art="erstmail"
+        onUebernehmen={(v) => {
+          setBetreff(v.betreff);
+          setText(v.text);
+        }}
+      />
       <label className="block text-sm font-medium text-slate-700">
         Betreff
         <input value={betreff} onChange={(e) => setBetreff(e.target.value)} className={feld} />
@@ -197,7 +216,7 @@ function VarianteKarte({
         </div>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button type="button" onClick={speichern} disabled={!geaendert || klammerFehler.length > 0} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+        <button type="button" onClick={() => void speichern()} disabled={!geaendert || klammerFehler.length > 0} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
           Speichern
         </button>
         <button type="button" onClick={testmail} disabled={vorschauLeadId === null || klammerFehler.length > 0} className={`${knopf} px-4 py-2 text-sm`}>

@@ -67,7 +67,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   if (action === 'pause') {
     if (k.status !== 'versendet_laufend') return fehler('Versand läuft nicht');
-    db.update(schema.campaigns).set({ status: 'pausiert' }).where(eq(schema.campaigns.id, id)).run();
+    db.update(schema.campaigns).set({ status: 'pausiert', pausiertGrund: null }).where(eq(schema.campaigns.id, id)).run();
     return NextResponse.json({ ok: true, status: 'pausiert' });
   }
 
@@ -105,7 +105,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return fehler(k.mitVideo ? 'Keine fertig gerenderten Leads zum Versenden vorhanden' : 'Keine Leads zum Versenden vorhanden');
   }
 
-  db.update(schema.campaigns).set({ status: 'versendet_laufend' }).where(eq(schema.campaigns.id, id)).run();
+  db.update(schema.campaigns).set({ status: 'versendet_laufend', pausiertGrund: null }).where(eq(schema.campaigns.id, id)).run();
   return NextResponse.json({
     ok: true,
     status: 'versendet_laufend',

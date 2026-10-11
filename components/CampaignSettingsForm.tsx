@@ -2,7 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { ALLE_WOCHENTAGE, WOCHENTAG_KURZ } from '@/lib/time';
+import { ALLE_WOCHENTAGE, istGueltigeZeitzone, WOCHENTAG_KURZ } from '@/lib/time';
+import { GAENGIGE_ZEITZONEN } from '@/lib/zeitzone';
 
 type Werte = {
   name: string;
@@ -11,10 +12,16 @@ type Werte = {
   sendWindowStart: string;
   sendWindowEnd: string;
   sendDays: number[];
+  zeitzone: string;
   startDatum: string;
   maxNeueLeadsProTag: number | null;
   trackingPixel: boolean;
+  linkTracking: boolean;
   stoppBeiFirmenAntwort: boolean;
+  abwesenheitVerschiebenTage: number;
+  bounceSchutz: boolean;
+  bounceSchwelleProzent: number;
+  bounceFenster: number;
 };
 
 const feld = 'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600';
@@ -28,10 +35,14 @@ export function CampaignSettingsForm({ campaignId, initial }: { campaignId: numb
   async function speichern(e: React.FormEvent) {
     e.preventDefault();
     setStatus(null);
+    if (!istGueltigeZeitzone(w.zeitzone)) {
+      setStatus({ text: 'Unbekannte Zeitzone (z. B. Europe/Berlin, America/New_York)', fehler: true });
+      return;
+    }
     const res = await fetch(`/api/campaigns/${campaignId}/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...w, dailySendLimit: Number(w.dailySendLimit), startDatum: w.startDatum || null }),
+      body: JSON.stringify({ ...w, dailySendLimit: Number(w.dailySendLimit), startDatum: w.startDatum || null, abwesenheitVerschiebenTage: Number(w.abwesenheitVerschiebenTage), bounceSchwelleProzent: Number(w.bounceSchwelleProzent), bounceFenster: Number(w.bounceFenster) }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
@@ -64,7 +75,34 @@ export function CampaignSettingsForm({ campaignId, initial }: { campaignId: numb
           <input required type="time" value={w.sendWindowEnd} onChange={(e) => set('sendWindowEnd', e.target.value)} className={feld} />
         </label>
       </div>
-      <p className="-mt-2 text-xs text-slate-500">Zeiten in Europe/Berlin. Zusätzlich gilt das globale Tageslimit aus den Einstellungen.</p>
+      <label className="block text-sm font-medium text-slate-700">
+        Zeitzone
+        <select
+          value={(GAENGIGE_ZEITZONEN as readonly string[]).includes(w.zeitzone) ? w.zeitzone : ''}
+          onChange={(e) => e.target.value && set('zeitzone', e.target.value)}
+          className={`${feld} bg-white sm:w-72`}
+          aria-label="Gängige Zeitzone wählen"
+        >
+          <option value="">– andere (Freitext) –</option>
+          {GAENGIGE_ZEITZONEN.map((z) => (
+            <option key={z} value={z}>
+              {z}
+            </option>
+          ))}
+        </select>
+        <input
+          value={w.zeitzone}
+          onChange={(e) => set('zeitzone', e.target.value)}
+          placeholder="IANA-Zeitzone, z. B. Europe/Berlin"
+          aria-label="Zeitzone (Freitext)"
+          aria-invalid={!istGueltigeZeitzone(w.zeitzone)}
+          className={`${feld} sm:w-72 ${istGueltigeZeitzone(w.zeitzone) ? '' : 'border-red-500'}`}
+        />
+        {!istGueltigeZeitzone(w.zeitzone) && <span className="mt-1 block text-xs font-normal text-red-600">Unbekannte Zeitzone.</span>}
+      </label>
+      <p className="-mt-2 text-xs text-slate-500">
+        Fenster, Versandtage und Startdatum gelten in dieser Zeitzone – für Leads mit eigener Zeitzone (Import, Lead-Detail) in deren Ortszeit. Tageslimits zählen nach Berliner Tag. Zusätzlich gilt das globale Tageslimit aus den Einstellungen.
+      </p>
       <fieldset>
         <legend className="text-sm font-medium text-slate-700">Versandtage</legend>
         <div className="mt-1 flex flex-wrap gap-2">
@@ -108,6 +146,15 @@ export function CampaignSettingsForm({ campaignId, initial }: { campaignId: numb
         </span>
       </label>
       <label className="flex items-start gap-2 text-sm text-slate-700">
+        <input type="checkbox" className="mt-1" checked={w.linkTracking} onChange={(e) => set('linkTracking', e.target.checked)} />
+        <span>
+          Klicks auf Links in der Mail tracken
+          <span className="block text-xs text-slate-500">
+            Links im Mailtext (außer Video-Link und Abmeldelink) laufen über diese App und werden als „Link-Klick“ erfasst. Getrackte Links können die Zustellbarkeit leicht verschlechtern (Spam-Filter mögen umgeleitete Links nicht). Standard: aus.
+          </span>
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-sm text-slate-700">
         <input type="checkbox" className="mt-1" checked={w.stoppBeiFirmenAntwort} onChange={(e) => set('stoppBeiFirmenAntwort', e.target.checked)} />
         <span>
           Bei Antwort einer Firma alle Kontakte dieser Firma stoppen
@@ -116,6 +163,33 @@ export function CampaignSettingsForm({ campaignId, initial }: { campaignId: numb
           </span>
         </span>
       </label>
+      <label className="block text-sm font-medium text-slate-700">
+        Bei Abwesenheitsnotiz Follow-ups verschieben um (Tage)
+        <input type="number" min={0} max={60} value={w.abwesenheitVerschiebenTage} onChange={(e) => set('abwesenheitVerschiebenTage', Number(e.target.value))} className={`${feld} sm:w-40`} />
+        <span className="mt-1 block text-xs font-normal text-slate-500">
+          Antwortet ein Lead automatisch (Abwesenheit, „Out of Office“), stoppt das den Flow nicht und zählt nicht als Antwort; weitere Mails an ihn warten so viele Tage ab Erkennung. 0 = nicht verschieben.
+        </span>
+      </label>
+      <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">
+        <legend className="px-1 text-sm font-medium text-slate-700">Bounce-Schutz</legend>
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input type="checkbox" className="mt-1" checked={w.bounceSchutz} onChange={(e) => set('bounceSchutz', e.target.checked)} />
+          <span>
+            Kampagne automatisch pausieren, wenn zu viele Mails gebounct sind
+            <span className="block text-xs text-slate-500">Geprüft nach jedem erkannten Bounce, sobald mindestens 20 Erstmails gesendet wurden. Der Grund erscheint als Hinweis; „Fortsetzen“ hebt die Pause auf.</span>
+          </span>
+        </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-slate-700">
+            Schwelle (% Bounces)
+            <input type="number" min={1} max={100} disabled={!w.bounceSchutz} value={w.bounceSchwelleProzent} onChange={(e) => set('bounceSchwelleProzent', Number(e.target.value))} className={`${feld} disabled:opacity-50`} />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Fenster (letzte N Erstmails)
+            <input type="number" min={20} max={1000} disabled={!w.bounceSchutz} value={w.bounceFenster} onChange={(e) => set('bounceFenster', Number(e.target.value))} className={`${feld} disabled:opacity-50`} />
+          </label>
+        </div>
+      </fieldset>
       <div className="flex items-center gap-3">
         <button type="submit" className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
           Speichern

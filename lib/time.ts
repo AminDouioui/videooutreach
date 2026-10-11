@@ -1,32 +1,87 @@
-// Zeit-Helfer für Europe/Berlin (nur Intl, keine Zusatz-Lib)
+// Zeit-Helfer für beliebige IANA-Zeitzonen (Standard Europe/Berlin; nur Intl, keine Zusatz-Lib)
 
-const ZONE = 'Europe/Berlin';
+export const STANDARD_ZEITZONE = 'Europe/Berlin';
+const ZONE = STANDARD_ZEITZONE;
 
-const fmt = new Intl.DateTimeFormat('en-GB', {
-  timeZone: ZONE,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  weekday: 'short',
-  hourCycle: 'h23',
-});
+// Ein Formatter je Zone (Intl.DateTimeFormat anzulegen ist teuer)
+const formatter = new Map<string, Intl.DateTimeFormat>();
+// Ergebnis der Zonenprüfung: eingegebene Schreibweise → kanonischer Name (oder null = ungültig)
+const zonenCache = new Map<string, string | null>();
 
-export type BerlinTeile = { datum: string; stunde: number; minute: number; wochentag: number };
+/** Kanonischer IANA-Name einer Zeitzone (z. B. „europe/london“ → „Europe/London“) oder null, wenn ungültig. */
+export function kanonischeZeitzone(zone: string | null | undefined): string | null {
+  const z = (zone ?? '').trim();
+  if (!z) return null;
+  const cached = zonenCache.get(z);
+  if (cached !== undefined) return cached;
+  let ergebnis: string | null = null;
+  try {
+    ergebnis = new Intl.DateTimeFormat('en-GB', { timeZone: z }).resolvedOptions().timeZone;
+  } catch {
+    ergebnis = null;
+  }
+  zonenCache.set(z, ergebnis);
+  return ergebnis;
+}
+
+export function istGueltigeZeitzone(zone: string | null | undefined): boolean {
+  return kanonischeZeitzone(zone) !== null;
+}
+
+/** Gültige Zone oder Fallback Europe/Berlin (ungültige/leere Angaben brechen nie den Versand). */
+export function zeitzoneOderStandard(zone: string | null | undefined): string {
+  return kanonischeZeitzone(zone) ?? ZONE;
+}
+
+/** Zone eines Leads: eigene Zone, sonst die der Kampagne, sonst Europe/Berlin. */
+export function leadZeitzone(lead: { zeitzone?: string | null }, kampagne: { zeitzone?: string | null }): string {
+  return kanonischeZeitzone(lead.zeitzone) ?? zeitzoneOderStandard(kampagne.zeitzone);
+}
+
+function zonenFormatter(zone: string): Intl.DateTimeFormat {
+  let f = formatter.get(zone);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      weekday: 'short',
+      hourCycle: 'h23',
+    });
+    formatter.set(zone, f);
+  }
+  return f;
+}
+
+export type ZonenTeile = { datum: string; stunde: number; minute: number; wochentag: number };
+export type BerlinTeile = ZonenTeile;
 
 const WOCHENTAGE: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
 
-/** Zerlegt einen Zeitpunkt in Berliner Ortszeit (wochentag: 1 = Montag … 7 = Sonntag). */
-export function berlinTeile(jetzt: Date = new Date()): BerlinTeile {
+/** Zerlegt einen Zeitpunkt in Ortszeit der Zone (wochentag: 1 = Montag … 7 = Sonntag). Ungültige Zone = Europe/Berlin. */
+export function zonenTeile(zone: string | null | undefined, jetzt: Date = new Date()): ZonenTeile {
   const t: Record<string, string> = {};
-  for (const p of fmt.formatToParts(jetzt)) t[p.type] = p.value;
+  for (const p of zonenFormatter(zeitzoneOderStandard(zone)).formatToParts(jetzt)) t[p.type] = p.value;
   return {
     datum: `${t.year}-${t.month}-${t.day}`,
     stunde: Number(t.hour),
     minute: Number(t.minute),
     wochentag: WOCHENTAGE[t.weekday] ?? 1,
   };
+}
+
+/** Zerlegt einen Zeitpunkt in Berliner Ortszeit (wochentag: 1 = Montag … 7 = Sonntag). */
+export function berlinTeile(jetzt: Date = new Date()): BerlinTeile {
+  return zonenTeile(ZONE, jetzt);
+}
+
+/** Ortszeit als „14:05“ in der Zone. */
+export function ortszeit(zone: string | null | undefined, jetzt: Date = new Date()): string {
+  const t = zonenTeile(zone, jetzt);
+  return `${String(t.stunde).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`;
 }
 
 /** Heutiges Datum in Berlin als 'YYYY-MM-DD'. */
@@ -49,7 +104,7 @@ export function parseHHMM(s: string): number {
   return h * 60 + min;
 }
 
-export type FensterKampagne = { sendWindowStart: string; sendWindowEnd: string; sendDays: string };
+export type FensterKampagne = { sendWindowStart: string; sendWindowEnd: string; sendDays: string; zeitzone?: string | null };
 
 export const ALLE_WOCHENTAGE = [1, 2, 3, 4, 5, 6, 7] as const;
 export const WOCHENTAG_KURZ = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] as const;
@@ -69,9 +124,12 @@ export function formatSendDays(tage: number[]): string {
   return parseSendDays(tage.join(',')).join(',');
 }
 
-/** Liegt `jetzt` im Versandfenster der Kampagne (Start inklusive, Ende exklusive)? */
-export function isWithinWindow(k: FensterKampagne, jetzt: Date = new Date()): boolean {
-  const t = berlinTeile(jetzt);
+/**
+ * Liegt `jetzt` im Versandfenster (Start inklusive, Ende exklusive)? Wochentag und Uhrzeit gelten in `zone`
+ * (Standard: Zeitzone der Kampagne, sonst Europe/Berlin) – für Leads deren eigene Zone übergeben.
+ */
+export function isWithinWindow(k: FensterKampagne, jetzt: Date = new Date(), zone: string | null | undefined = k.zeitzone): boolean {
+  const t = zonenTeile(zone, jetzt);
   if (!parseSendDays(k.sendDays).includes(t.wochentag)) return false;
   const start = parseHHMM(k.sendWindowStart);
   const ende = parseHHMM(k.sendWindowEnd);

@@ -21,6 +21,7 @@ export async function validiereImport(campaignId: number, body: ImportBody, reso
     if (d) domains.add(d);
   }
   if (domains.size === 0) return vorlaeufig;
-  const mx = await pruefeDomains(domains, resolver);
+  // Kanari-Domain nur mit echtem DNS (injizierte Resolver in Tests kennen sie nicht)
+  const mx = await pruefeDomains(domains, resolver, undefined, undefined, undefined, resolver ? undefined : 'gmail.com');
   return validateRows(body.rows, body.mapping, { ...kontext, mx });
 }

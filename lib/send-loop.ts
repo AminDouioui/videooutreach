@@ -2,13 +2,15 @@ import { and, asc, eq, inArray, isNull, lt, notInArray, or, sql } from 'drizzle-
 import { kannAntwortenPruefen, ladeAbsender, ladePostfachZustaende, markiereAuthFehler, postfachFuerLead, setzeNaechstenVersand } from './absender';
 import { getDb, schema } from './db';
 import { getEnv } from './env';
-import { GmailSendError, type GmailSender, type ThreadPruefer } from './gmail';
+import { GmailSendError, type GmailSender, type ThreadLader, type ThreadPruefer } from './gmail';
+import { verarbeiteKiWarteschlange } from './ki-einordnung';
+import type { KiClient } from './ki';
 import { FLOW_ENDENDE_STATUS } from './lead-status';
 import { blockiertDurch, waehlePostfach, type PostfachBlock } from './rotation';
 import { decideSend, randomGapMs } from './send-plan';
-import { countSentToday, effektivesGlobalLimit, ladeFollowups, pruefeAntwort, sendFollowup, sendLead, type SendResult } from './send';
+import { countSentToday, effektivesGlobalLimit, ladeFollowups, pruefeAntwort, sendFollowup, sendLead, wartetWegenAbwesenheit, type SendResult } from './send';
 import { skipPendingFor } from './suppression';
-import { todayBerlin } from './time';
+import { isWithinWindow, leadZeitzone, todayBerlin, zonenTeile } from './time';
 
 // Ein Durchlauf der Versandschleife (ohne Timer, damit testbar)
 
@@ -18,6 +20,9 @@ export type TickDeps = {
   now?: Date;
   zufall?: () => number;
   log?: (msg: string) => void;
+  /** Tests: KI-Client und Thread-Leser für die automatische Einordnung von Antworten */
+  ki?: KiClient;
+  lader?: ThreadLader;
 };
 
 export type TickResult = { sent: number; completed: number[]; waiting: string[]; error?: string };
@@ -53,7 +58,7 @@ function laufendeFlows(campaignId: number, anzahlFollowups: number) {
       lead: schema.leads,
       // "leads"."id" ausdrücklich qualifizieren: unqualifiziert (drizzle-Standard bei einer Tabelle) würde SQLite
       // sent_messages.id meinen und die falsche Mail finden
-      letzteMail: sql<number>`(select max(${schema.sentMessages.sentAt}) from ${schema.sentMessages} where ${schema.sentMessages.leadId} = ${schema.leads}."id")`,
+      letzteMail: sql<number>`(select max(${schema.sentMessages.sentAt}) from ${schema.sentMessages} where ${schema.sentMessages.leadId} = ${schema.leads}."id" and ${schema.sentMessages.step} >= 0)`,
     })
     .from(schema.leads)
     .where(
@@ -169,6 +174,8 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
     // Fällig: Wartezeit des nächsten Schritts seit der letzten Mail abgelaufen
     const faellig = flows
       .filter((f) => f.letzteMail !== null && f.letzteMail + followups[f.lead.followupsSent].waitDays * TAG_MS <= jetzt.getTime())
+      // Abwesenheitsnotiz erkannt: Follow-up wartet bis zum Ende der Abwesenheit
+      .filter((f) => !wartetWegenAbwesenheit(f.lead, jetzt))
       .sort((a, b) => a.letzteMail - b.letzteMail);
     let bereit = k.mitVideo ? erstmails.filter((l) => l.renderStatus === 'fertig') : erstmails;
     // Limit „neue Leads pro Tag“ erreicht: nur noch fällige Follow-ups (sie zählen nicht dazu)
@@ -181,12 +188,20 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
     }
     if (result.sent > 0) continue; // höchstens eine Mail pro Durchlauf
 
+    // Versandfenster und -tage gelten in der Zeitzone des Leads (sonst der Kampagne): nur Kandidaten, deren Lead
+    // gerade im Fenster ist, kommen infrage
+    const imFenster = (l: { zeitzone: string | null }) => isWithinWindow(k, jetzt, leadZeitzone(l, k));
+    const faelligOffen = faellig.filter((f) => imFenster(f.lead));
+    const bereitOffen = bereit.filter(imFenster);
+
     // Kampagnen- und Gesamtgrenzen (Status, Startdatum, Fenster, Kampagnen-Limit, Gesamtlimit über alle Postfächer);
     // Abstand und Quota-Stopp gelten je Postfach (unten)
     const plan = decideSend({
       now: jetzt,
-      today: heute,
+      // Startdatum der Kampagne gilt in ihrer Zeitzone
+      today: zonenTeile(k.zeitzone, jetzt).datum,
       campaign: k,
+      fensterOffen: faelligOffen.length > 0 || bereitOffen.length > 0,
       globalLimit: effektivesGlobalLimit(jetzt),
       sentTodayGlobal: countSentToday(undefined, jetzt),
       sentTodayCampaign: countSentToday(k.id, jetzt),
@@ -200,7 +215,7 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
     let res: SendResult | null = null;
     let ziel = '';
     const wartend = new Set<string>();
-    for (const f of faellig) {
+    for (const f of faelligOffen) {
       // Follow-ups gehen immer über das Postfach der Erstmail; ist es nicht bereit, wartet das Follow-up
       const pf = postfachFuerLead(f.lead);
       const z = pf ? postfaecher().find((x) => x.absender.id === pf.id)?.zustand : undefined;
@@ -212,7 +227,7 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
       ziel = `Follow-up ${f.lead.followupsSent + 1} an Lead ${f.lead.id}`;
       res = await sendFollowup(f.lead.id, { sender: deps.sender, pruefer: deps.pruefer, now: jetzt });
       // Beendeter Flow (Antwort/Bounce) kostet keinen Versand-Slot: nächsten Kandidaten nehmen
-      if (!res.ok && (res.kind === 'flow_beendet' || res.kind === 'uebersprungen')) {
+      if (!res.ok && (res.kind === 'flow_beendet' || res.kind === 'uebersprungen' || res.kind === 'abwesend')) {
         log(`${ziel}: ${res.error}`);
         res = null;
         continue;
@@ -225,12 +240,33 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
       }
       break;
     }
-    if (!res && bereit.length > 0) {
-      const wahl = waehlePostfach(postfaecher().map((x) => x.zustand), jetzt.getTime(), heute);
-      if (wahl.art === 'warten') wartend.add(wahl.grund);
-      else {
-        ziel = `Mail an Lead ${bereit[0].id}`;
-        res = await sendLead(bereit[0].id, { sender: deps.sender, now: jetzt, absenderId: wahl.id });
+    if (!res && bereitOffen.length > 0) {
+      // Leads mit festem Postfach (z. B. per Untersequenz übernommen) schreiben über dasselbe Postfach wie zuvor;
+      // alle anderen rotieren über die aktiven Postfächer
+      let rotation: ReturnType<typeof waehlePostfach> | null = null;
+      let kandidat: { id: number; pfId: number } | null = null;
+      for (const l of bereitOffen) {
+        if (l.absenderId !== null) {
+          const z = postfaecher().find((x) => x.absender.id === l.absenderId)?.zustand;
+          const block = z ? blockiertDurch(z, jetzt.getTime(), heute) : 'kein_postfach';
+          if (block) {
+            wartend.add(followupWartGrund(block));
+            continue;
+          }
+          kandidat = { id: l.id, pfId: l.absenderId };
+          break;
+        }
+        rotation ??= waehlePostfach(postfaecher().map((x) => x.zustand), jetzt.getTime(), heute);
+        if (rotation.art === 'warten') {
+          wartend.add(rotation.grund);
+          continue;
+        }
+        kandidat = { id: l.id, pfId: rotation.id };
+        break;
+      }
+      if (kandidat) {
+        ziel = `Mail an Lead ${kandidat.id}`;
+        res = await sendLead(kandidat.id, { sender: deps.sender, now: jetzt, absenderId: kandidat.pfId });
       }
     }
     if (!res) {
@@ -258,6 +294,10 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
     }
   }
 
-  if (result.sent === 0) await pruefeEinenThread(jetzt, deps);
+  if (result.sent === 0) {
+    await pruefeEinenThread(jetzt, deps);
+    // Optional (nur mit ANTHROPIC_API_KEY): neue Antworten einordnen. Fängt alle Fehler selbst ab.
+    await verarbeiteKiWarteschlange({ ki: deps.ki, lader: deps.lader, jetzt, log });
+  }
   return result;
 }

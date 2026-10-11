@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
 
 /** Dropdown zum Ändern des Lead-Status (speichert sofort per PATCH). */
@@ -66,4 +66,21 @@ export function GelesenButton({ leadId, gelesen }: { leadId: number; gelesen: bo
       {gelesen ? 'Als ungelesen markieren' : 'Als gelesen markieren'}
     </button>
   );
+}
+
+/** Markiert eine ungelesene Antwort beim Öffnen einmalig als gelesen (danach bleibt „ungelesen markieren“ wirksam). */
+export function AutoGelesen({ leadId, gelesen }: { leadId: number; gelesen: boolean }) {
+  const router = useRouter();
+  const start = useRef(gelesen);
+  useEffect(() => {
+    if (start.current) return;
+    let aktiv = true;
+    fetch(`/api/leads/${leadId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ antwortGelesen: true }) })
+      .then(() => aktiv && router.refresh())
+      .catch(() => undefined);
+    return () => {
+      aktiv = false;
+    };
+  }, [leadId, router]);
+  return null;
 }

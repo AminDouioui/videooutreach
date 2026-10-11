@@ -165,4 +165,64 @@ describe('Versandschleife mit Fake-Sender', () => {
     getDb().update(schema.absender).set({ refreshTokenEnc: 'enc-test-token' }).run();
     expect(r).toMatchObject({ ok: false, error: 'Gmail nicht verbunden' });
   });
+
+  it('Kandidaten werden nach dem Fenster in der Zeitzone des Leads gefiltert', async () => {
+    const { getDb, schema } = m.db;
+    await setzePostfaecherZurueck();
+    m.settings.setSetting('global_daily_limit', '1000');
+    const pausiere = () => {
+      for (const k0 of getDb().select().from(schema.campaigns).all()) getDb().update(schema.campaigns).set({ status: 'pausiert' }).where(eq(schema.campaigns.id, k0.id)).run();
+    };
+    const gesendetAn: string[] = [];
+    const sender = async (raw: string) => {
+      gesendetAn.push(/To: (\S+)/.exec(Buffer.from(raw, 'base64url').toString('utf8'))?.[1] ?? '');
+      return { id: `z${gesendetAn.length}`, threadId: `zt${gesendetAn.length}` };
+    };
+
+    // Mittwoch 09:00 UTC: Berlin 11:00 (offen), New York 05:00 (zu) – der New-York-Lead hat die kleinere ID
+    pausiere();
+    const k1 = neueKampagne();
+    const ny = neuerLead(k1.id, 1, { zeitzone: 'America/New_York' });
+    const be = neuerLead(k1.id, 2);
+    const r1 = await m.loop.runSendTick({ sender, now: T0, zufall: () => 0 });
+    expect(r1.sent).toBe(1);
+    expect(gesendetAn).toEqual([be.email]);
+    expect(getDb().select().from(schema.leads).where(eq(schema.leads.id, ny.id)).get()?.sendStatus).toBe('geplant');
+
+    // Mittwoch 20:00 UTC: Berlin 22:00 (zu), New York 16:00 (offen) – jetzt kommt der New-York-Lead dran
+    pausiere();
+    const k2 = neueKampagne();
+    const be2 = neuerLead(k2.id, 1);
+    const ny2 = neuerLead(k2.id, 2, { zeitzone: 'America/New_York' });
+    const abend = new Date('2026-07-15T20:00:00Z');
+    const r2 = await m.loop.runSendTick({ sender, now: abend, zufall: () => 0 });
+    expect(r2.sent).toBe(1);
+    expect(gesendetAn[1]).toBe(ny2.email);
+    expect(getDb().select().from(schema.leads).where(eq(schema.leads.id, be2.id)).get()?.sendStatus).toBe('geplant');
+
+    // Kein Lead im Fenster (Berlin 22:00, Sydney 06:00): fenster_zu
+    pausiere();
+    const k3 = neueKampagne();
+    neuerLead(k3.id, 1);
+    neuerLead(k3.id, 2, { zeitzone: 'Australia/Sydney' });
+    const r3 = await m.loop.runSendTick({ sender, now: new Date('2026-07-15T20:00:00Z'), zufall: () => 0 });
+    expect(r3.sent).toBe(0);
+    expect(r3.waiting).toContain(`${k3.id}:fenster_zu`);
+  });
+
+  it('Kampagnen-Zeitzone gilt für Leads ohne eigene Zone', async () => {
+    const { getDb, schema } = m.db;
+    await setzePostfaecherZurueck();
+    m.settings.setSetting('global_daily_limit', '1000');
+    for (const k0 of getDb().select().from(schema.campaigns).all()) getDb().update(schema.campaigns).set({ status: 'pausiert' }).where(eq(schema.campaigns.id, k0.id)).run();
+    const k = neueKampagne();
+    getDb().update(schema.campaigns).set({ zeitzone: 'America/New_York' }).where(eq(schema.campaigns.id, k.id)).run();
+    neuerLead(k.id, 1);
+    let n = 0;
+    const sender = async () => ({ id: `k${++n}`, threadId: 'kt' });
+    // Do 09:00 UTC = 05:00 New York: zu
+    expect((await m.loop.runSendTick({ sender, now: new Date('2026-07-16T09:00:00Z') })).sent).toBe(0);
+    // 15:00 UTC = 11:00 New York: offen (in Berlin wäre es 17:00 = zu)
+    expect((await m.loop.runSendTick({ sender, now: new Date('2026-07-16T15:00:00Z'), zufall: () => 0 })).sent).toBe(1);
+  });
 });

@@ -1,9 +1,10 @@
-import { anzahlZuordnungen, kannAntwortenPruefen, ladePostfachZustaende } from './absender';
+import { anzahlZuordnungen, kannAntwortenPruefen, kannThreadLesen, ladePostfachZustaende } from './absender';
 import { getEnv } from './env';
 import { oauthConfigured } from './gmail';
 import { postfachStatus, type PostfachStatus } from './rotation';
 import { effektivesGlobalLimit } from './send';
-import { getSetting, globalDailyLimit, rampeEinstellung } from './settings';
+import { kiAktiv } from './ki';
+import { bounceSchwellePostfach, getSetting, globalDailyLimit, kiAutoStatus, rampeEinstellung } from './settings';
 import { todayBerlin } from './time';
 
 export type PostfachAnzeige = {
@@ -23,6 +24,8 @@ export type PostfachAnzeige = {
   signatur: string;
   /** Kann Antworten erkennen (gmail.metadata erteilt) */
   antwortPruefung: boolean;
+  /** Lesezugriff (gmail.readonly) für die Unibox erteilt */
+  unibox: boolean;
   rampeBeginn: string;
   leads: number;
 };
@@ -42,6 +45,7 @@ export function ladePostfachListe(jetzt: Date = new Date()): PostfachAnzeige[] {
     heuteGesendet: z.heuteGesendet,
     signatur: a.signatur ?? '',
     antwortPruefung: kannAntwortenPruefen(a),
+    unibox: kannThreadLesen(a),
     rampeBeginn: a.rampeBeginn ?? '',
     leads: anzahlZuordnungen(a.id).leads,
   }));
@@ -60,10 +64,14 @@ export function ladeEinstellungen() {
     rampeSchritt: rampe.schritt,
     // Leer = automatisch (erste gesendete Mail)
     rampeBeginn: rampe.beginn ?? '',
+    bounceSchwellePostfach: bounceSchwellePostfach(),
     heuteErlaubt: effektivesGlobalLimit(),
     impressumUrl: getSetting('impressum_url') ?? env.IMPRESSUM_URL ?? '',
     datenschutzUrl: getSetting('datenschutz_url') ?? env.DATENSCHUTZ_URL ?? '',
     gmailKonfiguriert: oauthConfigured(),
+    // KI-Funktionen (optional): ohne Schlüssel ist alles aus und unsichtbar
+    kiAktiv: kiAktiv(),
+    kiAutoStatus: kiAutoStatus(),
     postfaecher: ladePostfachListe(),
   };
 }

@@ -43,3 +43,16 @@ describe('randomGapMs', () => {
     expect(randomGapMs(9, 3, () => 0.5)).toBe(360_000);
   });
 });
+
+describe('decideSend mit Lead-Fenster', () => {
+  it('fensterOffen überschreibt die Fensterprüfung der Kampagne', () => {
+    const nachts = new Date('2026-07-15T20:00:00Z');
+    expect(decideSend({ ...basis, now: nachts, fensterOffen: true })).toEqual({ action: 'send' });
+    expect(decideSend({ ...basis, fensterOffen: false })).toMatchObject({ reason: 'fenster_zu' });
+  });
+  it('Kampagnen-Zeitzone bestimmt das Fenster', () => {
+    const ny = { ...basis, campaign: { ...basis.campaign, zeitzone: 'America/New_York' } };
+    expect(decideSend({ ...ny, now: new Date('2026-07-15T20:00:00Z') })).toEqual({ action: 'send' }); // 16:00 NY
+    expect(decideSend({ ...ny, now: new Date('2026-07-15T09:00:00Z') })).toMatchObject({ reason: 'fenster_zu' }); // 05:00 NY
+  });
+});

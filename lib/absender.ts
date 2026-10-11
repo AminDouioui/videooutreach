@@ -1,7 +1,8 @@
 import { and, asc, eq, gte, sql } from 'drizzle-orm';
+import { istBounceFehler } from './bounce-schutz';
 import { getDb, schema } from './db';
 import { getEnv } from './env';
-import { GMAIL_METADATA_SCOPE } from './gmail-scopes';
+import { GMAIL_METADATA_SCOPE, GMAIL_READONLY_SCOPE } from './gmail-scopes';
 import { postfachLimit, type PostfachZustand } from './rotation';
 import { getSetting, rampeEinstellung } from './settings';
 import { startOfDayBerlinMs, todayBerlin } from './time';
@@ -26,6 +27,11 @@ export function postfachVerbunden(a: Pick<Absender, 'refreshTokenEnc'>): boolean
 /** Darf die App Threads dieses Postfachs auf Antworten prüfen? (Verbindung vor der Follow-up-Funktion hat nur gmail.send) */
 export function kannAntwortenPruefen(a: Pick<Absender, 'refreshTokenEnc' | 'scopes'>): boolean {
   return postfachVerbunden(a) && a.scopes.includes(GMAIL_METADATA_SCOPE);
+}
+
+/** Hat das Postfach den optionalen Lesezugriff (gmail.readonly) für die Unibox? Ohne bleibt alles beim Alten. */
+export function kannThreadLesen(a: Pick<Absender, 'refreshTokenEnc' | 'scopes'>): boolean {
+  return postfachVerbunden(a) && a.scopes.includes(GMAIL_READONLY_SCOPE);
 }
 
 /** Mindestens ein Postfach ist verbunden (unabhängig von aktiv/pausiert) */
@@ -62,12 +68,12 @@ export function postfachNichtNutzbar(a: Absender): string | null {
 
 // ---------------------------------------------------------------- Zähler & Zustand
 
-/** Heute (Berlin) gesendete Mails je Postfach (inkl. Follow-ups). */
+/** Heute (Berlin) gesendete Kampagnen-Mails je Postfach (inkl. Follow-ups; persönliche Antworten aus der Unibox, step < 0, zählen nicht). */
 export function heuteGesendetProPostfach(jetzt: Date = new Date()): Map<number, number> {
   const rows = getDb()
     .select({ id: schema.sentMessages.absenderId, n: sql<number>`count(*)` })
     .from(schema.sentMessages)
-    .where(and(gte(schema.sentMessages.sentAt, new Date(startOfDayBerlinMs(jetzt))), sql`${schema.sentMessages.absenderId} is not null`))
+    .where(and(gte(schema.sentMessages.sentAt, new Date(startOfDayBerlinMs(jetzt))), gte(schema.sentMessages.step, 0), sql`${schema.sentMessages.absenderId} is not null`))
     .groupBy(schema.sentMessages.absenderId)
     .all();
   return new Map(rows.map((r) => [r.id as number, r.n]));
@@ -78,7 +84,7 @@ function ersteVersandTage(): Map<number, string> {
   const rows = getDb()
     .select({ id: schema.sentMessages.absenderId, erste: sql<number>`min(${schema.sentMessages.sentAt})` })
     .from(schema.sentMessages)
-    .where(sql`${schema.sentMessages.absenderId} is not null`)
+    .where(and(gte(schema.sentMessages.step, 0), sql`${schema.sentMessages.absenderId} is not null`))
     .groupBy(schema.sentMessages.absenderId)
     .all();
   return new Map(rows.map((r) => [r.id as number, todayBerlin(new Date(r.erste))]));
@@ -157,7 +163,11 @@ export function aktualisiereAbsender(id: number, a: AbsenderAenderung): Absender
   if (a.name !== undefined) set.name = a.name?.trim() ? a.name.trim() : null;
   if (a.tageslimit !== undefined) set.tageslimit = Math.max(1, Math.floor(a.tageslimit));
   if (a.signatur !== undefined) set.signatur = a.signatur !== null && a.signatur.trim() !== '' ? a.signatur : null;
-  if (a.aktiv !== undefined) set.aktiv = a.aktiv;
+  if (a.aktiv !== undefined) {
+    set.aktiv = a.aktiv;
+    // Fortsetzen nach dem Bounce-Schutz löscht dessen Grund (andere Fehler, z. B. Auth, bleiben)
+    if (a.aktiv && istBounceFehler(ladeAbsenderMitId(id)?.fehler)) set.fehler = null;
+  }
   if (a.rampeBeginn !== undefined) set.rampeBeginn = a.rampeBeginn && /^\d{4}-\d{2}-\d{2}$/.test(a.rampeBeginn) ? a.rampeBeginn : null;
   if (Object.keys(set).length === 0) return ladeAbsenderMitId(id);
   return getDb().update(schema.absender).set(set).where(eq(schema.absender.id, id)).returning().get() ?? null;

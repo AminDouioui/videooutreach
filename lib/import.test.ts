@@ -134,3 +134,28 @@ describe('Domain-Sperre und MX im Import', () => {
     expect(summarize(validateRows(rows, mapping, ctx))).toContain('1 mit Domain ohne Mail-Server');
   });
 });
+
+describe('Zeitzone im Import', () => {
+  const m: Mapping = { name: null, vorname: null, nachname: null, anrede: null, firma: 'Firma', email: 'E-Mail', position: null, website: 'Website', land: 'Land', zeitzone: 'Zeitzone' };
+
+  it('erkennt Land- und Zeitzone-Spalten automatisch', () => {
+    const g = guessMapping(['Firma', 'E-Mail', 'Country', 'Timezone']);
+    expect(g.land).toBe('Country');
+    expect(g.zeitzone).toBe('Timezone');
+  });
+  it('Zeitzone-Spalte vor Land vor TLD', () => {
+    const r = (row: Row) => applyMapping(row, m);
+    expect(r({ Firma: 'A', 'E-Mail': 'a@a.at', Website: '', Land: 'Frankreich', Zeitzone: 'America/New_York' })).toMatchObject({ zeitzone: 'America/New_York', zeitzoneQuelle: 'angabe' });
+    expect(r({ Firma: 'A', 'E-Mail': 'a@a.at', Website: '', Land: 'Frankreich', Zeitzone: '' })).toMatchObject({ zeitzone: 'Europe/Paris', zeitzoneQuelle: 'land' });
+    expect(r({ Firma: 'A', 'E-Mail': 'a@a.at', Website: '', Land: '', Zeitzone: '' })).toMatchObject({ zeitzone: 'Europe/Vienna', zeitzoneQuelle: 'email_tld' });
+    expect(r({ Firma: 'A', 'E-Mail': 'a@a.com', Website: 'https://www.a.ch', Land: '', Zeitzone: '' })).toMatchObject({ zeitzone: 'Europe/Zurich', zeitzoneQuelle: 'website_tld' });
+    expect(r({ Firma: 'A', 'E-Mail': 'a@a.com', Website: 'a.de', Land: '', Zeitzone: '' })).toMatchObject({ zeitzone: '', zeitzoneQuelle: null });
+  });
+  it('ungültige Zeitzone wird gemeldet und ignoriert', () => {
+    const l = applyMapping({ Firma: 'A', 'E-Mail': 'a@a.co.uk', Website: '', Land: '', Zeitzone: 'Mars/Base' }, m);
+    expect(l).toMatchObject({ zeitzone: 'Europe/London', zeitzoneUngueltig: 'Mars/Base' });
+  });
+  it('Land- und Zeitzone-Spalte landen nicht in extra', () => {
+    expect(applyMapping({ Firma: 'A', 'E-Mail': 'a@a.de', Website: '', Land: 'DE', Zeitzone: '', Notiz: 'x' }, m).extra).toEqual({ Notiz: 'x' });
+  });
+});

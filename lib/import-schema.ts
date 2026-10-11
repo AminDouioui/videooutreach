@@ -2,7 +2,10 @@ import { z } from 'zod';
 import { IMPORT_FELDER } from './import';
 import { MAX_ROWS } from './parse-file';
 
-const mappingShape = Object.fromEntries(IMPORT_FELDER.map((f) => [f, z.string().nullable()])) as Record<(typeof IMPORT_FELDER)[number], z.ZodNullable<z.ZodString>>;
+const mappingShape = Object.fromEntries(
+  IMPORT_FELDER.map((f) => [f, f === 'land' || f === 'zeitzone' ? z.string().nullable().optional() : z.string().nullable()]),
+) as Record<Exclude<(typeof IMPORT_FELDER)[number], 'land' | 'zeitzone'>, z.ZodNullable<z.ZodString>> &
+  Record<'land' | 'zeitzone', z.ZodOptional<z.ZodNullable<z.ZodString>>>;
 
 /** Body für validate und import */
 export const importBodySchema = z.object({

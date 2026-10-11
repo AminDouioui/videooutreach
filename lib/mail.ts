@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 import { begruessung } from './name';
+import { trackeHtml, trackeText } from './linktracking';
 import { loeseSpintax } from './spintax';
 import { extraVariablen, PLATZHALTER_MUSTER, STANDARD_VARIABLEN } from './vorlage';
 
@@ -23,6 +24,8 @@ export type MailCampaign = {
   emailSubjectTemplate: string;
   emailBodyTemplate: string;
   trackingPixel: boolean;
+  /** true = http(s)-Links im Mailtext laufen über /api/c/<token> (Klick-Tracking); braucht `settings.linkSchluessel` */
+  linkTracking?: boolean;
   /** false = Text-Kampagne: {{video_link}} und {{vorschaubild}} werden leer ersetzt */
   mitVideo?: boolean;
   /**
@@ -32,8 +35,22 @@ export type MailCampaign = {
   extraSpalten?: string[];
 };
 
-/** Für Follow-ups: eigener Text, Betreff „Re: …“ der Erstmail. `nr` = Nummer des Follow-ups (ab 1, Spintax-Seed). */
-export type MailSchritt = { body: string; nr?: number };
+/**
+ * Für Follow-ups: eigener Text; Betreff „Re: …“ der Erstmail, außer `betreff` ist gesetzt (dann eigener Betreff und
+ * neuer Thread). `nr` = Nummer des Follow-ups (ab 1, Spintax-Seed).
+ */
+export type MailSchritt = { body: string; nr?: number; betreff?: string | null };
+
+/** Eigener Betreff eines Follow-ups (getrimmt) oder null, wenn leer. */
+export function eigenerBetreff(schritt?: Pick<MailSchritt, 'betreff'> | null): string | null {
+  const b = (schritt?.betreff ?? '').trim();
+  return b ? b : null;
+}
+
+/** Geht dieses Follow-up als neuer Thread raus (eigener Betreff gesetzt)? Dann ohne In-Reply-To/References und ohne Gmail-threadId. */
+export function istNeuerThread(schritt?: Pick<MailSchritt, 'betreff'> | null): boolean {
+  return eigenerBetreff(schritt) !== null;
+}
 
 export type MailSettings = {
   /** Basis-URL der App ohne Slash am Ende, z. B. https://video.example.de */
@@ -42,6 +59,10 @@ export type MailSettings = {
   signature: string;
   /** Absendername für {{absender_name}} */
   senderName?: string;
+  /** Geheimer Schlüssel zum Signieren der Klick-Tracking-Token; ohne Schlüssel bleiben Links unverändert */
+  linkSchluessel?: string;
+  /** Vorschau/Testmail: getrackte Links bekommen `?vorschau=1`, damit Klicks keine Events echter Leads erzeugen */
+  vorschau?: boolean;
 };
 
 export type BuiltEmail = { subject: string; html: string; text: string };
@@ -122,6 +143,19 @@ function absaetze(escaped: string): string {
     .join('\n');
 }
 
+/** Text und HTML einer persönlichen Antwort aus der Unibox: nur der Text und die Signatur, kein Abmeldelink, kein Pixel, keine Links-Umschreibung. */
+export function buildAntwortMail(text: string, signatur: string): { text: string; html: string } {
+  const koerper = text.replace(/\r\n?/g, '\n').trim();
+  const sig = signatur.replace(/\r\n?/g, '\n').trim();
+  return {
+    text: [koerper, sig ? `-- \n${sig}` : ''].filter(Boolean).join('\n\n') + '\n',
+    html:
+      `<!DOCTYPE html>\n<html lang="de"><head><meta charset="utf-8"></head><body style="${BASIS_STIL}">\n${absaetze(escapeHtml(koerper))}\n` +
+      (sig ? `<p style="margin:0 0 14px 0">${escapeHtml(sig).replace(/\n/g, '<br>')}</p>\n` : '') +
+      `</body></html>`,
+  };
+}
+
 /** Betreff eines Follow-ups: „Re: “ + Betreff der Erstmail (nicht doppelt). */
 export function antwortBetreff(betreff: string): string {
   return /^re:/i.test(betreff.trim()) ? betreff.trim() : `Re: ${betreff.trim()}`;
@@ -140,20 +174,24 @@ export function buildEmail(lead: MailLead, campaign: MailCampaign, settings: Mai
   // Spintax gelesen. Seed = Slug + Schritt + Feld; der Betreff nutzt immer Schritt 0, damit „Re: …“ der
   // Follow-ups exakt dem Betreff der Erstmail entspricht.
   const vorlage = loeseSpintax(schritt ? schritt.body : campaign.emailBodyTemplate, `${lead.slug}:${schritt ? (schritt.nr ?? 1) : 0}:text`);
-  const betreffVorlage = loeseSpintax(campaign.emailSubjectTemplate, `${lead.slug}:0:betreff`);
+  // Eigener Betreff eines Follow-ups: neuer Thread, Seed je Schritt; sonst Betreff der Erstmail (Seed 0)
+  const eigen = eigenerBetreff(schritt);
+  const betreffVorlage = eigen ? loeseSpintax(eigen, `${lead.slug}:${schritt?.nr ?? 1}:betreff`) : loeseSpintax(campaign.emailSubjectTemplate, `${lead.slug}:0:betreff`);
 
   // Betreff: Klartext, ohne Zeilenumbrüche (Header-Injection verhindern)
   const ersterBetreff = renderTemplate(betreffVorlage, { ...vars, vorschaubild: '' })
     .replace(/[\r\n]+/g, ' ')
     .trim();
-  const subject = schritt ? antwortBetreff(ersterBetreff) : ersterBetreff;
+  const subject = schritt && !eigen ? antwortBetreff(ersterBetreff) : ersterBetreff;
 
   // Klartext
   const textVars = { ...vars, vorschaubild: mitVideo ? `Video ansehen: ${link}` : '' };
   const signaturText = settings.signature.replace(/\r\n?/g, '\n').trim();
+  const linkOpt = campaign.linkTracking && settings.linkSchluessel ? { appUrl, schluessel: settings.linkSchluessel, slug: lead.slug, vorschau: settings.vorschau } : null;
+  const textKoerper = renderTemplate(vorlage.replace(/\r\n?/g, '\n'), textVars).trim();
   const text =
     [
-      renderTemplate(vorlage.replace(/\r\n?/g, '\n'), textVars).trim(),
+      linkOpt ? trackeText(textKoerper, linkOpt) : textKoerper,
       signaturText ? `-- \n${signaturText}` : '',
       `Keine weiteren E-Mails? Hier abmelden: ${abmelden}`,
     ]
@@ -164,7 +202,8 @@ export function buildEmail(lead: MailLead, campaign: MailCampaign, settings: Mai
   const htmlVars: Record<string, string> = {};
   for (const [k, v] of Object.entries(vars)) htmlVars[k] = escapeHtml(v);
   htmlVars.vorschaubild = mitVideo ? BILD_TOKEN : '';
-  const koerper = absaetze(renderTemplate(escapeHtml(vorlage), htmlVars));
+  const htmlKoerper = renderTemplate(escapeHtml(vorlage), htmlVars);
+  const koerper = absaetze(linkOpt ? trackeHtml(htmlKoerper, escapeHtml, linkOpt) : htmlKoerper);
   const bild =
     `<a href="${escapeHtml(link)}"><img src="${escapeHtml(thumb)}" alt="${escapeHtml(`Video für ${vars.firma} ansehen`)}" width="320" style="max-width:100%;height:auto;border:0"></a>` +
     `<br><a href="${escapeHtml(link)}">Video ansehen: ${escapeHtml(link)}</a>`;
@@ -235,6 +274,8 @@ export type MimeOptions = {
   listUnsubscribeMailto: string;
   /** Follow-up: Message-ID der Erstmail (In-Reply-To/References), damit es im selben Thread landet */
   inReplyTo?: string;
+  /** Vollständige References-Kette (Message-IDs, Leerzeichen-getrennt); ohne Angabe nur `inReplyTo` */
+  references?: string;
   /** Nur für Tests deterministisch */
   date?: Date;
   messageId?: string;
@@ -259,7 +300,7 @@ export function buildMimeText(o: MimeOptions): string {
     `To: ${sauber(o.to)}`,
     `Subject: ${encodeHeaderWord(sauber(o.subject))}`,
     `Message-ID: ${messageId}`,
-    ...(o.inReplyTo ? [`In-Reply-To: ${sauber(o.inReplyTo)}`, `References: ${sauber(o.inReplyTo)}`] : []),
+    ...(o.inReplyTo ? [`In-Reply-To: ${sauber(o.inReplyTo)}`, `References: ${sauber(o.references ?? o.inReplyTo)}`] : []),
     'MIME-Version: 1.0',
     `List-Unsubscribe: <${sauber(o.listUnsubscribeUrl)}>, <${sauber(o.listUnsubscribeMailto)}>`,
     'List-Unsubscribe-Post: List-Unsubscribe=One-Click',

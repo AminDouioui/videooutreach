@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { ladeEinstellungen } from '@/lib/settings-view';
 import { parseJson } from '@/lib/request';
-import { deleteSetting, setSetting, type SettingKey } from '@/lib/settings';
+import { deleteSetting, KI_AUTO_STATUS, setSetting, type SettingKey } from '@/lib/settings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,8 +21,11 @@ const bodySchema = z.object({
   rampeStart: z.coerce.number().int().min(1).max(2000),
   rampeSchritt: z.coerce.number().int().min(0).max(500),
   rampeBeginn: z.union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT')]),
+  bounceSchwellePostfach: z.coerce.number().int().min(1).max(100),
   impressumUrl: urlOderLeer,
   datenschutzUrl: urlOderLeer,
+  // Nur mit ANTHROPIC_API_KEY sichtbar; fehlt das Feld, bleibt die Einstellung unverändert
+  kiAutoStatus: z.enum(KI_AUTO_STATUS).optional(),
 });
 
 function setOrDelete(key: SettingKey, value: string) {
@@ -41,7 +44,9 @@ export async function PUT(req: Request) {
   setSetting('rampe_start', String(d.rampeStart));
   setSetting('rampe_schritt', String(d.rampeSchritt));
   setOrDelete('rampe_beginn', d.rampeBeginn);
+  setSetting('bounce_schwelle_postfach', String(d.bounceSchwellePostfach));
   setOrDelete('impressum_url', d.impressumUrl);
   setOrDelete('datenschutz_url', d.datenschutzUrl);
+  if (d.kiAutoStatus) setSetting('ki_auto_status', d.kiAutoStatus);
   return NextResponse.json({ ok: true });
 }

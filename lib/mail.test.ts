@@ -184,3 +184,30 @@ describe('buildEmail: Spintax, Variablen, Fallbacks', () => {
     expect(x.text).toMatch(/^(Hi|Hallo) du/);
   });
 });
+
+describe('Antwort aus der Unibox (buildAntwortMail, References)', () => {
+  it('Text + Signatur, kein Abmeldelink, HTML escaped', async () => {
+    const { buildAntwortMail } = await import('./mail');
+    const m = buildAntwortMail('Hallo <b>Max</b>\r\n\r\nBis dann', 'Amin\nProzessia');
+    expect(m.text).toBe('Hallo <b>Max</b>\n\nBis dann\n\n-- \nAmin\nProzessia\n');
+    expect(m.html).toContain('Hallo &lt;b&gt;Max&lt;/b&gt;');
+    expect(m.html).toContain('Amin<br>Prozessia');
+    expect(`${m.text}${m.html}`).not.toMatch(/abmelden|\/api\/o\//i);
+  });
+  it('MIME: References-Kette getrennt von In-Reply-To', async () => {
+    const { buildMimeText } = await import('./mail');
+    const t = buildMimeText({
+      from: { email: 'a@b.de' },
+      to: 'c@d.de',
+      subject: 'Re: x',
+      html: '<p>x</p>',
+      text: 'x',
+      listUnsubscribeUrl: 'https://u',
+      listUnsubscribeMailto: 'mailto:a@b.de',
+      inReplyTo: '<k@d.de>',
+      references: '<e@b.de> <k@d.de>',
+    });
+    expect(t).toContain('In-Reply-To: <k@d.de>');
+    expect(t).toContain('References: <e@b.de> <k@d.de>');
+  });
+});

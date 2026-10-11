@@ -50,6 +50,55 @@
       "when": 1791575950717,
       "tag": "0006_mehrere_absender_postfaecher",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791671043132,
+      "tag": "0007_abwesenheit_bounce_schutz",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791672036801,
+      "tag": "0008_followup_varianten",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791672574917,
+      "tag": "0009_zeitzonen",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791673256822,
+      "tag": "0010_link_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1791675154645,
+      "tag": "0011_ki_einordnung",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1791676462034,
+      "tag": "0012_pipeline_untersequenzen",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1791677376067,
+      "tag": "0013_webhooks_api",
+      "breakpoints": true
     }
   ]
 }

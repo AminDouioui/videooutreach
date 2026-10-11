@@ -3,7 +3,8 @@ import { getDb, schema } from './db';
 import { getEnv } from './env';
 import { absenderName, absenderSignatur, kannAntwortenPruefen, ladeAbsenderMitId, ladePostfachZustaende, markiereAuthFehler, postfachFuerLead, postfachNichtNutzbar, stoppeQuota, type Absender } from './absender';
 import { GmailSendError, pruefeThread, sendRaw, type GmailSender, type ThreadPruefer } from './gmail';
-import { buildEmail, buildMime, neueMessageId, oneClickUrl, type BuiltEmail, type MailSchritt } from './mail';
+import { pruefeBounceSchutz } from './bounce-schutz-db';
+import { buildEmail, buildMime, istNeuerThread, neueMessageId, oneClickUrl, type BuiltEmail, type MailSchritt } from './mail';
 import { FIRMA_HAT_GEANTWORTET, leadStatusLabel, STATUS_SKIP_PREFIX, statusBeendetFlow } from './lead-status';
 import { stoppeFirma } from './lead-status-db';
 import { rampenLimit } from './rampe';
@@ -14,6 +15,10 @@ import { STANDARD_VARIABLEN, verwendeteVariablen } from './vorlage';
 import { isSuppressed } from './suppression';
 import { startOfDayBerlinMs, todayBerlin } from './time';
 import { kampagneMitVariante, waehleVarianteFuerKampagne } from './varianten-db';
+import { webhookAusloesen } from './webhooks';
+import { staerkeresErgebnis } from './followup-varianten';
+import { threadsDesLeads, waehleFollowupVariante } from './followup-varianten-db';
+import type { ThreadErgebnis } from './gmail';
 
 // Gemeinsame Sendefunktion für Worker-Schleife und „Jetzt senden“-API
 
@@ -76,6 +81,7 @@ export function buildLeadEmail(
   schritt?: MailSchritt,
   variante?: string | null,
   absender?: Absender | null,
+  vorschau = false,
 ): BuiltEmail {
   // Signatur und {{absender_name}} stammen vom Postfach; ohne Angabe das des Leads (Vorschau), sonst das globale
   const postfach = absender === undefined ? postfachFuerLead(lead) : absender;
@@ -87,6 +93,8 @@ export function buildLeadEmail(
       appUrl: getEnv().APP_URL.replace(/\/$/, ''),
       signature: absenderSignatur(postfach),
       senderName: absenderName(postfach),
+      linkSchluessel: getEnv().ENCRYPTION_KEY,
+      vorschau,
     },
     schritt,
   );
@@ -100,11 +108,13 @@ type MimeOpts = {
   variante?: string | null;
   /** Postfach, in dessen Namen gesendet wird (From, Name, Message-ID-Domain, List-Unsubscribe-mailto, Signatur) */
   absender: Absender;
+  /** Vorschau/Testmail: getrackte Links erzeugen keine Klick-Events */
+  vorschau?: boolean;
 };
 
 /** Fertige MIME-Nachricht (base64url) samt ihrer Message-ID. */
 export function buildLeadMimeMitId(lead: typeof schema.leads.$inferSelect, campaign: typeof schema.campaigns.$inferSelect, opts: MimeOpts): { raw: string; messageId: string } {
-  const mail = buildLeadEmail(lead, campaign, opts.schritt, opts.variante, opts.absender);
+  const mail = buildLeadEmail(lead, campaign, opts.schritt, opts.variante, opts.absender, opts.vorschau);
   const from = senderInfo(opts.absender);
   const appUrl = getEnv().APP_URL.replace(/\/$/, '');
   const messageId = neueMessageId(from.email);
@@ -116,7 +126,8 @@ export function buildLeadMimeMitId(lead: typeof schema.leads.$inferSelect, campa
     text: mail.text,
     listUnsubscribeUrl: oneClickUrl(appUrl, lead.slug),
     listUnsubscribeMailto: `mailto:${from.email}?subject=Abmelden`,
-    inReplyTo: opts.inReplyTo,
+    // Follow-up mit eigenem Betreff = neuer Thread: weder In-Reply-To noch References
+    inReplyTo: istNeuerThread(opts.schritt) ? undefined : opts.inReplyTo,
     messageId,
   });
   return { raw, messageId };
@@ -137,7 +148,8 @@ export function ladeFollowups(campaignId: number) {
 /** Heute (Berlin) gesendete Mails inkl. Follow-ups, optional je Kampagne (nurErstmails: nur step 0) – gezählt über sent_messages. */
 export function countSentToday(campaignId?: number, jetzt: Date = new Date(), nurErstmails = false): number {
   const von = new Date(startOfDayBerlinMs(jetzt));
-  const bedingung = [gte(schema.sentMessages.sentAt, von)];
+  // step < 0 = persönliche Antwort aus der Unibox: zählt nicht gegen Kampagnen-/Tageslimits
+  const bedingung = [gte(schema.sentMessages.sentAt, von), gte(schema.sentMessages.step, 0)];
   if (nurErstmails) bedingung.push(eq(schema.sentMessages.step, 0));
   if (campaignId !== undefined) bedingung.push(eq(schema.sentMessages.campaignId, campaignId));
   const row = getDb()
@@ -167,6 +179,7 @@ export type SendResult =
         | 'auth'
         | 'fehler'
         | 'flow_beendet'
+        | 'abwesend'
         | 'antwort_pruefung_fehlt';
       error: string;
     };
@@ -213,7 +226,7 @@ function postfachFuerErstmail(opts: SendOptions, jetzt: Date): { absender: Absen
 }
 
 /** Quota-/Auth-Fehler betreffen nur das benutzte Postfach. */
-function merkePostfachFehler(art: string, meldung: string, absender: Absender, jetzt: Date): void {
+export function merkePostfachFehler(art: string, meldung: string, absender: Absender, jetzt: Date): void {
   if (art === 'quota') stoppeQuota(absender.id, jetzt);
   else if (art === 'auth') markiereAuthFehler(absender.id, meldung);
 }
@@ -261,9 +274,10 @@ export async function sendLead(leadId: number, opts: SendOptions = {}): Promise<
         .where(eq(schema.leads.id, lead.id))
         .run();
       tx.insert(schema.sentMessages)
-        .values({ leadId: lead.id, campaignId: lead.campaignId, step: 0, gmailMessageId: res.id, gmailThreadId: res.threadId, absenderId: postfach.id, sentAt: jetzt })
+        .values({ leadId: lead.id, campaignId: lead.campaignId, step: 0, variante, gmailMessageId: res.id, gmailThreadId: res.threadId, absenderId: postfach.id, sentAt: jetzt })
         .run();
     });
+    webhookAusloesen('mail_gesendet', { leadId: lead.id, schritt: 0, variante }, jetzt);
     return { ok: true, messageId: res.id, threadId: res.threadId, absenderId: postfach.id };
   } catch (e) {
     const info = fehlerInfo(e);
@@ -309,7 +323,29 @@ export function stoppeFlow(leadId: number, grund: (typeof schema.FLOW_STOPP)[num
 }
 
 /**
- * Prüft den Thread eines Leads auf Antwort/Bounce und beendet ggf. den Flow.
+ * Hält eine erkannte Abwesenheitsnotiz fest (einmal je Lead): Zeitpunkt, Event für die Zeitleiste und – falls die
+ * Kampagne es vorsieht – `abwesendBis` = jetzt + N Tage, bis dahin warten die Follow-ups.
+ */
+export function merkeAbwesenheit(lead: Pick<typeof schema.leads.$inferSelect, 'id' | 'campaignId' | 'abwesendAt'>, jetzt: Date = new Date()): void {
+  if (lead.abwesendAt) return;
+  const db = getDb();
+  const tage = db.select({ t: schema.campaigns.abwesenheitVerschiebenTage }).from(schema.campaigns).where(eq(schema.campaigns.id, lead.campaignId)).get()?.t ?? 0;
+  const bis = tage > 0 ? new Date(jetzt.getTime() + tage * 24 * 3600_000) : null;
+  db.transaction((tx) => {
+    tx.update(schema.leads).set({ abwesendAt: jetzt, abwesendBis: bis }).where(eq(schema.leads.id, lead.id)).run();
+    tx.insert(schema.events).values({ leadId: lead.id, type: 'abwesenheit', meta: { bis: bis ? bis.getTime() : null, tage }, isBot: false, createdAt: jetzt }).run();
+  });
+  webhookAusloesen('abwesenheit', { leadId: lead.id, bis: bis ? bis.toISOString() : null }, jetzt);
+}
+
+/** Wartet das Follow-up dieses Leads wegen einer Abwesenheitsnotiz noch? */
+export function wartetWegenAbwesenheit(lead: Pick<typeof schema.leads.$inferSelect, 'abwesendBis'>, jetzt: Date): boolean {
+  return !!lead.abwesendBis && lead.abwesendBis.getTime() > jetzt.getTime();
+}
+
+/**
+ * Prüft alle Threads eines Leads (Erstmail und Follow-ups mit eigenem Betreff = neuer Thread) auf Antwort/Bounce und
+ * beendet ggf. den Flow. Eine echte Antwort in irgendeinem Thread entscheidet, danach Bounce, dann Abwesenheit.
  * Liefert true, wenn der Flow (jetzt oder schon vorher) beendet ist. Wirft GmailSendError.
  */
 export async function pruefeAntwort(
@@ -320,21 +356,40 @@ export async function pruefeAntwort(
 ): Promise<boolean> {
   if (lead.flowStopp) return true;
   if (!lead.gmailThreadId) return false;
-  // Der Thread liegt im Postfach der Erstmail: nur dort kann geprüft werden
+  // Die Threads liegen im Postfach der Erstmail: nur dort kann geprüft werden
   if (!postfach) throw new GmailSendError({ art: 'sonstig', meldung: 'Postfach der Erstmail nicht gefunden' });
-  const ergebnis = await pruefer(lead.gmailThreadId, postfach);
+  let ergebnis: ThreadErgebnis = null;
+  let antwortThread: string | null = null;
+  for (const threadId of threadsDesLeads(lead)) {
+    const e = await pruefer(threadId, postfach);
+    if (e === 'antwort') {
+      ergebnis = e;
+      antwortThread = threadId;
+      break;
+    }
+    ergebnis = staerkeresErgebnis(ergebnis, e);
+  }
   if (ergebnis === 'antwort') {
     stoppeFlow(lead.id, 'beantwortet', jetzt);
-    getDb().update(schema.leads).set({ antwortAt: jetzt, antwortGelesen: false }).where(eq(schema.leads.id, lead.id)).run();
+    getDb().update(schema.leads).set({ antwortAt: jetzt, antwortGelesen: false, antwortThreadId: antwortThread !== lead.gmailThreadId ? antwortThread : null }).where(eq(schema.leads.id, lead.id)).run();
     stoppeFirma(lead.id, jetzt);
+    webhookAusloesen('antwort', { leadId: lead.id }, jetzt);
   }
-  else if (ergebnis === 'bounce') stoppeFlow(lead.id, 'bounce', jetzt);
-  else getDb().update(schema.leads).set({ replyCheckedAt: jetzt }).where(eq(schema.leads.id, lead.id)).run();
+  else if (ergebnis === 'bounce') {
+    stoppeFlow(lead.id, 'bounce', jetzt);
+    pruefeBounceSchutz(lead);
+    webhookAusloesen('bounce', { leadId: lead.id }, jetzt);
+  } else if (ergebnis === 'abwesenheit') {
+    // Abwesenheit stoppt den Flow nicht und zählt nicht als Antwort; Follow-ups warten nur
+    merkeAbwesenheit(lead, jetzt);
+    getDb().update(schema.leads).set({ replyCheckedAt: jetzt }).where(eq(schema.leads.id, lead.id)).run();
+    return false;
+  } else getDb().update(schema.leads).set({ replyCheckedAt: jetzt }).where(eq(schema.leads.id, lead.id)).run();
   return ergebnis !== null;
 }
 
 /**
- * Sendet das nächste Follow-up eines Leads als Antwort im Thread der Erstmail.
+ * Sendet das nächste Follow-up eines Leads als Antwort im Thread der Erstmail (mit eigenem Betreff als neuer Thread).
  * Vorher wird der Thread auf Antworten geprüft: Hat der Lead geantwortet (oder ist die Mail gebounct), endet der Flow.
  * Ohne Lese-Berechtigung wird nichts gesendet (lieber kein Follow-up als eins an jemanden, der schon geantwortet hat).
  */
@@ -368,17 +423,27 @@ export async function sendFollowup(leadId: number, opts: SendOptions = {}): Prom
 
   try {
     if (await pruefeAntwort(lead, opts.pruefer, jetzt, postfach)) return { ok: false, kind: 'flow_beendet', error: 'Lead hat geantwortet' };
-    const { raw } = buildLeadMimeMitId(lead, kampagne, { schritt: { ...schritt, nr: lead.followupsSent + 1 }, inReplyTo: lead.rfcMessageId ?? undefined, absender: postfach });
-    const res = await sender(raw, lead.gmailThreadId, postfach);
+    // Die Prüfung kann eine Abwesenheitsnotiz neu erkannt haben: dann wartet das Follow-up
+    if (!opts.force) {
+      const aktuell = db.select({ abwesendBis: schema.leads.abwesendBis }).from(schema.leads).where(eq(schema.leads.id, lead.id)).get();
+      if (aktuell && wartetWegenAbwesenheit(aktuell, jetzt)) return { ok: false, kind: 'abwesend', error: 'Abwesenheitsnotiz erkannt – Follow-up wartet' };
+    }
+    // Variante rotierend (wenigste Versendungen dieses Schritts); eigener Betreff = neuer Thread
+    const wahl = waehleFollowupVariante(schritt, lead.followupsSent + 1);
+    const mailSchritt = { body: wahl.body, betreff: wahl.betreff, nr: lead.followupsSent + 1 };
+    const { raw } = buildLeadMimeMitId(lead, kampagne, { schritt: mailSchritt, inReplyTo: lead.rfcMessageId ?? undefined, absender: postfach });
+    // Neuer Thread: ohne threadId senden. lead.gmailThreadId bleibt die der Erstmail, die neue Thread-ID steht in sent_messages
+    const res = await sender(raw, istNeuerThread(mailSchritt) ? undefined : lead.gmailThreadId, postfach);
     db.transaction((tx) => {
       tx.update(schema.leads)
         .set({ followupsSent: lead.followupsSent + 1, sendError: null })
         .where(eq(schema.leads.id, lead.id))
         .run();
       tx.insert(schema.sentMessages)
-        .values({ leadId: lead.id, campaignId: lead.campaignId, step: lead.followupsSent + 1, gmailMessageId: res.id, gmailThreadId: res.threadId, absenderId: postfach.id, sentAt: jetzt })
+        .values({ leadId: lead.id, campaignId: lead.campaignId, step: lead.followupsSent + 1, variante: wahl.kuerzel, gmailMessageId: res.id, gmailThreadId: res.threadId, absenderId: postfach.id, sentAt: jetzt })
         .run();
     });
+    webhookAusloesen('mail_gesendet', { leadId: lead.id, schritt: lead.followupsSent + 1, variante: wahl.kuerzel }, jetzt);
     return { ok: true, messageId: res.id, threadId: res.threadId, absenderId: postfach.id };
   } catch (e) {
     const info = fehlerInfo(e);
@@ -398,6 +463,7 @@ export function ersterVersandTag(): string | null {
   const row = getDb()
     .select({ erste: sql<number | null>`min(${schema.sentMessages.sentAt})` })
     .from(schema.sentMessages)
+    .where(gte(schema.sentMessages.step, 0))
     .get();
   return row?.erste ? todayBerlin(new Date(row.erste)) : null;
 }

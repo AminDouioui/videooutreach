@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { istBounceFehler } from '@/lib/bounce-schutz';
 import type { PostfachAnzeige } from '@/lib/settings-view';
 import { POSTFACH_STATUS_LABEL, type PostfachStatus } from '@/lib/rotation';
 
@@ -54,7 +55,8 @@ export function PostfaecherVerwaltung({ postfaecher, konfiguriert, hinweis, deta
       )}
       <p className="mt-3 text-xs text-slate-500">
         Angefordert werden „E-Mails senden“ (gmail.send), „Kopfzeilen lesen“ (gmail.metadata, nur um Antworten auf eigene Mails zu erkennen – kein Zugriff auf
-        Mail-Inhalte) sowie openid/email (die Adresse des Kontos). Die Zugriffstoken werden verschlüsselt gespeichert.
+        Mail-Inhalte) sowie openid/email (die Adresse des Kontos). Optional je Postfach „Lesezugriff erteilen“ (gmail.readonly): Dann zeigt die Unibox den Verlauf unter
+        „Antworten“ und Antworten lassen sich direkt aus der App senden. Die Zugriffstoken werden verschlüsselt gespeichert.
       </p>
     </section>
   );
@@ -111,6 +113,11 @@ function PostfachZeile({ p }: { p: PostfachAnzeige }) {
             Antwortprüfung: {p.antwortPruefung ? 'ja' : 'nein'}
           </span>
         )}
+        {p.verbunden && (
+          <span className="text-xs text-slate-500" title="Lesezugriff (gmail.readonly): Verlauf lesen und aus der App antworten">
+            Unibox: {p.unibox ? 'ja' : 'nein'}
+          </span>
+        )}
         <div className="ml-auto flex flex-wrap gap-2">
           {p.verbunden && (
             <button onClick={() => patch({ aktiv: !p.aktiv }, p.aktiv ? 'Pausiert' : 'Aktiviert')} disabled={laedt} className={knopfRahmen}>
@@ -120,6 +127,11 @@ function PostfachZeile({ p }: { p: PostfachAnzeige }) {
           <button onClick={() => setBearbeiten(!bearbeiten)} className={knopfRahmen}>
             Bearbeiten
           </button>
+          {p.verbunden && !p.unibox && (
+            <a href={`/api/gmail/connect?absender=${p.id}&lesezugriff=1`} className={knopfRahmen} title="Zusätzlich gmail.readonly anfordern, damit Antworten in der App gelesen und beantwortet werden können">
+              Lesezugriff erteilen
+            </a>
+          )}
           <a href={`/api/gmail/connect?absender=${p.id}`} className={knopfRahmen}>
             Neu verbinden
           </a>
@@ -128,7 +140,12 @@ function PostfachZeile({ p }: { p: PostfachAnzeige }) {
           </button>
         </div>
       </div>
-      {p.fehler && <p className="mt-2 text-sm text-red-700">Pausiert wegen Fehler (bitte neu verbinden): {p.fehler}</p>}
+      {p.fehler && istBounceFehler(p.fehler) && (
+        <p className="mt-2 text-sm text-amber-800">
+          Automatisch pausiert (Bounce-Schutz): {p.fehler}. Nach Prüfung der Adressliste mit „Aktivieren“ wieder freigeben.
+        </p>
+      )}
+      {p.fehler && !istBounceFehler(p.fehler) && <p className="mt-2 text-sm text-red-700">Pausiert wegen Fehler (bitte neu verbinden): {p.fehler}</p>}
       {!p.verbunden && <p className="mt-2 text-sm text-slate-500">Nicht verbunden{p.leads > 0 ? ` – ${p.leads} Lead(s) hängen noch an diesem Postfach, ihre Follow-ups warten.` : '.'}</p>}
       {p.verbunden && !p.antwortPruefung && (
         <p className="mt-2 text-sm text-amber-800">Für Follow-ups dieses Postfachs bitte „Neu verbinden“: Die Antwort-Erkennung braucht eine zusätzliche Berechtigung.</p>

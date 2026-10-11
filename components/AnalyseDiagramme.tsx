@@ -9,9 +9,9 @@ export function TrichterBalken({ stufen }: { stufen: TrichterStufe[] }) {
   return (
     <ul className="space-y-2">
       {stufen.map((s) => (
-        <li key={s.key} className="grid grid-cols-[9.5rem_1fr_9rem] items-center gap-3 text-sm sm:grid-cols-[12rem_1fr_10rem]" title={`${s.label}: ${s.anzahl}${s.rate != null ? ` (${prozent(s.rate)})` : ''}`}>
+        <li key={s.key} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 text-sm sm:grid-cols-[12rem_1fr_10rem]" title={`${s.label}: ${s.anzahl}${s.rate != null ? ` (${prozent(s.rate)})` : ''}`}>
           <span className="text-slate-700">{s.label}</span>
-          <span className="h-5 rounded bg-slate-100">
+          <span className="col-span-2 row-start-2 h-5 rounded bg-slate-100 sm:col-span-1 sm:row-start-auto">
             <span className="block h-5 rounded bg-indigo-500" style={{ width: `${(s.anzahl / max) * 100}%`, minWidth: s.anzahl > 0 ? '2px' : 0 }} />
           </span>
           <span className="text-right tabular-nums">
@@ -54,7 +54,8 @@ export function TagesDiagramm({ tage, ohneVideo = false }: { tage: TagesPunkt[];
   const gruppe = plotB / Math.max(1, tage.length);
   const balken = Math.max(1.5, (gruppe * 0.8) / serien.length);
   const y = (v: number) => oben + plotH - (v / max) * plotH;
-  const ticks = [0, max / 2, max].filter((v, i, a) => a.indexOf(v) === i);
+  // Es werden Zählwerte gezeigt: nur ganzzahlige Achsenwerte (kein „2,5“)
+  const ticks = [0, Math.floor(max / 2), max].filter((v, i, a) => a.indexOf(v) === i);
   const labelAbstand = tage.length > 16 ? 5 : 2;
 
   return (
@@ -72,7 +73,7 @@ export function TagesDiagramm({ tage, ohneVideo = false }: { tage: TagesPunkt[];
           <g key={v}>
             <line x1={links} x2={B - 4} y1={y(v)} y2={y(v)} stroke="#e2e8f0" />
             <text x={links - 6} y={y(v) + 4} textAnchor="end" fontSize="11" fill="#64748b">
-              {Number.isInteger(v) ? v : v.toLocaleString('de-DE')}
+              {v}
             </text>
           </g>
         ))}

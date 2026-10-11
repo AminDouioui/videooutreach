@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { asc } from 'drizzle-orm';
-import { Badge, LeadStatusBadge } from '@/components/Badge';
+import { AbwesendBadge, Badge, LeadStatusBadge } from '@/components/Badge';
 import { ladeAbsender } from '@/lib/absender';
 import { getDb, schema } from '@/lib/db';
 import { LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
@@ -127,6 +127,11 @@ export default async function LeadsSeite({ searchParams }: { searchParams: Promi
                 {mehrerePostfaecher && <td className="whitespace-nowrap px-3 py-2 text-slate-600">{postfach ?? '–'}</td>}
                 <td className="px-3 py-2">
                   <LeadStatusBadge status={l.leadStatus} />
+                  {l.abwesendAt && (
+                    <span className="ml-1.5">
+                      <AbwesendBadge bis={l.abwesendBis?.getTime()} />
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-2">{l.flowStopp === 'beantwortet' ? <Badge status="beantwortet" /> : <span className="text-slate-400">–</span>}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-slate-600">{l.sentAt ? datum.format(l.sentAt) : '–'}</td>

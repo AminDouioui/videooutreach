@@ -1,14 +1,19 @@
 import Link from 'next/link';
 import { asc, eq } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
-import { Badge, LeadStatusBadge } from '@/components/Badge';
+import { AbwesendBadge, Badge, LeadStatusBadge } from '@/components/Badge';
+import { KiEinordnung } from '@/components/KiKomponenten';
 import { LeadStatusSelect } from '@/components/LeadStatusSelect';
 import { CopyButton } from '@/components/CopyButton';
-import { LeadActions, MailVorschau, NotizFeld } from '@/components/LeadDetailPanel';
+import { ThreadAnsicht } from '@/components/ThreadAnsicht';
+import { DealFeld, LeadActions, MailVorschau, NotizFeld, ZeitzoneFeld } from '@/components/LeadDetailPanel';
 import { ladeAbsenderMitId } from '@/lib/absender';
+import { leadThreads } from '@/lib/antworten';
 import { getDb, schema } from '@/lib/db';
+import { kiAktiv } from '@/lib/ki';
 import { gmailThreadUrl } from '@/lib/lead-status';
 import { setzeAntwortGelesen } from '@/lib/lead-status-db';
+import { zeitzoneOderStandard } from '@/lib/time';
 import { leadPageUrl, thumbnailUrl, videoUrl } from '@/lib/media';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +27,10 @@ const EVENT_LABEL: Record<string, string> = {
   progress_100: 'Video komplett angeschaut',
   cta_click: 'Termin-Link geklickt',
   email_open: 'E-Mail geöffnet',
+  link_click: 'Link in Mail geklickt',
   unsubscribe: 'Abgemeldet',
+  abwesenheit: 'Abwesenheitsnotiz erhalten',
+  untersequenz: 'In Untersequenz übernommen',
 };
 
 const zeit = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'medium' });
@@ -40,10 +48,20 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   // Öffnen des Lead-Details markiert eine Antwort als gelesen
   if (lead.flowStopp === 'beantwortet' && !lead.antwortGelesen) setzeAntwortGelesen(lead.id, true);
 
+  const herkunft = lead.herkunftLeadId !== null ? db.select({ id: schema.leads.id, campaignId: schema.leads.campaignId, kampagne: schema.campaigns.name }).from(schema.leads).innerJoin(schema.campaigns, eq(schema.campaigns.id, schema.leads.campaignId)).where(eq(schema.leads.id, lead.herkunftLeadId)).get() : undefined;
+  const weiterleitungen = db
+    .select({ id: schema.leads.id, campaignId: schema.leads.campaignId, kampagne: schema.campaigns.name })
+    .from(schema.leads)
+    .innerJoin(schema.campaigns, eq(schema.campaigns.id, schema.leads.campaignId))
+    .where(eq(schema.leads.herkunftLeadId, lead.id))
+    .orderBy(asc(schema.leads.id))
+    .all();
   const postfach = lead.absenderId !== null ? ladeAbsenderMitId(lead.absenderId) : null;
+  const verlauf = leadThreads(lead);
   const name = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
   const link = leadPageUrl(lead.slug);
   const fertig = lead.renderStatus === 'fertig';
+  const ki = kiAktiv();
 
   return (
     <div>
@@ -72,12 +90,47 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
             <LeadStatusBadge status={lead.leadStatus} />
             {lead.variante && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs font-semibold text-indigo-700" title="Variante der Erstmail">Variante {lead.variante}</span>}
             {lead.flowStopp && <Badge status={lead.flowStopp} />}
+            {lead.abwesendAt && <AbwesendBadge bis={lead.abwesendBis?.getTime()} />}
             {lead.unsubscribed && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">Abgemeldet</span>}
             <a href={`/v/${lead.slug}`} target="_blank" rel="noopener noreferrer" className="font-mono text-xs text-indigo-600 hover:underline">
               {link}
             </a>
             <CopyButton text={link} label="Link kopieren" />
           </p>
+          {(herkunft || lead.herkunftLeadId !== null || weiterleitungen.length > 0) && (
+            <p className="mt-2 space-y-1 text-sm text-slate-600" data-testid="untersequenz-links">
+              {lead.herkunftLeadId !== null && (
+                <span className="block">
+                  Übernommen aus Untersequenz:{' '}
+                  {herkunft ? (
+                    <>
+                      <Link href={`/leads/${herkunft.id}`} className="text-indigo-600 hover:underline">
+                        Ursprungs-Lead
+                      </Link>{' '}
+                      in{' '}
+                      <Link href={`/kampagnen/${herkunft.campaignId}`} className="text-indigo-600 hover:underline">
+                        {herkunft.kampagne}
+                      </Link>
+                    </>
+                  ) : (
+                    'Ursprungs-Lead nicht mehr vorhanden'
+                  )}
+                </span>
+              )}
+              {weiterleitungen.map((w) => (
+                <span key={w.id} className="block">
+                  Weitergeleitet an:{' '}
+                  <Link href={`/leads/${w.id}`} className="text-indigo-600 hover:underline">
+                    Lead
+                  </Link>{' '}
+                  in{' '}
+                  <Link href={`/kampagnen/${w.campaignId}`} className="text-indigo-600 hover:underline">
+                    {w.kampagne}
+                  </Link>
+                </span>
+              ))}
+            </p>
+          )}
           {lead.renderError && <p className="mt-2 text-sm text-red-700">Render-Fehler: {lead.renderError}</p>}
           {lead.sendError && <p className="mt-2 text-sm text-red-700">Versand-Fehler: {lead.sendError}</p>}
         </div>
@@ -106,11 +159,22 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           ) : (
             <ol className="max-h-[32rem] space-y-2 overflow-y-auto pr-1">
               {events.map((e) => (
-                <li key={e.id} className={`flex items-center gap-3 text-sm ${e.isBot ? 'text-slate-400' : ''}`}>
+                <li key={e.id} className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-sm ${e.isBot ? 'text-slate-400' : ''}`}>
                   <span className={`h-2 w-2 shrink-0 rounded-full ${e.isBot ? 'bg-slate-300' : e.type === 'cta_click' ? 'bg-green-500' : 'bg-indigo-500'}`} />
                   <span className="w-44 shrink-0 tabular-nums text-xs">{zeit.format(e.createdAt)}</span>
                   <span className={e.isBot ? '' : 'font-medium'}>{EVENT_LABEL[e.type] ?? e.type}</span>
                   {e.isBot && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">Bot</span>}
+                  {e.type === 'abwesenheit' && typeof e.meta?.bis === 'number' && <span className="text-xs text-slate-500">Follow-ups warten bis {zeit.format(new Date(e.meta.bis))}</span>}
+                  {e.type === 'link_click' && typeof e.meta?.url === 'string' && (
+                    <span className="min-w-0 break-all text-xs text-slate-500">
+                      {e.meta.url}
+                    </span>
+                  )}
+                  {e.type === 'untersequenz' && typeof e.meta?.zielLeadId === 'number' && typeof e.meta?.zielCampaignId === 'number' && (
+                    <Link href={`/leads/${e.meta.zielLeadId}`} className="text-xs text-indigo-600 hover:underline">
+                      Lead in Ziel-Kampagne ansehen
+                    </Link>
+                  )}
                   {e.type === 'email_open' && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">unzuverlässig</span>}
                 </li>
               ))}
@@ -126,6 +190,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               {lead.leadStatusAt && <span className="text-xs text-slate-500">gesetzt am {zeit.format(lead.leadStatusAt)}</span>}
             </div>
             <p className="text-xs text-slate-500">Nicht interessiert, falscher Ansprechpartner, Termin gebucht, Gewonnen und Verloren beenden den Flow (keine Follow-ups mehr).</p>
+            <ZeitzoneFeld leadId={lead.id} initial={lead.zeitzone ?? ''} kampagneZone={zeitzoneOderStandard(kampagne.zeitzone)} />
             <p>
               <span className="text-slate-500">Erstmail-Variante:</span> {lead.variante ?? '–'}
             </p>
@@ -137,17 +202,44 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               <span className="text-slate-500">Antwort:</span>{' '}
               {lead.flowStopp === 'beantwortet' ? (lead.antwortAt ?? lead.flowStoppAt ? `erkannt am ${zeit.format((lead.antwortAt ?? lead.flowStoppAt)!)}` : 'erkannt') : lead.flowStopp === 'firma_beantwortet' ? 'Kollege aus derselben Firma hat geantwortet' : 'keine'}
             </p>
+            {lead.abwesendAt && (
+              <p>
+                <span className="text-slate-500">Abwesenheit:</span> Notiz erkannt am {zeit.format(lead.abwesendAt)}
+                {lead.abwesendBis ? `, Follow-ups warten bis ${zeit.format(lead.abwesendBis)}` : ' (Follow-ups nicht verschoben)'}. Zählt nicht als Antwort.
+              </p>
+            )}
+            {ki && (lead.flowStopp === 'beantwortet' || lead.kiEinordnung) && <KiEinordnung key={lead.id} aktiv leadId={lead.id} einordnung={lead.kiEinordnung ?? null} />}
             {lead.gmailThreadId && (
-              <a href={gmailThreadUrl(lead.gmailThreadId)} target="_blank" rel="noopener noreferrer" className="inline-block rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
+              <a href={gmailThreadUrl(lead.antwortThreadId ?? lead.gmailThreadId)} target="_blank" rel="noopener noreferrer" className="inline-block rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
                 In Gmail öffnen
               </a>
             )}
           </div>
         </section>
 
+        {verlauf.lesezugriff && verlauf.postfach && verlauf.threads.length > 0 && (
+          <section className="rounded-lg border border-slate-200 bg-white p-4">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Verlauf</h2>
+            <ThreadAnsicht
+              leadId={lead.id}
+              threads={verlauf.threads}
+              start={verlauf.start}
+              antwortenErlaubt={lead.flowStopp === 'beantwortet'}
+              postfachEmail={verlauf.postfach.email}
+              gmailUrl={lead.gmailThreadId ? gmailThreadUrl(lead.antwortThreadId ?? lead.gmailThreadId) : null}
+              kiAktiv={ki}
+            />
+          </section>
+        )}
+
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Mail-Vorschau</h2>
           <MailVorschau leadId={lead.id} />
+        </section>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Pipeline</h2>
+          <DealFeld leadId={lead.id} wert={lead.dealWert} notiz={lead.dealNotiz ?? ''} />
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-4">

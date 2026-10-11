@@ -6,6 +6,11 @@ Angefordert werden **„E-Mails senden“** (`gmail.send`), **„Kopfzeilen lese
 Letzteres liefert die Adresse des verbundenen Kontos (gmail.send erlaubt kein Profil-Lesen). `gmail.metadata` braucht der
 E-Mail-Flow, um vor jedem Follow-up zu prüfen, ob der Lead im Thread geantwortet hat – Mail-Inhalte sind damit nicht lesbar.
 
+**Optional (Unibox):** Zusätzlich kann je Postfach **„Lesen“** (`gmail.readonly`) erteilt werden. Dann zeigt `/antworten` den
+Thread-Verlauf (nur Text, nie Mail-HTML) und Antworten lassen sich direkt aus der App senden. Ohne diesen Bereich bleibt alles
+beim Alten (Link „In Gmail öffnen“). Er wird nur beim Klick auf **Einstellungen → Postfächer → „Lesezugriff erteilen“**
+angefordert, nie beim normalen Verbinden.
+
 Einmalig durchführen (ca. 10 Minuten). Du brauchst Zugriff auf die Google Cloud Console mit einem Workspace-Konto
 der Domain prozessia.de (idealerweise Admin).
 
@@ -31,6 +36,11 @@ der Domain prozessia.de (idealerweise Admin).
    `.../auth/userinfo.email` („Primäre Google-Konto-E-Mail-Adresse“ anzeigen) eintragen, speichern.
    - War Gmail schon vor dem E-Mail-Flow verbunden: Bereich `gmail.metadata` ergänzen und das Postfach unter
      **Einstellungen → Postfächer → Neu verbinden** einmal neu verbinden, sonst werden keine Follow-ups gesendet.
+   - **Optional für die Unibox:** `https://www.googleapis.com/auth/gmail.readonly` („Alle E-Mails in Ihrem Google-Konto
+     ansehen“) ergänzen. Google stuft ihn als **eingeschränkten** Bereich ein; bei Nutzertyp **Intern** (Workspace, nur
+     eigene Organisation) ist dafür **keine Google-Prüfung** nötig. Danach unter **Einstellungen → Postfächer** beim
+     jeweiligen Postfach **„Lesezugriff erteilen“** klicken (Anzeige „Unibox: ja“). Ein späteres „Neu verbinden“
+     behält den Lesezugriff bei. Externe (öffentliche) Apps bräuchten für diesen Bereich eine aufwendige Sicherheitsprüfung.
    - **Update auf mehrere Postfächer:** Das bisher verbundene Postfach wird automatisch übernommen, ein
      „Neu verbinden“ ist dafür **nicht** nötig. Die Bereiche `openid`/`email` müssen aber im Zustimmungsbildschirm
      stehen, bevor ein **weiteres** Postfach hinzugefügt wird (sonst meldet die App „kein ID-Token“).
@@ -77,6 +87,9 @@ muss die öffentliche Adresse sein (`https://video.DOMAIN`). Danach App (und Wor
 - **`redirect_uri_mismatch`**: URI in der Cloud Console und `GOOGLE_REDIRECT_URI` stimmen nicht exakt überein.
 - **Kein Refresh-Token**: Zugriff unter <https://myaccount.google.com/permissions> entfernen und neu verbinden.
 - **Kein ID-Token / keine E-Mail-Adresse beim Hinzufügen**: Bereiche `openid` und `email` im Zustimmungsbildschirm ergänzen.
+- **Unibox zeigt „Lesezugriff fehlt“**: Bereich `gmail.readonly` im Zustimmungsbildschirm ergänzen und beim Postfach „Lesezugriff erteilen“
+  klicken; im Google-Dialog das Häkchen für das Lesen der E-Mails gesetzt lassen. Fehler beim Laden (Netz, widerrufener Zugriff) erscheinen
+  als Meldung direkt in der Unibox.
 - **`invalid_grant` beim Senden** (z. B. nach Passwortänderung): Das Postfach wird in den Einstellungen als „Fehler“
   markiert und pausiert, die anderen senden weiter. Dort **Neu verbinden**.
 - **Limits**: Workspace erlaubt ca. 2000 Mails/Tag über die API je Konto; die App sendet bewusst nur 30/Tag je Postfach

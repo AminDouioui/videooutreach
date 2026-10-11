@@ -2,6 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { dealWertEingabe, parseDealWert } from '@/lib/pipeline';
+import { istGueltigeZeitzone } from '@/lib/time';
+import { GAENGIGE_ZEITZONEN } from '@/lib/zeitzone';
+import { Ortszeit } from './Ortszeit';
 
 const btn = 'rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50';
 
@@ -17,10 +21,10 @@ export function LeadActions({ leadId, campaignId, sendStatus }: { leadId: number
     setMeldung(null);
     try {
       const res = await fetch(url, init);
-      if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        throw new Error(res.status === 404 ? 'Funktion noch nicht verfügbar (404)' : (j?.error ?? `Fehler ${res.status}`));
-      }
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(res.status === 404 ? 'Funktion noch nicht verfügbar (404)' : (j?.error ?? `Fehler ${res.status}`));
+      // Manche Routen melden Fehler mit HTTP 200 und { ok: false, error } (z. B. „Jetzt senden“)
+      if (j && j.ok === false) throw new Error(j.error ?? 'Aktion fehlgeschlagen');
       if (name === 'loeschen') {
         router.push(`/kampagnen/${campaignId}`);
         router.refresh();
@@ -121,6 +125,124 @@ export function MailVorschau({ leadId }: { leadId: number }) {
         <span className="text-slate-500">Betreff:</span> <span className="font-medium">{daten.subject}</span>
       </p>
       <iframe title="Mail-Vorschau" sandbox="" srcDoc={daten.html} className="h-96 w-full rounded-md border border-slate-200 bg-white" />
+    </div>
+  );
+}
+
+/** Zeitzone des Leads anzeigen und ändern (leer = Zeitzone der Kampagne); Versandfenster gelten in dieser Ortszeit. */
+export function ZeitzoneFeld({ leadId, initial, kampagneZone }: { leadId: number; initial: string; kampagneZone: string }) {
+  const router = useRouter();
+  const [wert, setWert] = useState(initial);
+  const [gespeichert, setGespeichert] = useState(initial);
+  const [status, setStatus] = useState<{ text: string; fehler: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const gueltig = wert.trim() === '' || istGueltigeZeitzone(wert);
+
+  async function speichern() {
+    if (!gueltig) {
+      setStatus({ text: 'Unbekannte Zeitzone (z. B. Europe/London, America/New_York)', fehler: true });
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zeitzone: wert.trim() || null }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setStatus({ text: j.error ?? 'Speichern fehlgeschlagen', fehler: true });
+      else {
+        setGespeichert(wert.trim());
+        setStatus({ text: 'Gespeichert', fehler: false });
+        router.refresh();
+      }
+    } catch {
+      setStatus({ text: 'Speichern fehlgeschlagen', fehler: true });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="text-sm">
+      <p>
+        <span className="text-slate-500">Ortszeit:</span> <Ortszeit zone={gespeichert || kampagneZone} />
+        {!gespeichert && <span className="ml-1.5 text-xs text-slate-500">(Zeitzone der Kampagne)</span>}
+      </p>
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <input
+          list={`zonen-${leadId}`}
+          value={wert}
+          onChange={(e) => {
+            setWert(e.target.value);
+            setStatus(null);
+          }}
+          placeholder={`leer = ${kampagneZone}`}
+          aria-label="Zeitzone des Leads"
+          aria-invalid={!gueltig}
+          className={`w-60 rounded-md border px-2 py-1 text-sm ${gueltig ? 'border-slate-300' : 'border-red-500'}`}
+        />
+        <datalist id={`zonen-${leadId}`}>
+          {GAENGIGE_ZEITZONEN.map((z) => (
+            <option key={z} value={z} />
+          ))}
+        </datalist>
+        <button onClick={speichern} disabled={busy || wert.trim() === gespeichert} className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          Zeitzone speichern
+        </button>
+        {status && <span className={`text-xs ${status.fehler ? 'text-red-700' : 'text-green-700'}`}>{status.text}</span>}
+      </div>
+    </div>
+  );
+}
+
+/** Deal-Wert (€) und Notiz zum Deal; der Lead erscheint damit in der Pipeline mit Summe je Spalte. */
+export function DealFeld({ leadId, wert, notiz }: { leadId: number; wert: number | null; notiz: string }) {
+  const router = useRouter();
+  const [w, setW] = useState(dealWertEingabe(wert));
+  const [n, setN] = useState(notiz);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<{ text: string; fehler: boolean } | null>(null);
+
+  async function speichern() {
+    const p = parseDealWert(w);
+    if (!p.ok) {
+      setStatus({ text: 'Ungültiger Betrag (z. B. 1.234,50 €)', fehler: true });
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dealWert: w, dealNotiz: n.trim() || null }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setStatus({ text: j.error ?? 'Speichern fehlgeschlagen', fehler: true });
+      else {
+        setW(dealWertEingabe(p.cent));
+        setStatus({ text: 'Gespeichert', fehler: false });
+        router.refresh();
+      }
+    } catch {
+      setStatus({ text: 'Speichern fehlgeschlagen', fehler: true });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const feld = 'w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600';
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm text-slate-600">
+        Deal-Wert in €
+        <input value={w} onChange={(e) => { setW(e.target.value); setStatus(null); }} inputMode="decimal" placeholder="z. B. 1.234,50" className={`mt-1 ${feld} sm:w-48`} />
+      </label>
+      <label className="block text-sm text-slate-600">
+        Notiz zum Deal
+        <textarea value={n} onChange={(e) => { setN(e.target.value); setStatus(null); }} rows={3} className={`mt-1 ${feld}`} />
+      </label>
+      <div className="flex items-center gap-3">
+        <button onClick={speichern} disabled={busy} className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+          Speichern
+        </button>
+        {status && <span className={`text-sm ${status.fehler ? 'text-red-700' : 'text-green-700'}`}>{status.text}</span>}
+      </div>
     </div>
   );
 }

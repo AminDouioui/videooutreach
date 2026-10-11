@@ -11,13 +11,15 @@ type Werte = {
   rampeStart: number;
   rampeSchritt: number;
   rampeBeginn: string;
+  bounceSchwellePostfach: number;
   impressumUrl: string;
   datenschutzUrl: string;
+  kiAutoStatus: 'aus' | 'vorschlagen' | 'automatisch';
 };
 
 const feld = 'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600';
 
-export function GlobalSettingsForm({ initial, heuteErlaubt }: { initial: Werte; heuteErlaubt: number }) {
+export function GlobalSettingsForm({ initial, heuteErlaubt, kiAktiv = false }: { initial: Werte; heuteErlaubt: number; kiAktiv?: boolean }) {
   const router = useRouter();
   const [w, setW] = useState<Werte>(initial);
   const [status, setStatus] = useState<{ text: string; fehler: boolean } | null>(null);
@@ -26,7 +28,7 @@ export function GlobalSettingsForm({ initial, heuteErlaubt }: { initial: Werte; 
   async function speichern(e: React.FormEvent) {
     e.preventDefault();
     setStatus(null);
-    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt) }) });
+    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, kiAutoStatus: kiAktiv ? w.kiAutoStatus : undefined, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt), bounceSchwellePostfach: Number(w.bounceSchwellePostfach) }) });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setStatus({ text: 'Gespeichert', fehler: false });
@@ -80,6 +82,13 @@ export function GlobalSettingsForm({ initial, heuteErlaubt }: { initial: Werte; 
         <p className="text-xs text-slate-500">Ohne Beginn zählt der Tag der ersten gesendeten Mail (noch keine: heute). Zum Übernehmen der Änderungen speichern.</p>
         <p className="text-sm font-medium text-slate-800">Heute insgesamt erlaubt: {heuteErlaubt} {heuteErlaubt === 1 ? 'Mail' : 'Mails'}</p>
       </fieldset>
+      <label className="block text-sm font-medium text-slate-700 sm:max-w-xs">
+        Bounce-Schwelle je Postfach (%)
+        <input required type="number" min={1} max={100} value={w.bounceSchwellePostfach} onChange={(e) => set('bounceSchwellePostfach', Number(e.target.value))} className={feld} />
+        <span className="mt-1 block text-xs font-normal text-slate-500">
+          Liegt die Bounce-Quote der letzten 50 Erstmails eines Postfachs darüber (ab 20 gesendeten), wird das Postfach pausiert. Wieder aktivieren unter „Postfächer“.
+        </span>
+      </label>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block text-sm font-medium text-slate-700">
           Impressum-URL
@@ -90,6 +99,27 @@ export function GlobalSettingsForm({ initial, heuteErlaubt }: { initial: Werte; 
           <input type="url" value={w.datenschutzUrl} onChange={(e) => set('datenschutzUrl', e.target.value)} className={feld} placeholder="https://…" />
         </label>
       </div>
+      {kiAktiv && (
+        <fieldset className="space-y-3 rounded-md border border-slate-200 p-3" aria-label="KI-Funktionen">
+          <legend className="px-1 text-sm font-medium text-slate-700">KI-Funktionen (Anthropic)</legend>
+          <label className="block text-sm font-medium text-slate-700 sm:max-w-sm">
+            Neue Antworten einordnen
+            <select value={w.kiAutoStatus} onChange={(e) => set('kiAutoStatus', e.target.value as Werte['kiAutoStatus'])} className={feld}>
+              <option value="aus">Aus (nur manuell per Button)</option>
+              <option value="vorschlagen">Vorschlagen (Standard)</option>
+              <option value="automatisch">Automatisch anwenden</option>
+            </select>
+            <span className="mt-1 block text-xs font-normal text-slate-500">
+              Erkannte Antworten werden mit Lesezugriff auf das Postfach eingeordnet (interessiert, später, nicht interessiert, falscher Ansprechpartner, Abwesenheit, Abmeldung). „Vorschlagen“ zeigt das Ergebnis nur an. „Automatisch“
+              setzt den Lead-Status (nur bei Status „Offen“), sperrt Abmeldungen wie den Abmeldelink und behandelt Abwesenheitsnotizen wie erkannte Abwesenheit – jeweils nur bei einer Sicherheit von mindestens 80 %.
+            </span>
+          </label>
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <strong>Datenschutz:</strong> Für die KI-Funktionen werden Mailtexte (Antworten der Leads, Thread-Verlauf, Ihre Beschreibungen) an Anthropic übertragen. Bitte vorher einen Auftragsverarbeitungsvertrag (AVV/DPA) mit Anthropic
+            abschließen und die Datenschutzerklärung anpassen. Ohne den Schlüssel <span className="font-mono">ANTHROPIC_API_KEY</span> sind alle KI-Funktionen aus.
+          </p>
+        </fieldset>
+      )}
       <div className="flex items-center gap-3">
         <button type="submit" className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
           Speichern
