@@ -149,6 +149,18 @@ Kurzfassung: In der Google Cloud Console ein Projekt anlegen, die Gmail API akti
 - Mails: `multipart/alternative`, schlichtes HTML, kein Anhang, Signatur mit Impressumsangaben, Abmeldelink sowie `List-Unsubscribe` und `List-Unsubscribe-Post`.
 - Neue Absenderdomänen langsam hochfahren (10, dann 20, dann 30 pro Tag); SPF, DKIM und DMARC müssen eingerichtet sein.
 
+## Anhänge in E-Mail-Flows
+
+Die Erstmail und jeder Follow-up-Schritt können unabhängig voneinander Dateianhänge tragen (Seite „E-Mail-Flow“ der Kampagne, Bereich „Anhänge“ unter dem Mailtext; Upload per Drag-and-drop oder Dateiauswahl, Liste mit Download und Entfernen, Anzeige „📎 Name (Größe)“ in der Mail-Vorschau). Ein neues Follow-up braucht zuerst „Follow-ups speichern“, danach ist der Upload möglich. Anhänge gelten für alle A/B-Varianten eines Schritts.
+
+- **Erlaubt:** pdf, doc, docx, xls, xlsx, ppt, pptx, csv, txt, png, jpg, jpeg. Der Server prüft Endung und Dateikennung (PDF, PNG, JPEG, Office-ZIP/OLE, Text ohne Binärinhalt).
+- **Grenzen je Mail (Schritt):** höchstens 5 Dateien, 10 MB je Datei, 15 MB insgesamt.
+- **Berechtigung:** Hochladen und Entfernen ab Rolle „Mitglied“, Liste und Download ab „Lesen“.
+- **Speicherort:** `${DATA_DIR}/anhaenge/<Kampagne>/<zufall>-<name>` (Tabelle `anhaenge`, Pfad relativ zu `DATA_DIR`). Die Dateien liegen nicht unter `media/` und werden nur über die angemeldete API ausgeliefert (`GET /api/campaigns/<id>/anhaenge/<anhangId>`). Beim Löschen von Anhang, Follow-up oder Kampagne werden die Dateien mit gelöscht; „Kampagne duplizieren“ kopiert sie. Backup: `DATA_DIR` enthält sie bereits.
+- **Versand:** Mit Anhängen wird die Mail `multipart/mixed { multipart/alternative { Text, HTML }, Anhänge }` (base64, `Content-Disposition: attachment`, Umlaute im Dateinamen per RFC 2047 und RFC 2231); ohne Anhänge bleibt sie wie bisher `multipart/alternative`. Gmail-API und SMTP nutzen denselben Aufbau (`buildMimeText` in `lib/mail.ts`), In-Reply-To/References bleiben unverändert. Fehlt eine Datei auf der Platte, wird die Mail nicht ohne Anhang gesendet, sondern als Fehler gemeldet. Die Testmail („Testmail an mich senden“) enthält die Anhänge der Erstmail; `POST /api/campaigns/<id>/test-mail` mit `followupId` testet einen Follow-up-Schritt.
+- **Zustellbarkeit:** Anhänge in Erstkontakt-Mails können die Zustellbarkeit verschlechtern (Spamfilter); besser in Follow-ups oder als Link.
+- **Reverse Proxy:** Uploads bis 10 MB brauchen ein ausreichendes Body-Limit (nginx `client_max_body_size 12m;`, Caddy/Traefik: Standard genügt). Die Middleware puffert bis 20 MB (`experimental.middlewareClientMaxBodySize` in `next.config.ts`).
+
 ## Tracking, Bot-Erkennung und Score
 
 - Die Video-Seite sendet Ereignisse per `POST /api/t` (`sendBeacon`): `page_view` (nur per JavaScript), `play`, Fortschritt 25/50/75/100 %, `cta_click`. Das Öffnungs-Pixel ist optional (standardmäßig aus) und gilt als unzuverlässig.

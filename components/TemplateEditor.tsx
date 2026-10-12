@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { pruefeFelder } from '@/lib/schreibregeln';
 import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
+import { AnhangEditor, AnhangVorschau, type AnhangInfo } from './AnhangEditor';
 import { KiVorschlag } from './KiKomponenten';
 import { VorlagenHinweise } from './VorlagenHilfe';
 
@@ -42,6 +43,8 @@ export function TemplateEditor({
   extraSpalten = [],
   kiAktiv = false,
   schreibregeln = false,
+  anhaenge: anhaenge0 = [],
+  gesperrt = false,
 }: {
   campaignId: number;
   subject: string;
@@ -56,7 +59,12 @@ export function TemplateEditor({
   kiAktiv?: boolean;
   /** Prozessia-Schreibregeln prüfen (Einstellung) */
   schreibregeln?: boolean;
+  /** Bereits hochgeladene Anhänge der Erstmail */
+  anhaenge?: AnhangInfo[];
+  /** Rolle ohne Schreibrecht (Upload gesperrt) */
+  gesperrt?: boolean;
 }) {
+  const [anhaenge, setAnhaenge] = useState<AnhangInfo[]>(anhaenge0);
   const [subject, setSubject] = useState(s0);
   const [body, setBody] = useState(b0);
   const [leadId, setLeadId] = useState<number | null>(leads[0]?.id ?? null);
@@ -167,6 +175,7 @@ export function TemplateEditor({
           <VorlagenHinweise fehler={klammerFehler} unbekannt={unbekannt} schreibregeln={regelVerstoesse} />
           <p className="mt-2 text-xs text-slate-500">Signatur (Einstellungen) und Abmeldelink werden automatisch angehängt.</p>
         </div>
+        <AnhangEditor campaignId={campaignId} followupId={null} anhaenge={anhaenge} onChange={setAnhaenge} erstmail gesperrt={gesperrt} />
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => void speichern()} disabled={!geaendert || klammerFehler.length > 0} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
             Speichern
@@ -211,6 +220,7 @@ export function TemplateEditor({
             <span className="text-slate-500">Betreff: </span>
             <strong>{preview?.subject ?? '–'}</strong>
           </div>
+          <AnhangVorschau anhaenge={anhaenge} />
           <div className="flex gap-1 border-b border-slate-200 px-2 pt-1 text-xs">
             {(['html', 'text'] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)} className={`rounded-t px-3 py-1.5 font-medium ${tab === t ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>

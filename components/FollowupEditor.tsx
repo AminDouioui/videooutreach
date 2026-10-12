@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { MAX_VARIANTEN, naechstesKuerzel, STANDARD_VARIANTE } from '@/lib/varianten';
 import { pruefeFelder } from '@/lib/schreibregeln';
 import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
+import { AnhangEditor, AnhangVorschau, type AnhangInfo } from './AnhangEditor';
 import { KiVorschlag } from './KiKomponenten';
 import { platzhalterFuer } from './TemplateEditor';
 import { VorlagenHinweise } from './VorlagenHilfe';
@@ -11,7 +12,7 @@ import { VorlagenHinweise } from './VorlagenHilfe';
 type LeadOption = { id: number; label: string };
 type FVariante = { kuerzel: string; text: string; betreff: string; aktiv: boolean };
 /** Variante A = body/betreff; varianten = B–E. Betreff gesetzt = neuer Thread statt „Re: …“. */
-type Schritt = { waitDays: number; body: string; betreff: string; varianten: FVariante[] };
+type Schritt = { /** Datensatz-ID, sobald gespeichert (Anhänge hängen daran) */ id?: number; waitDays: number; body: string; betreff: string; varianten: FVariante[] };
 type Preview = { subject: string; html: string; text: string };
 
 const feld = 'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600';
@@ -38,6 +39,8 @@ export function FollowupEditor({
   extraSpalten = [],
   kiAktiv = false,
   schreibregeln = false,
+  anhaenge: anhaenge0 = {},
+  gesperrt = false,
 }: {
   campaignId: number;
   initial: Schritt[];
@@ -49,7 +52,12 @@ export function FollowupEditor({
   kiAktiv?: boolean;
   /** Prozessia-Schreibregeln prüfen (Einstellung) */
   schreibregeln?: boolean;
+  /** Bereits hochgeladene Anhänge je Follow-up-ID */
+  anhaenge?: Record<number, AnhangInfo[]>;
+  /** Rolle ohne Schreibrecht (Upload gesperrt) */
+  gesperrt?: boolean;
 }) {
+  const [anhaenge, setAnhaenge] = useState<Record<number, AnhangInfo[]>>(anhaenge0);
   const [schritte, setSchritte] = useState<Schritt[]>(initial);
   const [gespeichert, setGespeichert] = useState(JSON.stringify(initial));
   const [status, setStatus] = useState<{ text: string; fehler: boolean } | null>(null);
@@ -103,7 +111,7 @@ export function FollowupEditor({
         const res = await fetch(`/api/leads/${leadId}/mail-preview`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ variante: variante || undefined, followupBody: vorschauText, followupBetreff: vorschauBetreff, followupNr: aktiv + 1 }),
+          body: JSON.stringify({ variante: variante || undefined, followupBody: vorschauText, followupBetreff: vorschauBetreff, followupNr: aktiv + 1, followupId: schritt.id }),
           signal: ctrl.signal,
         });
         if (res.ok) setPreview(await res.json());
@@ -169,7 +177,13 @@ export function FollowupEditor({
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
-      setGespeichert(JSON.stringify(schritte));
+      // Neue Schritte haben jetzt eine ID (Anhänge sind ab da möglich); bestehende behalten ihre
+      const ids: number[] = Array.isArray(data.ids) ? data.ids : [];
+      const mitIds = schritte.map((x, i) => (ids[i] !== undefined ? { ...x, id: ids[i] } : x));
+      setSchritte(mitIds);
+      setGespeichert(JSON.stringify(mitIds));
+      // Anhänge entfernter Schritte sind serverseitig gelöscht
+      setAnhaenge((a) => Object.fromEntries(Object.entries(a).filter(([k]) => ids.includes(Number(k)))));
       const w: string[] = data.warnungen ?? [];
       setStatus({ text: w.length ? `Gespeichert (${w.join(', ')})` : 'Gespeichert', fehler: false });
     } else setStatus({ text: data.error ?? 'Speichern fehlgeschlagen', fehler: true });
@@ -289,6 +303,13 @@ export function FollowupEditor({
                     rows={7}
                     className={`${feld} font-mono`}
                   />
+                  <AnhangEditor
+                    campaignId={campaignId}
+                    followupId={s.id}
+                    anhaenge={s.id !== undefined ? (anhaenge[s.id] ?? []) : []}
+                    onChange={(liste) => s.id !== undefined && setAnhaenge((a) => ({ ...a, [s.id as number]: liste }))}
+                    gesperrt={gesperrt}
+                  />
                 </div>
               );
             })()}
@@ -338,6 +359,7 @@ export function FollowupEditor({
             <strong>{schritt ? (preview?.subject ?? '–') : '–'}</strong>
             {schritt && vorschauBetreff.trim() !== '' && <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">neuer Thread</span>}
           </div>
+          <AnhangVorschau anhaenge={schritt?.id !== undefined ? (anhaenge[schritt.id] ?? []) : []} />
           <iframe title="Follow-up-Vorschau" sandbox="" srcDoc={schritt ? (preview?.html ?? '') : ''} className="h-[420px] w-full rounded-b-lg bg-white" />
         </div>
       </div>
