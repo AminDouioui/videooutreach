@@ -164,6 +164,11 @@ function zerlege(koerper: Buffer, grenze: string): Buffer[] {
       teile.push(koerper.subarray(start, ende));
     }
     const nach = i + marke.length;
+    // Nach der Marke muss „--“ (Ende) oder Leerraum bis zum Zeilenende folgen; sonst ist es eine längere Grenze (z. B. --abc_alt bei --abc)
+    if (!text.startsWith('--', nach) && !/^[ \t]*(\r?\n|$)/.test(text.slice(nach, nach + 80))) {
+      pos = nach;
+      continue;
+    }
     if (text.startsWith('--', nach)) return teile;
     const zeilenEnde = text.indexOf('\n', nach);
     if (zeilenEnde === -1) return teile;

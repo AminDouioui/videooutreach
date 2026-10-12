@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
+import { ladeAnhaenge } from '@/lib/anhaenge-db';
 import { getDb, schema } from '@/lib/db';
 import { fehler } from '@/lib/request';
 import { buildLeadEmail } from '@/lib/send';
@@ -14,6 +15,11 @@ export const dynamic = 'force-dynamic';
 function gueltigeVariante(campaignId: number, v: unknown): string | null {
   if (typeof v !== 'string' || !v) return null;
   return v === STANDARD_VARIANTE || ladeVarianten(campaignId).some((x) => x.kuerzel === v) ? v : null;
+}
+
+/** Anhänge der Mail (Name, Größe) für die Vorschau; Follow-up nur, wenn der Schritt zur Kampagne gehört */
+function vorschauAnhaenge(campaignId: number, followupId: number | null) {
+  return ladeAnhaenge(campaignId, followupId).map((a) => ({ id: a.id, dateiname: a.dateiname, groesse: a.groesse }));
 }
 
 /**
@@ -33,7 +39,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const variante = vorschauVariante(lead, gueltigeVariante(kampagne.id, new URL(req.url).searchParams.get('variante')));
   const mail = buildLeadEmail(lead, kampagne, undefined, variante, undefined, true);
-  return NextResponse.json({ ...mail, variante });
+  return NextResponse.json({ ...mail, variante, anhaenge: vorschauAnhaenge(kampagne.id, null) });
 }
 
 /** Vorschau mit noch nicht gespeicherter Vorlage: Body { subject, body, followupBody?, followupBetreff?, variante? } (mit followupBody: Follow-up im Thread, mit followupBetreff als neuer Thread; ohne subject/body gilt die Vorlage der Variante) */
@@ -47,7 +53,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!lead) return fehler('Lead nicht gefunden', 404);
   const kampagne = db.select().from(schema.campaigns).where(eq(schema.campaigns.id, lead.campaignId)).get();
   if (!kampagne) return fehler('Kampagne nicht gefunden', 404);
-  let body: { subject?: unknown; body?: unknown; followupBody?: unknown; followupBetreff?: unknown; followupNr?: unknown; variante?: unknown } = {};
+  let body: { subject?: unknown; body?: unknown; followupBody?: unknown; followupBetreff?: unknown; followupNr?: unknown; followupId?: unknown; variante?: unknown } = {};
   try {
     body = await req.json();
   } catch {
@@ -67,5 +73,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     undefined,
     true,
   );
-  return NextResponse.json({ ...mail, variante });
+  // Anhänge: Erstmail, oder die des Follow-up-Schritts (ladeAnhaenge filtert nach Kampagne)
+  let anhaenge: ReturnType<typeof vorschauAnhaenge> = [];
+  if (typeof body.followupBody !== 'string') anhaenge = vorschauAnhaenge(kampagne.id, null);
+  else if (typeof body.followupId === 'number' && Number.isInteger(body.followupId)) anhaenge = vorschauAnhaenge(kampagne.id, body.followupId);
+  return NextResponse.json({ ...mail, variante, anhaenge });
 }

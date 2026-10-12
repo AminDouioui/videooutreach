@@ -1,4 +1,5 @@
 import { and, asc, eq, gte, sql } from 'drizzle-orm';
+import { ladeAnhangDateien } from './anhaenge-db';
 import { getDb, schema } from './db';
 import { getEnv } from './env';
 import { absenderName, absenderSignatur, istSmtp, kannAntwortenPruefen, ladeAbsenderMitId, ladePostfachZustaende, markiereAuthFehler, postfachFuerLead, postfachNichtNutzbar, stoppeQuota, type Absender } from './absender';
@@ -119,6 +120,9 @@ export function buildLeadMimeMitId(lead: typeof schema.leads.$inferSelect, campa
   const from = senderInfo(opts.absender);
   const appUrl = getEnv().APP_URL.replace(/\/$/, '');
   const messageId = neueMessageId(from.email);
+  // Anhänge des Schritts: Erstmail (kein Schritt) oder das Follow-up; ein Schritt ohne Datensatz (Vorschau) hat keine
+  const followupId = opts.schritt ? opts.schritt.followupId : null;
+  const anhaenge = followupId === undefined ? [] : ladeAnhangDateien(campaign.id, followupId);
   const raw = buildMime({
     from,
     to: opts.to ?? lead.email,
@@ -130,6 +134,7 @@ export function buildLeadMimeMitId(lead: typeof schema.leads.$inferSelect, campa
     // Follow-up mit eigenem Betreff = neuer Thread: weder In-Reply-To noch References
     inReplyTo: istNeuerThread(opts.schritt) ? undefined : opts.inReplyTo,
     messageId,
+    anhaenge,
   });
   return { raw, messageId };
 }
@@ -448,7 +453,7 @@ export async function sendFollowup(leadId: number, opts: SendOptions = {}): Prom
     }
     // Variante rotierend (wenigste Versendungen dieses Schritts); eigener Betreff = neuer Thread
     const wahl = waehleFollowupVariante(schritt, lead.followupsSent + 1);
-    const mailSchritt = { body: wahl.body, betreff: wahl.betreff, nr: lead.followupsSent + 1 };
+    const mailSchritt = { body: wahl.body, betreff: wahl.betreff, nr: lead.followupsSent + 1, followupId: schritt.id };
     const { raw } = buildLeadMimeMitId(lead, kampagne, { schritt: mailSchritt, inReplyTo: lead.rfcMessageId ?? undefined, absender: postfach });
     // Neuer Thread: ohne threadId senden. lead.gmailThreadId bleibt die der Erstmail, die neue Thread-ID steht in sent_messages
     const res = await sender(raw, istNeuerThread(mailSchritt) ? undefined : lead.gmailThreadId, postfach);

@@ -127,6 +127,19 @@ describe('SMTP-Senden', () => {
     expect(tr.stand().geschlossen).toBe(1);
   });
 
+  it('reicht auch eine Nachricht mit Anhang (multipart/mixed) byte-genau durch', async () => {
+    const tr = fakeTransport();
+    const treiber = t.erzeugeSmtpTreiber({ transport: tr.factory, imap: fakeImap().factory });
+    const pdf = Buffer.from('%PDF-1.4\nTest\n%%EOF');
+    const raw = buildMime({ from: { email: 'amin@prozessia.de' }, to: 'k@kunde.de', subject: 'Mit Anhang', html: '<p>Hi</p>', text: 'Hi', listUnsubscribeUrl: 'https://x.de/u', listUnsubscribeMailto: 'mailto:amin@prozessia.de', messageId: MID, anhaenge: [{ dateiname: 'Übersicht.pdf', mime: 'application/pdf', inhalt: pdf }] });
+    await treiber.senden(raw, undefined, pf());
+    expect(tr.gesendet[0].raw.equals(Buffer.from(raw, 'base64url'))).toBe(true);
+    const text = tr.gesendet[0].raw.toString('utf8');
+    expect(text).toContain('multipart/mixed');
+    expect(text).toContain(pdf.toString('base64'));
+    expect(tr.gesendet[0].envelope).toEqual({ from: 'amin@prozessia.de', to: ['k@kunde.de'] });
+  });
+
   it('Antwort im Thread behält die übergebene Thread-ID', async () => {
     const tr = fakeTransport();
     const treiber = t.erzeugeSmtpTreiber({ transport: tr.factory, imap: fakeImap().factory });

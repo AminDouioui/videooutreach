@@ -39,7 +39,7 @@ export type MailCampaign = {
  * Für Follow-ups: eigener Text; Betreff „Re: …“ der Erstmail, außer `betreff` ist gesetzt (dann eigener Betreff und
  * neuer Thread). `nr` = Nummer des Follow-ups (ab 1, Spintax-Seed).
  */
-export type MailSchritt = { body: string; nr?: number; betreff?: string | null };
+export type MailSchritt = { body: string; nr?: number; betreff?: string | null; /** Follow-up-Datensatz (für dessen Anhänge); ohne Angabe keine Anhänge */ followupId?: number };
 
 /** Eigener Betreff eines Follow-ups (getrimmt) oder null, wenn leer. */
 export function eigenerBetreff(schritt?: Pick<MailSchritt, 'betreff'> | null): string | null {
@@ -256,8 +256,22 @@ export function formatAddress(a: { name?: string | null; email: string }): strin
 }
 
 /** Base64 in 76-Zeichen-Zeilen (RFC 2045). */
-function base64Zeilen(s: string): string {
-  return (Buffer.from(s, 'utf8').toString('base64').match(/.{1,76}/g) ?? []).join(CRLF);
+function base64Zeilen(s: string | Buffer): string {
+  const b64 = (typeof s === 'string' ? Buffer.from(s, 'utf8') : s).toString('base64');
+  return (b64.match(/.{1,76}/g) ?? []).join(CRLF);
+}
+
+/** RFC 2231: `UTF-8''` + Prozent-Kodierung aller Bytes außer attr-char. */
+function rfc2231(wert: string): string {
+  const zeichen = [...Buffer.from(wert, 'utf8')].map((b) => (/[A-Za-z0-9!#$&+\-.^_`|~]/.test(String.fromCharCode(b)) ? String.fromCharCode(b) : `%${b.toString(16).toUpperCase().padStart(2, '0')}`));
+  return `UTF-8''${zeichen.join('')}`;
+}
+
+/** Dateiname als Header-Parameter: ASCII als quoted-string, sonst RFC 2047 (für ältere Clients) plus RFC 2231 `name*=`. */
+function dateinameParameter(param: 'filename' | 'name', dateiname: string): string {
+  const name = sauber(dateiname).replace(/[\\"]/g, '_');
+  if (istAscii(name)) return `${param}="${name}"`;
+  return `${param}="${encodeHeaderWord(name)}";${CRLF} ${param}*=${rfc2231(name)}`;
 }
 
 function sauber(s: string): string {
@@ -276,11 +290,15 @@ export type MimeOptions = {
   inReplyTo?: string;
   /** Vollständige References-Kette (Message-IDs, Leerzeichen-getrennt); ohne Angabe nur `inReplyTo` */
   references?: string;
+  /** Dateianhänge: mit Anhängen wird die Mail multipart/mixed { multipart/alternative, Anhänge }, ohne bleibt sie multipart/alternative */
+  anhaenge?: MimeAnhang[];
   /** Nur für Tests deterministisch */
   date?: Date;
   messageId?: string;
   boundary?: string;
 };
+
+export type MimeAnhang = { dateiname: string; mime: string; inhalt: Buffer };
 
 /** Neue Message-ID für den Absender (`<zufall@domain>`). */
 export function neueMessageId(fromEmail: string): string {
@@ -288,11 +306,18 @@ export function neueMessageId(fromEmail: string): string {
   return `<${randomBytes(12).toString('hex')}@${domain}>`;
 }
 
-/** Baut die RFC-2822-Nachricht (multipart/alternative, text + html, kein Anhang) als String. */
+/**
+ * Baut die RFC-2822-Nachricht als String: multipart/alternative (text + html); mit `anhaenge` umschlossen von
+ * multipart/mixed, die Anhänge folgen als base64-Teile mit `Content-Disposition: attachment`.
+ */
 export function buildMimeText(o: MimeOptions): string {
   const boundary = o.boundary ?? `=_vo_${randomBytes(12).toString('hex')}`;
   const messageId = o.messageId ?? neueMessageId(o.from.email);
   const datum = (o.date ?? new Date()).toUTCString().replace('GMT', '+0000');
+  const anhaenge = o.anhaenge ?? [];
+  const mitAnhang = anhaenge.length > 0;
+  // Mit Anhängen ist `boundary` die äußere (mixed) Grenze, die alternative-Grenze leitet sich daraus ab (kein Präfix der äußeren, damit einfache Parser sie nicht verwechseln)
+  const grenzeAlt = mitAnhang ? `alt_${boundary}` : boundary;
 
   const kopf = [
     `Date: ${datum}`,
@@ -304,14 +329,27 @@ export function buildMimeText(o: MimeOptions): string {
     'MIME-Version: 1.0',
     `List-Unsubscribe: <${sauber(o.listUnsubscribeUrl)}>, <${sauber(o.listUnsubscribeMailto)}>`,
     'List-Unsubscribe-Post: List-Unsubscribe=One-Click',
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    `Content-Type: ${mitAnhang ? 'multipart/mixed' : 'multipart/alternative'}; boundary="${boundary}"`,
   ].join(CRLF);
 
   const teil = (typ: string, inhalt: string) =>
-    [`--${boundary}`, `Content-Type: ${typ}; charset="UTF-8"`, 'Content-Transfer-Encoding: base64', '', base64Zeilen(inhalt)].join(CRLF);
+    [`--${grenzeAlt}`, `Content-Type: ${typ}; charset="UTF-8"`, 'Content-Transfer-Encoding: base64', '', base64Zeilen(inhalt)].join(CRLF);
 
   // Klartext zuerst, HTML zuletzt (bevorzugte Variante)
-  return [kopf, '', teil('text/plain', o.text), teil('text/html', o.html), `--${boundary}--`, ''].join(CRLF);
+  const alternativ = [teil('text/plain', o.text), teil('text/html', o.html), `--${grenzeAlt}--`].join(CRLF);
+  if (!mitAnhang) return [kopf, '', alternativ, ''].join(CRLF);
+
+  const anhangTeil = (a: MimeAnhang) =>
+    [
+      `--${boundary}`,
+      `Content-Type: ${sauber(a.mime).replace(/[^A-Za-z0-9.+\-/]/g, '') || 'application/octet-stream'};${CRLF} ${dateinameParameter('name', a.dateiname)}`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment;${CRLF} ${dateinameParameter('filename', a.dateiname)}`,
+      '',
+      base64Zeilen(a.inhalt),
+    ].join(CRLF);
+
+  return [kopf, '', `--${boundary}`, `Content-Type: multipart/alternative; boundary="${grenzeAlt}"`, '', alternativ, ...anhaenge.map(anhangTeil), `--${boundary}--`, ''].join(CRLF);
 }
 
 /** base64url (ohne Padding) für `users.messages.send`. */

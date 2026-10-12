@@ -5,6 +5,7 @@ import { getDb, schema } from '@/lib/db';
 import { ladeAbsender, ladeAbsenderMitId, postfachFuerLead, postfachNichtNutzbar, type Absender } from '@/lib/absender';
 import { GmailSendError } from '@/lib/gmail';
 import { treiberFuer } from '@/lib/postfach-treiber';
+import type { MailSchritt } from '@/lib/mail';
 import { parseJson } from '@/lib/request';
 import { buildLeadMime } from '@/lib/send';
 import { STANDARD_VARIANTE } from '@/lib/varianten';
@@ -14,7 +15,13 @@ import { erfordereRolle } from '@/lib/session';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const bodySchema = z.object({ leadId: z.number().int().optional(), variante: z.string().max(8).optional(), absenderId: z.number().int().optional() });
+const bodySchema = z.object({
+  leadId: z.number().int().optional(),
+  variante: z.string().max(8).optional(),
+  absenderId: z.number().int().optional(),
+  // Follow-up-Schritt testen (mit dessen Anhängen); ohne Angabe die Erstmail
+  followupId: z.number().int().optional(),
+});
 
 /** Testmail vom gewählten Postfach an dessen eigene Adresse („[TEST]“ im Betreff). Ändert keinen Lead-Status. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -36,6 +43,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // Variante: gewählte, sonst die des Leads, sonst A
   const variante = parsed.data.variante ?? lead.variante ?? STANDARD_VARIANTE;
   if (variante !== STANDARD_VARIANTE && !ladeVarianten(id).some((v) => v.kuerzel === variante)) return fail(`Variante ${variante} existiert nicht`);
+  // Follow-up-Schritt: Text von Variante A des gespeicherten Schritts, Anhänge des Schritts
+  let schritt: MailSchritt | undefined;
+  if (parsed.data.followupId !== undefined) {
+    const f = db.select().from(schema.followups).where(eq(schema.followups.id, parsed.data.followupId)).get();
+    if (!f || f.campaignId !== id) return fail('Follow-up nicht gefunden', 404);
+    schritt = { body: f.body, betreff: f.betreff, nr: f.position, followupId: f.id };
+  }
   // Postfach: das gewählte, sonst das des Leads, sonst das erste nutzbare
   let absender: Absender | null | undefined;
   if (parsed.data.absenderId !== undefined) absender = ladeAbsenderMitId(parsed.data.absenderId);
@@ -45,7 +59,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (grund) return fail(grund);
 
   try {
-    await treiberFuer(absender).senden(buildLeadMime(lead, kampagne, { to: absender.email, subjectPrefix: `[TEST${variante === STANDARD_VARIANTE ? '' : ` ${variante}`}] `, variante, absender, vorschau: true }), undefined, absender);
+    await treiberFuer(absender).senden(buildLeadMime(lead, kampagne, { to: absender.email, subjectPrefix: `[TEST${variante === STANDARD_VARIANTE ? '' : ` ${variante}`}] `, variante, absender, vorschau: true, schritt }), undefined, absender);
     return NextResponse.json({ ok: true, to: absender.email });
   } catch (e) {
     return fail(e instanceof GmailSendError ? e.message : e instanceof Error ? e.message : 'Senden fehlgeschlagen');
