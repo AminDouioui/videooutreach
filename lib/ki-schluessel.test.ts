@@ -15,7 +15,7 @@ Object.assign(process.env, {
   IP_HASH_SALT: 's',
   APP_URL: 'https://video.example.de',
 });
-const ENV_KEYS = ['ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'OPENAI_MODEL', 'JEV_MODELL', 'OPENAI_BASE_URL', 'JEV_BASE_URL', 'ANTHROPIC_BASE_URL'];
+const ENV_KEYS = ['TYPESAFE_API_KEY', 'TYPESAFE_BASE_URL', 'TYPESAFE_JEV_MODELL', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'OPENAI_MODEL', 'JEV_MODELL', 'OPENAI_BASE_URL', 'JEV_BASE_URL', 'ANTHROPIC_BASE_URL'];
 const GEHEIM = 'sk-test-GEHEIM-0123456789abcd';
 
 type Mods = {
@@ -279,5 +279,77 @@ describe('Verbindungstest (injiziertes fetch)', () => {
     expect(gesehen).toEqual([`Bearer ${GEHEIM}`, 'Bearer gespeichert-123456']);
     const leer = await m.testRoute.POST(req('POST', 'admin', { anbieter: 'anthropic' }));
     expect((await leer.json()).meldung).toBe('Kein Schlüssel hinterlegt.');
+  });
+});
+
+describe('TypeSafe (Jev direkt)', () => {
+  it('Schlüssel verschlüsselt speichern, schaltet Jev frei, .env-Fallback und Vorrang der App', () => {
+    expect(m.settings.verfuegbareKlassifizierer()).toEqual([]);
+    umgebung({ TYPESAFE_API_KEY: 'env-typesafe-1234' });
+    expect(m.settings.kiSchluesselMitQuelle('typesafe')?.quelle).toBe('env');
+    expect(m.settings.verfuegbareKlassifizierer()).toEqual(['jev']);
+    expect(m.ki.klassifizierungVerfuegbar()).toBe(true);
+    m.settings.setzeKiSchluessel('typesafe', GEHEIM);
+    expect(m.settings.kiSchluesselMitQuelle('typesafe')).toEqual({ schluessel: GEHEIM, quelle: 'app' });
+    expect(rohSettings()).toContain('typesafe_api_key');
+    expect(rohSettings()).not.toContain('0123456789abcd');
+    expect(m.settings.jevAnbieter()).toBe('typesafe');
+    m.settings.setzeKiSchluessel('openrouter', 'sk-or-x-123456789');
+    expect(m.settings.jevAnbieter()).toBe('typesafe');
+    m.settings.loescheKiSchluessel('typesafe');
+    umgebung({});
+    expect(m.settings.jevAnbieter()).toBe('openrouter');
+    m.settings.loescheKiSchluessel('openrouter');
+    expect(m.settings.jevAnbieter()).toBeNull();
+  });
+  it('Modell: Standard jev-latest, TYPESAFE_JEV_MODELL, Einstellung gewinnt; Status je Anbieter', async () => {
+    expect(m.settings.kiModell('typesafe')).toBe('jev-latest');
+    umgebung({ TYPESAFE_JEV_MODELL: 'jev-1.13' });
+    expect(m.settings.kiModell('typesafe')).toBe('jev-1.13');
+    m.settings.setSetting('typesafe_modell', 'jev-x');
+    expect(m.settings.kiModell('typesafe')).toBe('jev-x');
+    m.settings.deleteSetting('typesafe_modell');
+    expect(m.view.kiSchluesselStatus(true).typesafe).toEqual({ gesetzt: false, quelle: null, maske: null, appGespeichert: false });
+  });
+  it('Routen: Admin setzt den Schlüssel, Mitglied nicht', async () => {
+    expect((await m.route.PUT(req('PUT', 'mitglied', { anbieter: 'typesafe', schluessel: GEHEIM }))).status).toBe(403);
+    const res = await m.route.PUT(req('PUT', 'admin', { anbieter: 'typesafe', schluessel: GEHEIM }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).kiSchluessel.typesafe).toEqual({ gesetzt: true, quelle: 'app', maske: '…abcd', appGespeichert: true });
+    m.settings.loescheKiSchluessel('typesafe');
+  });
+  it('Verbindungstest: GET {TYPESAFE_BASE_URL}/v1/models mit Bearer; zeigt Modelle und warnt bei unbekanntem Modell', async () => {
+    const aufrufe: { url: string; method?: string; headers: Record<string, string> }[] = [];
+    const mitListe = (liste: unknown) =>
+      (async (url: string, init: RequestInit) => {
+        aufrufe.push({ url, method: init.method, headers: init.headers as Record<string, string> });
+        return new Response(JSON.stringify(liste), { status: 200 });
+      }) as unknown as typeof fetch;
+    umgebung({ TYPESAFE_BASE_URL: 'http://127.0.0.1:5/' });
+    const a = await m.verb.testeKiVerbindung('typesafe', 'kk', mitListe({ data: [{ id: 'jev-1.13.0' }, { id: 'jev-2' }] }));
+    expect(aufrufe[0]).toEqual({ url: 'http://127.0.0.1:5/v1/models', method: 'GET', headers: { Authorization: 'Bearer kk' } });
+    expect(a).toMatchObject({ ok: true, modelle: ['jev-1.13.0', 'jev-2'] });
+    expect(a.meldung).toContain('jev-1.13.0, jev-2');
+    expect(a.meldung).not.toContain('Achtung'); // Standard jev-latest: es gibt Jev-Modelle
+    umgebung({ TYPESAFE_JEV_MODELL: 'foo-3' });
+    const b = await m.verb.testeKiVerbindung('typesafe', 'kk', mitListe(['jev-latest', 'jev-1.13']));
+    expect(b.meldung).toContain('Achtung');
+    expect(b.meldung).toContain('foo-3');
+    umgebung({ TYPESAFE_JEV_MODELL: 'jev-1.13' });
+    expect((await m.verb.testeKiVerbindung('typesafe', 'kk', mitListe({ models: ['jev-1.13.0'] }))).meldung).not.toContain('Achtung');
+    const unbekannt = await m.verb.testeKiVerbindung('typesafe', 'kk', mitListe({ foo: 1 }));
+    expect(unbekannt).toMatchObject({ ok: true, meldung: 'Schlüssel gültig' });
+    const f401 = (async () => new Response('{}', { status: 401 })) as unknown as typeof fetch;
+    expect(await m.verb.testeKiVerbindung('typesafe', 'kk', f401)).toMatchObject({ ok: false, meldung: 'Schlüssel ungültig (401)' });
+    umgebung({});
+    await m.verb.testeKiVerbindung('typesafe', 'kk', mitListe([]));
+    expect(aufrufe.at(-1)?.url).toBe('https://api.typesafe.ai/v1/models');
+  });
+  it('Test-Route ohne Netz: Meldung „Keine Verbindung“, kein OpenRouter-Bezug', async () => {
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('fetch failed');
+    });
+    const res = await m.testRoute.POST(req('POST', 'admin', { anbieter: 'typesafe', schluessel: GEHEIM }));
+    expect(await res.json()).toEqual({ ok: false, meldung: 'Keine Verbindung' });
   });
 });

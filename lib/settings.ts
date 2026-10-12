@@ -21,17 +21,19 @@ export type SettingKey =
   | 'bounce_schwelle_postfach'
   // KI-Einordnung von Antworten: 'aus' | 'vorschlagen' (Standard) | 'automatisch'
   | 'ki_auto_status'
-  // Klassifizierer der Einordnung: 'anthropic' | 'jev' (Standard: Jev, wenn OPENROUTER_API_KEY gesetzt ist)
+  // Klassifizierer der Einordnung: 'anthropic' | 'jev' (Standard: Jev, wenn ein TypeSafe- oder OpenRouter-Schlüssel gesetzt ist)
   | 'ki_klassifizierer'
   // Anbieter für Texte/Entwürfe (Antwort-Entwurf, Schreibhilfe): 'openai' | 'anthropic' (Standard: OpenAI, wenn OPENAI_API_KEY gesetzt ist)
   | 'ki_entwurf_anbieter'
   // API-Schlüssel der KI-Anbieter (AES-GCM verschlüsselt, siehe lib/crypto.ts; nie im Klartext in DB oder Logs)
   | 'anthropic_api_key'
+  | 'typesafe_api_key'
   | 'openrouter_api_key'
   | 'openai_api_key'
   // Modell-IDs (Klartext, optional; leer = Standard aus .env bzw. eingebauter Standard)
   | 'openai_model'
   | 'jev_modell'
+  | 'typesafe_modell'
   // Prozessia-Schreibregeln prüfen: '0' = aus, sonst an (Standard)
   | 'schreibregeln_aktiv'
   // Brain-Anbindung (Lead-Kontext): URL im Klartext, Token AES-GCM verschlüsselt (lib/brain.ts)
@@ -112,11 +114,11 @@ export function kiAutoStatus(): KiAutoStatus {
 
 // ---------------------------------------------------------------- KI-Schlüssel und -Modelle (Einstellung vor .env)
 
-export const KI_ANBIETER = ['openrouter', 'openai', 'anthropic'] as const;
+export const KI_ANBIETER = ['typesafe', 'openrouter', 'openai', 'anthropic'] as const;
 export type KiAnbieter = (typeof KI_ANBIETER)[number];
-export const KI_ANBIETER_LABEL: Record<KiAnbieter, string> = { openrouter: 'OpenRouter (Jev)', openai: 'OpenAI', anthropic: 'Claude (Anthropic)' };
+export const KI_ANBIETER_LABEL: Record<KiAnbieter, string> = { typesafe: 'TypeSafe (Jev, direkt)', openrouter: 'OpenRouter (Jev)', openai: 'OpenAI', anthropic: 'Claude (Anthropic)' };
 
-const SCHLUESSEL_SETTING: Record<KiAnbieter, SettingKey> = { anthropic: 'anthropic_api_key', openrouter: 'openrouter_api_key', openai: 'openai_api_key' };
+const SCHLUESSEL_SETTING: Record<KiAnbieter, SettingKey> = { anthropic: 'anthropic_api_key', typesafe: 'typesafe_api_key', openrouter: 'openrouter_api_key', openai: 'openai_api_key' };
 
 export type KiSchluesselQuelle = 'app' | 'env';
 
@@ -133,7 +135,9 @@ function appSchluessel(anbieter: KiAnbieter): string | null {
 
 function envSchluessel(anbieter: KiAnbieter): string | undefined {
   const env = getEnv();
-  return anbieter === 'anthropic' ? env.ANTHROPIC_API_KEY : anbieter === 'openrouter' ? env.OPENROUTER_API_KEY : env.OPENAI_API_KEY;
+  if (anbieter === 'anthropic') return env.ANTHROPIC_API_KEY;
+  if (anbieter === 'typesafe') return env.TYPESAFE_API_KEY;
+  return anbieter === 'openrouter' ? env.OPENROUTER_API_KEY : env.OPENAI_API_KEY;
 }
 
 /** Wirksamer Schlüssel und woher er kommt: die Einstellung in der App hat Vorrang vor der .env. Wird bei jedem Aufruf neu gelesen (kein Cache). */
@@ -174,9 +178,15 @@ export function maskiereSchluessel(wert: string): string {
 }
 
 /** Modell-ID: Einstellung in der App vor .env vor eingebautem Standard. */
-export function kiModell(art: 'openai' | 'jev'): string {
+export function kiModell(art: 'openai' | 'jev' | 'typesafe'): string {
   const env = getEnv();
-  return art === 'openai' ? getSetting('openai_model')?.trim() || env.OPENAI_MODEL : getSetting('jev_modell')?.trim() || env.JEV_MODELL;
+  if (art === 'openai') return getSetting('openai_model')?.trim() || env.OPENAI_MODEL;
+  return art === 'typesafe' ? getSetting('typesafe_modell')?.trim() || env.TYPESAFE_JEV_MODELL : getSetting('jev_modell')?.trim() || env.JEV_MODELL;
+}
+
+/** Über welchen Zugang läuft Jev? TypeSafe direkt hat Vorrang, sonst OpenRouter; null = kein Schlüssel. */
+export function jevAnbieter(): 'typesafe' | 'openrouter' | null {
+  return kiSchluessel('typesafe') ? 'typesafe' : kiSchluessel('openrouter') ? 'openrouter' : null;
 }
 
 export const KI_KLASSIFIZIERER = ['anthropic', 'jev'] as const;
@@ -184,11 +194,11 @@ export type KiKlassifizierer = (typeof KI_KLASSIFIZIERER)[number];
 
 /** Welche Klassifizierer haben einen Schlüssel? */
 export function verfuegbareKlassifizierer(): KiKlassifizierer[] {
-  return [...(kiSchluessel('anthropic') ? (['anthropic'] as const) : []), ...(kiSchluessel('openrouter') ? (['jev'] as const) : [])];
+  return [...(kiSchluessel('anthropic') ? (['anthropic'] as const) : []), ...(jevAnbieter() ? (['jev'] as const) : [])];
 }
 
 /**
- * Gewählter Klassifizierer: die Einstellung, sofern deren Schlüssel gesetzt ist; sonst Jev (wenn OPENROUTER_API_KEY
+ * Gewählter Klassifizierer: die Einstellung, sofern deren Schlüssel gesetzt ist; sonst Jev (wenn ein TypeSafe- oder OpenRouter-Schlüssel
  * gesetzt ist), sonst Anthropic. null = keiner verfügbar.
  */
 export function kiKlassifizierer(): KiKlassifizierer | null {

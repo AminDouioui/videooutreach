@@ -31,12 +31,13 @@ const bodySchema = z.object({
   // Prozessia-Schreibregeln prüfen; fehlt das Feld, bleibt die Einstellung unverändert
   schreibregelnAktiv: z.boolean().optional(),
   datenschutzUrl: urlOderLeer,
-  // Nur mit KI-Schlüssel (Anthropic oder OpenRouter) sichtbar; fehlt das Feld, bleibt die Einstellung unverändert
+  // Nur mit KI-Schlüssel (Anthropic, TypeSafe oder OpenRouter) sichtbar; fehlt das Feld, bleibt die Einstellung unverändert
   kiAutoStatus: z.enum(KI_AUTO_STATUS).optional(),
   kiKlassifizierer: z.enum(KI_KLASSIFIZIERER).optional(),
   kiEntwurfAnbieter: z.enum(KI_ENTWURF_ANBIETER).optional(),
   // Modell-IDs (leer = Standard); fehlt das Feld, bleibt die Einstellung unverändert
   openaiModell: z.string().trim().max(200).regex(/^[^\s]*$/, 'Die Modell-ID darf keine Leerzeichen enthalten').optional(),
+  typesafeModell: z.string().trim().max(200).regex(/^[^\s]*$/, 'Die Modell-ID darf keine Leerzeichen enthalten').optional(),
   jevModell: z.string().trim().max(200).regex(/^[^\s]*$/, 'Die Modell-ID darf keine Leerzeichen enthalten').optional(),
 });
 
@@ -72,6 +73,7 @@ export async function PUT(req: Request) {
   if (d.kiKlassifizierer) setSetting('ki_klassifizierer', d.kiKlassifizierer);
   if (d.kiEntwurfAnbieter) setSetting('ki_entwurf_anbieter', d.kiEntwurfAnbieter);
   if (d.openaiModell !== undefined) setOrDelete('openai_model', d.openaiModell);
+  if (d.typesafeModell !== undefined) setOrDelete('typesafe_modell', d.typesafeModell);
   if (d.jevModell !== undefined) setOrDelete('jev_modell', d.jevModell);
   return NextResponse.json({ ok: true });
 }

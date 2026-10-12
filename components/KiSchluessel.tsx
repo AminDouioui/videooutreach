@@ -3,14 +3,33 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-export type KiAnbieterId = 'openrouter' | 'openai' | 'anthropic';
+export type KiAnbieterId = 'typesafe' | 'openrouter' | 'openai' | 'anthropic';
 export type SchluesselStatus = { gesetzt: boolean; quelle: 'app' | 'env' | null; maske: string | null; appGespeichert: boolean };
 
-const ANBIETER: { id: KiAnbieterId; name: string; zweck: string; hinweis: string; link: string; linkText: string; optional?: boolean }[] = [
-  { id: 'openrouter', name: 'OpenRouter (Jev)', zweck: 'für die Einordnung', hinweis: 'Schlüssel erstellen unter', link: 'https://openrouter.ai/keys', linkText: 'openrouter.ai/keys' },
-  { id: 'openai', name: 'OpenAI', zweck: 'für Entwürfe und Textvorschläge', hinweis: 'Schlüssel erstellen unter', link: 'https://platform.openai.com/api-keys', linkText: 'platform.openai.com/api-keys' },
-  { id: 'anthropic', name: 'Claude (Anthropic)', zweck: 'optional, für Einordnung und Texte', hinweis: 'Schlüssel erstellen in der', link: 'https://console.anthropic.com/', linkText: 'console.anthropic.com', optional: true },
+const ANBIETER: { id: KiAnbieterId; name: string; label: string; zweck: string; hinweis: string; link: string; linkText: string; optional?: boolean; erklaerung?: string }[] = [
+  {
+    id: 'typesafe',
+    name: 'TypeSafe (Jev, direkt)',
+    label: 'TypeSafe-API-Schlüssel (Jev direkt, von console.typesafe.ai)',
+    zweck: 'für die Einordnung',
+    hinweis: 'Schlüssel erstellen unter',
+    link: 'https://console.typesafe.ai',
+    linkText: 'console.typesafe.ai',
+    erklaerung: 'Schlüssel direkt von TypeSafe kommt in dieses Feld, ein Schlüssel von OpenRouter (sk-or-…) in das OpenRouter-Feld darunter. Sind beide gesetzt, wird TypeSafe direkt verwendet.',
+  },
+  { id: 'openrouter', name: 'OpenRouter (Jev)', label: 'OpenRouter-API-Schlüssel (sk-or-…)', zweck: 'für die Einordnung', hinweis: 'Schlüssel erstellen unter', link: 'https://openrouter.ai/keys', linkText: 'openrouter.ai/keys' },
+  { id: 'openai', name: 'OpenAI', label: 'OpenAI-API-Schlüssel', zweck: 'für Entwürfe und Textvorschläge', hinweis: 'Schlüssel erstellen unter', link: 'https://platform.openai.com/api-keys', linkText: 'platform.openai.com/api-keys' },
+  { id: 'anthropic', name: 'Claude (Anthropic)', label: 'Claude-API-Schlüssel (Anthropic)', zweck: 'optional, für Einordnung und Texte', hinweis: 'Schlüssel erstellen in der', link: 'https://console.anthropic.com/', linkText: 'console.anthropic.com', optional: true },
 ];
+
+/** Sanfter Hinweis (blockiert nichts), wenn der Schlüssel zum falschen Feld zu gehören scheint */
+export function warnung(id: KiAnbieterId, wert: string): string | null {
+  const w = wert.trim();
+  if (!w) return null;
+  if (id === 'typesafe' && w.startsWith('sk-or-')) return 'Dieser Schlüssel beginnt mit „sk-or-“ und stammt wohl von OpenRouter. Bitte in das OpenRouter-Feld eintragen; bei TypeSafe direkt wird er abgelehnt (401).';
+  if (id === 'openrouter' && !w.startsWith('sk-or-')) return 'OpenRouter-Schlüssel beginnen mit „sk-or-“. Stammt dieser Schlüssel von TypeSafe (console.typesafe.ai), bitte in das Feld „TypeSafe (Jev, direkt)“ eintragen.';
+  return null;
+}
 
 const QUELLE = { app: 'in der App gespeichert', env: 'aus .env' } as const;
 const feld = 'w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600';
@@ -23,7 +42,7 @@ const knopf = 'rounded-md border border-slate-300 px-3 py-2 text-sm font-medium 
 export function KiSchluessel({ initial, istAdmin }: { initial: Record<KiAnbieterId, SchluesselStatus>; istAdmin: boolean }) {
   const router = useRouter();
   const [status, setStatus] = useState(initial);
-  const [eingabe, setEingabe] = useState<Record<KiAnbieterId, string>>({ openrouter: '', openai: '', anthropic: '' });
+  const [eingabe, setEingabe] = useState<Record<KiAnbieterId, string>>({ typesafe: '', openrouter: '', openai: '', anthropic: '' });
   const [meldung, setMeldung] = useState<Partial<Record<KiAnbieterId, { text: string; fehler: boolean }>>>({});
   const [laeuft, setLaeuft] = useState<KiAnbieterId | null>(null);
 
@@ -98,12 +117,13 @@ export function KiSchluessel({ initial, istAdmin }: { initial: Record<KiAnbieter
               </div>
               {istAdmin && (
                 <>
+                  <span className="block text-xs font-medium text-slate-700">{a.label}</span>
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <input
                       type="password"
                       autoComplete="off"
                       spellCheck={false}
-                      aria-label={`API-Schlüssel ${a.name}`}
+                      aria-label={a.label}
                       value={eingabe[a.id]}
                       onChange={(e) => setEingabe((x) => ({ ...x, [a.id]: e.target.value }))}
                       onKeyDown={(e) => {
@@ -128,6 +148,12 @@ export function KiSchluessel({ initial, istAdmin }: { initial: Record<KiAnbieter
                       </button>
                     </div>
                   </div>
+                  {warnung(a.id, eingabe[a.id]) && (
+                    <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-testid={`warnung-${a.id}`}>
+                      {warnung(a.id, eingabe[a.id])}
+                    </p>
+                  )}
+                  {a.erklaerung && <p className="text-xs text-slate-600">{a.erklaerung}</p>}
                   <p className="text-xs text-slate-500">
                     {a.hinweis}{' '}
                     <a href={a.link} target="_blank" rel="noreferrer noopener" className="text-indigo-700 underline">
@@ -145,7 +171,7 @@ export function KiSchluessel({ initial, istAdmin }: { initial: Record<KiAnbieter
         })}
       </ul>
       <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-        <strong>Datenschutz:</strong> Für die KI-Funktionen werden Mailtexte (Antworten der Leads, Thread-Verlauf, Ihre Beschreibungen) an den gewählten Anbieter übertragen: bei Claude an Anthropic, bei Jev an OpenRouter/TypeSafe, bei OpenAI an OpenAI (jeweils USA).
+        <strong>Datenschutz:</strong> Für die KI-Funktionen werden Mailtexte (Antworten der Leads, Thread-Verlauf, Ihre Beschreibungen) an den gewählten Anbieter übertragen: bei Claude an Anthropic, bei Jev an TypeSafe (direkt oder über OpenRouter), bei OpenAI an OpenAI (jeweils USA).
         Bitte vorher einen Auftragsverarbeitungsvertrag (AVV/DPA) mit dem Anbieter prüfen bzw. abschließen und die Datenschutzerklärung anpassen. Ohne Schlüssel sind alle KI-Funktionen aus.
       </p>
     </section>

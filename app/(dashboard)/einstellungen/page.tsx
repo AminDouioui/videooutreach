@@ -60,11 +60,13 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           kiEntwurfAnbieter: e.kiEntwurfAnbieter ?? 'anthropic',
           openaiModell: e.openaiModell,
           jevModell: e.jevModell,
+          typesafeModell: e.typesafeModell,
         }}
         kiAktiv={e.kiAktiv}
         klassifiziererOptionen={e.kiKlassifiziererOptionen}
         entwurfOptionen={e.kiEntwurfAnbieterOptionen}
-        modellStandard={{ openai: e.openaiModellStandard, jev: e.jevModellStandard }}
+        modellStandard={{ openai: e.openaiModellStandard, jev: e.jevModellStandard, typesafe: e.typesafeModellStandard }}
+        jevAnbieter={e.jevAnbieter}
         heuteErlaubt={e.heuteErlaubt}
       />
       </Schreibschutz>

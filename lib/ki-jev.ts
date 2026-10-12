@@ -1,9 +1,10 @@
 import { getEnv } from './env';
-import { kiModell, kiSchluessel } from './settings';
+import { jevAnbieter, kiModell, kiSchluessel } from './settings';
 import { KI_KATEGORIEN, KI_KATEGORIE_LABEL, type KiKategorie } from './ki-kategorien';
 import { KI_ZEITLIMIT_MS, KiFehler, kuerzeMailtext, MAX_EINORDNUNG_ZEICHEN, type Einordnung } from './ki';
 
-// Jev (TypeSafe AI) über OpenRouter als Klassifizierer für die Einordnung von Antworten: POST {JEV_BASE_URL}/alpha/decisions
+// Jev (TypeSafe AI) als Klassifizierer für die Einordnung von Antworten. Zwei Zugänge: direkt bei TypeSafe
+// (POST {TYPESAFE_BASE_URL}/v1/systemone, Schlüssel von console.typesafe.ai, hat Vorrang) oder über OpenRouter (POST {JEV_BASE_URL}/alpha/decisions)
 // mit einer Frage vom Typ "choice". Jev liefert keinen Text, nur die gewählte Option samt Wahrscheinlichkeiten – die
 // Begründung wird daraus gebaut. Das Antwortformat ist nicht verbindlich dokumentiert, der Parser ist daher tolerant.
 // Es wird nichts geloggt; Mailinhalte stehen weder in Logs noch in Fehlermeldungen.
@@ -27,7 +28,7 @@ const FRAGE_TEXT =
 
 export type JevFetch = typeof fetch;
 
-/** Anfragekörper für /alpha/decisions */
+/** Anfragekörper für /alpha/decisions (OpenRouter) und /v1/systemone (TypeSafe direkt): gleiche Form */
 export function jevAnfrage(betreff: string, text: string, modell: string) {
   return {
     model: modell,
@@ -106,13 +107,39 @@ export function jevBegruendung(g: Gelesen): string {
 
 // ---------------------------------------------------------------- HTTP
 
-function httpFehler(status: number): KiFehler {
-  if (status === 401 || status === 403) return new KiFehler('Der OpenRouter-API-Schlüssel ist ungültig oder hat keine Berechtigung. Bitte den Schlüssel unter Einstellungen → KI (bzw. OPENROUTER_API_KEY) prüfen.', 'schluessel');
-  if (status === 402) return new KiFehler('Das OpenRouter-Guthaben ist aufgebraucht. Bitte Guthaben aufladen.', 'guthaben');
-  if (status === 404) return new KiFehler('Das Jev-Modell oder der Endpunkt wurde nicht gefunden (404). Bitte das Jev-Modell (Einstellungen → KI bzw. JEV_MODELL) und JEV_BASE_URL prüfen.', 'anfrage');
-  if (status === 429) return new KiFehler('OpenRouter meldet zu viele Anfragen (Rate-Limit). Bitte in einer Minute erneut versuchen.', 'limit', true);
-  if (status >= 500) return new KiFehler(`Der Jev-Dienst hat einen Serverfehler gemeldet (${status}). Bitte später erneut versuchen.`, 'ueberlast', true);
-  return new KiFehler(`Der Jev-Dienst hat die Anfrage abgelehnt (${status}).`, 'anfrage');
+const ANBIETER_NAME = { typesafe: 'TypeSafe', openrouter: 'OpenRouter' } as const;
+type JevZugang = keyof typeof ANBIETER_NAME;
+
+/** Wo der Schlüssel des Zugangs einzutragen ist (für Fehlermeldungen) */
+const FELD = {
+  typesafe: 'Einstellungen → KI → „TypeSafe (Jev, direkt)“ bzw. TYPESAFE_API_KEY',
+  openrouter: 'Einstellungen → KI → „OpenRouter (Jev)“ bzw. OPENROUTER_API_KEY',
+} as const;
+const MODELL_HINWEIS = { typesafe: 'Einstellungen → KI bzw. TYPESAFE_JEV_MODELL', openrouter: 'Einstellungen → KI bzw. JEV_MODELL' } as const;
+
+function httpFehler(status: number, zugang: JevZugang): KiFehler {
+  const name = ANBIETER_NAME[zugang];
+  if (status === 401 || status === 403) {
+    const falsch = zugang === 'typesafe' ? ' Ein Schlüssel von OpenRouter (sk-or-…) gehört in das OpenRouter-Feld.' : ' Ein Schlüssel direkt von TypeSafe (console.typesafe.ai) gehört in das Feld „TypeSafe (Jev, direkt)“.';
+    return new KiFehler(`Der ${name}-API-Schlüssel ist ungültig oder hat keine Berechtigung. Bitte den Schlüssel unter ${FELD[zugang]} prüfen.${falsch}`, 'schluessel');
+  }
+  if (status === 400 && zugang === 'typesafe') {
+    return new KiFehler(`TypeSafe hat die Anfrage als ungültig abgelehnt (400). Möglicherweise stimmt der Modellname nicht: bitte das Jev-Modell unter ${MODELL_HINWEIS.typesafe} prüfen (z. B. jev-latest; „Verbindung testen“ listet die verfügbaren Modelle).`, 'anfrage');
+  }
+  if (status === 402) return new KiFehler(`Das ${name}-Guthaben ist aufgebraucht. Bitte Guthaben aufladen.`, 'guthaben');
+  if (status === 404) return new KiFehler(`Das Jev-Modell oder der Endpunkt wurde nicht gefunden (404). Bitte das Jev-Modell (${MODELL_HINWEIS[zugang]}) und die Basis-URL (${zugang === 'typesafe' ? 'TYPESAFE_BASE_URL' : 'JEV_BASE_URL'}) prüfen.`, 'anfrage');
+  if (status === 429) return new KiFehler(`${name} meldet zu viele Anfragen (Rate-Limit). Bitte in einer Minute erneut versuchen.`, 'limit', true);
+  if (status >= 500) return new KiFehler(`Der Jev-Dienst (${name}) hat einen Serverfehler gemeldet (${status}). Bitte später erneut versuchen.`, 'ueberlast', true);
+  return new KiFehler(`Der Jev-Dienst (${name}) hat die Anfrage abgelehnt (${status}).`, 'anfrage');
+}
+
+/** URL, Schlüssel und Modell des Zugangs: TypeSafe direkt, wenn dessen Schlüssel gesetzt ist, sonst OpenRouter */
+function zugang(): { art: JevZugang; key: string; url: string; modell: string } | null {
+  const env = getEnv();
+  const art = jevAnbieter();
+  if (!art) return null;
+  if (art === 'typesafe') return { art, key: kiSchluessel('typesafe')!, url: `${env.TYPESAFE_BASE_URL.replace(/\/+$/, '')}/v1/systemone`, modell: kiModell('typesafe') };
+  return { art, key: kiSchluessel('openrouter')!, url: `${env.JEV_BASE_URL.replace(/\/+$/, '')}/alpha/decisions`, modell: kiModell('jev') };
 }
 
 /**
@@ -120,19 +147,17 @@ function httpFehler(status: number): KiFehler {
  * `betreff` ist der Betreff der Antwort (darf leer sein).
  */
 export async function ordneAntwortMitJev(text: string, betreff = '', f: JevFetch = fetch): Promise<Einordnung> {
-  const env = getEnv();
-  const key = kiSchluessel('openrouter');
-  if (!key) throw new KiFehler('Jev ist nicht aktiviert (kein OpenRouter-Schlüssel hinterlegt).', 'deaktiviert');
+  const z = zugang();
+  if (!z) throw new KiFehler('Jev ist nicht aktiviert (weder TypeSafe- noch OpenRouter-Schlüssel hinterlegt).', 'deaktiviert');
   const inhalt = kuerzeMailtext(text, MAX_EINORDNUNG_ZEICHEN);
   if (!inhalt) throw new KiFehler('Die Antwort enthält keinen lesbaren Text, der eingeordnet werden könnte.', 'antwort');
 
-  const url = `${env.JEV_BASE_URL.replace(/\/+$/, '')}/alpha/decisions`;
   let res: Response;
   try {
-    res = await f(url, {
+    res = await f(z.url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(jevAnfrage(betreff.trim().slice(0, 300), inhalt, kiModell('jev'))),
+      headers: { Authorization: `Bearer ${z.key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(jevAnfrage(betreff.trim().slice(0, 300), inhalt, z.modell)),
       signal: AbortSignal.timeout(KI_ZEITLIMIT_MS),
     });
   } catch (e) {
@@ -141,7 +166,7 @@ export async function ordneAntwortMitJev(text: string, betreff = '', f: JevFetch
     }
     throw new KiFehler('Keine Verbindung zum KI-Dienst (Internet oder Proxy prüfen).', 'verbindung', true);
   }
-  if (!res.ok) throw httpFehler(res.status);
+  if (!res.ok) throw httpFehler(res.status, z.art);
 
   let json: unknown;
   try {

@@ -17,13 +17,13 @@ export function schreibhilfeVerfuegbar(): boolean {
   return !!kiSchluessel('anthropic') || !!kiSchluessel('openai');
 }
 
-/** Einordnung von Antworten: mit Anthropic- oder OpenRouter-Schlüssel (Jev). */
+/** Einordnung von Antworten: mit Anthropic-, TypeSafe- oder OpenRouter-Schlüssel (Jev). */
 export function klassifizierungVerfuegbar(): boolean {
-  return !!kiSchluessel('anthropic') || !!kiSchluessel('openrouter');
+  return !!kiSchluessel('anthropic') || !!kiSchluessel('typesafe') || !!kiSchluessel('openrouter');
 }
 
 export const KI_NICHT_AKTIV = 'Die KI-Funktionen sind nicht aktiviert (weder OpenAI- noch Anthropic-Schlüssel hinterlegt: Einstellungen → KI bzw. OPENAI_API_KEY / ANTHROPIC_API_KEY in der .env).';
-export const KLASSIFIZIERUNG_NICHT_AKTIV = 'Die KI-Einordnung ist nicht aktiviert (weder OpenRouter- noch Anthropic-Schlüssel hinterlegt: Einstellungen → KI bzw. OPENROUTER_API_KEY / ANTHROPIC_API_KEY in der .env).';
+export const KLASSIFIZIERUNG_NICHT_AKTIV = 'Die KI-Einordnung ist nicht aktiviert (weder TypeSafe-, OpenRouter- noch Anthropic-Schlüssel hinterlegt: Einstellungen → KI bzw. TYPESAFE_API_KEY / OPENROUTER_API_KEY / ANTHROPIC_API_KEY in der .env).';
 
 /** Zeitlimit je Anfrage (ms) */
 export const KI_ZEITLIMIT_MS = 30_000;

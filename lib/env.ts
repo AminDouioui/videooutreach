@@ -37,6 +37,10 @@ const envSchema = z.object({
   OPENAI_API_KEY: opt(z.string()),
   OPENAI_MODEL: z.preprocess(leer, z.string().default('gpt-5.5')),
   OPENAI_BASE_URL: z.preprocess(leer, z.string().url().default('https://api.openai.com/v1')),
+  // Optional: Jev (TypeSafe AI) direkt über die TypeSafe-API (Schlüssel von console.typesafe.ai). Hat Vorrang vor OpenRouter.
+  TYPESAFE_API_KEY: opt(z.string()),
+  TYPESAFE_BASE_URL: z.preprocess(leer, z.string().url().default('https://api.typesafe.ai')),
+  TYPESAFE_JEV_MODELL: z.preprocess(leer, z.string().default('jev-latest')),
   // Optional: Jev (TypeSafe AI) über OpenRouter als Klassifizierer für die Einordnung von Antworten
   OPENROUTER_API_KEY: opt(z.string()),
   JEV_MODELL: z.preprocess(leer, z.string().default('typesafe/jev-1.13')),

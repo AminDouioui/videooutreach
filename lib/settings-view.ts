@@ -4,7 +4,7 @@ import { oauthConfigured } from './gmail';
 import { postfachStatus, type PostfachStatus } from './rotation';
 import { effektivesGlobalLimit } from './send';
 import { klassifizierungVerfuegbar, schreibhilfeVerfuegbar } from './ki';
-import { bounceSchwellePostfach, getSetting, KI_ANBIETER, kiSchluesselMitQuelle, maskiereSchluessel, type KiAnbieter, type KiSchluesselQuelle, globalDailyLimit, kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, rampeEinstellung, schreibregelnAktiv, verfuegbareEntwurfAnbieter, verfuegbareKlassifizierer } from './settings';
+import { bounceSchwellePostfach, jevAnbieter, getSetting, KI_ANBIETER, kiSchluesselMitQuelle, maskiereSchluessel, type KiAnbieter, type KiSchluesselQuelle, globalDailyLimit, kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, rampeEinstellung, schreibregelnAktiv, verfuegbareEntwurfAnbieter, verfuegbareKlassifizierer } from './settings';
 import type { Sicherheit } from './smtp-vorlagen';
 import { todayBerlin } from './time';
 
@@ -105,6 +105,9 @@ export function ladeEinstellungen(mitMaske = false) {
     kiSchluessel: kiSchluesselStatus(mitMaske),
     openaiModell: getSetting('openai_model') ?? '',
     jevModell: getSetting('jev_modell') ?? '',
+    typesafeModell: getSetting('typesafe_modell') ?? '',
+    typesafeModellStandard: env.TYPESAFE_JEV_MODELL,
+    jevAnbieter: jevAnbieter(),
     openaiModellStandard: env.OPENAI_MODEL,
     jevModellStandard: env.JEV_MODELL,
     postfaecher: ladePostfachListe(),

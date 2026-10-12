@@ -20,12 +20,13 @@ type Werte = {
   kiEntwurfAnbieter: 'openai' | 'anthropic';
   openaiModell: string;
   jevModell: string;
+  typesafeModell: string;
 };
 
 const feld = 'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600';
 
 const ENTWURF_LABEL = { openai: 'OpenAI', anthropic: 'Claude (Anthropic)' } as const;
-const KLASSIFIZIERER_LABEL = { jev: 'Jev (TypeSafe AI, über OpenRouter)', anthropic: 'Claude (Anthropic)' } as const;
+const KLASSIFIZIERER_LABEL = { jev: 'Jev (TypeSafe AI)', anthropic: 'Claude (Anthropic)' } as const;
 
 export function GlobalSettingsForm({
   initial,
@@ -33,7 +34,8 @@ export function GlobalSettingsForm({
   kiAktiv = false,
   klassifiziererOptionen = [],
   entwurfOptionen = [],
-  modellStandard = { openai: 'gpt-5.5', jev: 'typesafe/jev-1.13' },
+  modellStandard = { openai: 'gpt-5.5', jev: 'typesafe/jev-1.13', typesafe: 'jev-latest' },
+  jevAnbieter = 'openrouter',
 }: {
   initial: Werte;
   heuteErlaubt: number;
@@ -43,7 +45,9 @@ export function GlobalSettingsForm({
   /** Anbieter für Texte/Entwürfe, deren API-Schlüssel gesetzt ist */
   entwurfOptionen?: ('openai' | 'anthropic')[];
   /** Standard-Modelle als Platzhalter */
-  modellStandard?: { openai: string; jev: string };
+  modellStandard?: { openai: string; jev: string; typesafe: string };
+  /** Zugang, über den Jev gerade läuft (TypeSafe direkt hat Vorrang vor OpenRouter) */
+  jevAnbieter?: 'typesafe' | 'openrouter' | null;
 }) {
   const router = useRouter();
   const [w, setW] = useState<Werte>(initial);
@@ -56,7 +60,7 @@ export function GlobalSettingsForm({
   async function speichern(e: React.FormEvent) {
     e.preventDefault();
     setStatus(null);
-    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, kiAutoStatus: klassifiziererOptionen.length ? w.kiAutoStatus : undefined, kiKlassifizierer: klassifiziererOptionen.length ? klassifizierer : undefined, kiEntwurfAnbieter: entwurfOptionen.length ? entwurfAnbieter : undefined, openaiModell: w.openaiModell, jevModell: w.jevModell, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt), bounceSchwellePostfach: Number(w.bounceSchwellePostfach) }) });
+    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, kiAutoStatus: klassifiziererOptionen.length ? w.kiAutoStatus : undefined, kiKlassifizierer: klassifiziererOptionen.length ? klassifizierer : undefined, kiEntwurfAnbieter: entwurfOptionen.length ? entwurfAnbieter : undefined, openaiModell: w.openaiModell, jevModell: w.jevModell, typesafeModell: w.typesafeModell, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt), bounceSchwellePostfach: Number(w.bounceSchwellePostfach) }) });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setStatus({ text: 'Gespeichert', fehler: false });
@@ -169,9 +173,15 @@ export function GlobalSettingsForm({
             <div className="grid gap-4 sm:grid-cols-2">
               {klassifiziererOptionen.includes('jev') && (
                 <label className="block text-sm font-medium text-slate-700">
-                  Jev-Modell (optional)
-                  <input value={w.jevModell} onChange={(e) => set('jevModell', e.target.value)} className={`${feld} font-mono`} placeholder={modellStandard.jev} maxLength={200} autoComplete="off" />
-                  <span className="mt-1 block text-xs font-normal text-slate-500">Leer = Standard. Alias: ~typesafe/jev-latest.</span>
+                  {jevAnbieter === 'typesafe' ? 'Jev-Modell, TypeSafe direkt (optional)' : 'Jev-Modell, OpenRouter (optional)'}
+                  {jevAnbieter === 'typesafe' ? (
+                    <input value={w.typesafeModell} onChange={(e) => set('typesafeModell', e.target.value)} className={`${feld} font-mono`} placeholder={modellStandard.typesafe} maxLength={200} autoComplete="off" />
+                  ) : (
+                    <input value={w.jevModell} onChange={(e) => set('jevModell', e.target.value)} className={`${feld} font-mono`} placeholder={modellStandard.jev} maxLength={200} autoComplete="off" />
+                  )}
+                  <span className="mt-1 block text-xs font-normal text-slate-500">
+                    {jevAnbieter === 'typesafe' ? 'Leer = Standard. Z. B. jev-latest oder jev-1.13; „Verbindung testen“ bei TypeSafe listet die verfügbaren Modelle.' : 'Leer = Standard. Alias: ~typesafe/jev-latest.'}
+                  </span>
                 </label>
               )}
               {entwurfOptionen.includes('openai') && (
