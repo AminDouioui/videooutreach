@@ -126,6 +126,31 @@ export const followups = sqliteTable(
 );
 
 /**
+ * Dateianhänge der Mails eines Flows: `followupId` null = Erstmail, sonst der Follow-up-Schritt. Gilt für alle Varianten
+ * des Schritts. Die Datei liegt unter `${DATA_DIR}/<pfad>` (nie unter /media, nie öffentlich); beim Löschen des
+ * Datensatzes (auch per Cascade) wird die Datei über lib/anhaenge-db.ts mitgelöscht.
+ */
+export const anhaenge = sqliteTable(
+  'anhaenge',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    campaignId: integer('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    followupId: integer('followup_id').references(() => followups.id, { onDelete: 'cascade' }),
+    // Originalname, bereinigt (nur zur Anzeige und als Dateiname in der Mail)
+    dateiname: text('dateiname').notNull(),
+    mime: text('mime').notNull(),
+    // Größe in Byte
+    groesse: integer('groesse').notNull(),
+    // Relativ zu DATA_DIR, z. B. anhaenge/12/ab12cd34ef56ab78-Angebot.pdf
+    pfad: text('pfad').notNull(),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [index('anhaenge_campaign_idx').on(t.campaignId), index('anhaenge_followup_idx').on(t.followupId)],
+);
+
+/**
  * Zusätzliche Varianten (B–E) eines Follow-up-Schritts. Variante A ist followups.body/betreff selbst.
  * `betreff` gesetzt = diese Variante geht als neuer Thread raus.
  */
@@ -412,6 +437,7 @@ export type Absender = typeof absender.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type Variante = typeof varianten.$inferSelect;
 export type Followup = typeof followups.$inferSelect;
+export type Anhang = typeof anhaenge.$inferSelect;
 export type FollowupVariante = typeof followupVarianten.$inferSelect;
 export type Untersequenz = typeof untersequenzen.$inferSelect;
 export type Lead = typeof leads.$inferSelect;

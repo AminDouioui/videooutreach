@@ -14,6 +14,8 @@ const bodySchema = z.object({
   followups: z
     .array(
       z.object({
+        // Bestehender Schritt (behält seine Anhänge)
+        id: z.number().int().positive().optional(),
         waitDays: z.number().int().min(1, 'Wartezeit mindestens 1 Tag').max(60, 'Wartezeit höchstens 60 Tage'),
         body: z.string().trim().min(1, 'Text eines Follow-ups fehlt').max(20000),
         // Eigener Betreff von Variante A: gesetzt = neuer Thread
@@ -63,6 +65,6 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (new Set(kuerzel).size !== kuerzel.length) klammern.push(`Follow-up ${i + 1}: Kürzel doppelt`);
   });
   if (klammern.length) return fehler(`Vorlage ungültig: ${klammern.join('; ')}`);
-  speichereFollowups(id, parsed.data.followups);
-  return NextResponse.json({ ok: true, warnungen: [...unbekannt].map((u) => `Unbekannter Platzhalter {{${u}}}`) });
+  const ids = speichereFollowups(id, parsed.data.followups);
+  return NextResponse.json({ ok: true, ids, warnungen: [...unbekannt].map((u) => `Unbekannter Platzhalter {{${u}}}`) });
 }
