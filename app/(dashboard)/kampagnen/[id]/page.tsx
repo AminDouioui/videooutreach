@@ -16,7 +16,7 @@ import { leadZeitzone } from '@/lib/time';
 import { ladeFollowups } from '@/lib/send';
 import { ladeVariantenStatistik } from '@/lib/varianten-statistik';
 import { VariantenTabelle } from '@/components/VariantenTabelle';
-import { ladeLeadMetriken } from '@/lib/tracking';
+import { ladeLeadMetriken, videoGeklicktZeit } from '@/lib/tracking';
 import { Schreibschutz } from '@/components/Schreibschutz';
 import { hatRolle } from '@/lib/auth';
 import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
@@ -51,6 +51,10 @@ export default async function KampagnenDetail({ params }: { params: Promise<{ id
     videostarts: metriken.get(l.id)?.videostarts ?? 0,
     maxProgress: metriken.get(l.id)?.maxProgress ?? 0,
     terminKlicks: metriken.get(l.id)?.terminKlicks ?? 0,
+    mailKlickErster: metriken.get(l.id)?.mailKlickErster ?? null,
+    videoGeklickt: videoGeklicktZeit(metriken.get(l.id)),
+    videoGestartet: metriken.get(l.id)?.playErster ?? null,
+    terminGeklickt: metriken.get(l.id)?.terminErster ?? null,
     oeffnungen: metriken.get(l.id)?.oeffnungen ?? 0,
     score: l.score,
     variante: l.variante,

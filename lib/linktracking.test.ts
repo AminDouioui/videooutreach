@@ -49,10 +49,10 @@ describe('Umschreiben', () => {
   const tok = (u: string) => `${APP}/api/c/${erzeugeLinkToken(K, 'lead-1', u)}`;
 
   it('Klartext: Links ersetzen, Satzzeichen am Ende bleiben, Ausnahmen und mailto bleiben', () => {
-    const t = trackeText(`Siehe https://x.de/a?b=1&c=2. Oder (https://y.de/p), mailto:a@b.de, ${APP}/v/slug, ${APP}/abmelden/slug, ${APP}/media/slug.jpg`, o);
+    const t = trackeText(`Siehe https://x.de/a?b=1&c=2. Oder (https://y.de/p), mailto:a@b.de, ${APP}/v/slug, ${APP}/r/slug, ${APP}/abmelden/slug, ${APP}/media/slug.jpg`, o);
     expect(t).toContain(`Siehe ${tok('https://x.de/a?b=1&c=2')}.`);
     expect(t).toContain(`(${tok('https://y.de/p')}),`);
-    expect(t).toContain(`mailto:a@b.de, ${APP}/v/slug, ${APP}/abmelden/slug, ${APP}/media/slug.jpg`);
+    expect(t).toContain(`mailto:a@b.de, ${APP}/v/slug, ${APP}/r/slug, ${APP}/abmelden/slug, ${APP}/media/slug.jpg`);
   });
   it('Vorschau-Modus hängt ?vorschau=1 an', () => {
     expect(trackeText('https://x.de', { ...o, vorschau: true })).toBe(`${tok('https://x.de')}?vorschau=1`);
@@ -96,12 +96,12 @@ describe('buildEmail mit linkTracking', () => {
     expect(m.text).toContain(`${APP}/api/c/${web}`);
     expect(m.text).toContain(`${APP}/api/c/${cal}.`);
     // Video-Link, Vorschaubild, Abmeldung, Signatur, Pixel unverändert
-    expect(m.html).toContain(`<a href="${APP}/v/muster-1"><img`);
-    expect(m.html).toContain(`und ${APP}/v/muster-1 und`);
+    expect(m.html).toContain(`<a href="${APP}/r/muster-1"><img`);
+    expect(m.html).toContain(`und ${APP}/r/muster-1 und`);
     expect(m.html).toContain(`<a href="${APP}/abmelden/muster-1"`);
     expect(m.html).toContain('src="https://video.example.de/api/o/muster-1.gif"');
     expect(m.html).toContain('https://sig.de');
-    expect(m.text).toContain('Video ansehen: ' + APP + '/v/muster-1');
+    expect(m.text).toContain('Video ansehen: ' + APP + '/r/muster-1');
     expect(m.text).toContain('mailto:a@b.de');
     expect(m.text).toContain('-- \nGruß\nhttps://sig.de');
     expect(m.html).not.toContain('mailto:a@b.de</a>');

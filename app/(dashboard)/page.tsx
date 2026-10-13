@@ -5,6 +5,8 @@ import { istBounceFehler } from '@/lib/bounce-schutz';
 import { Kachel, TagesDiagramm } from '@/components/AnalyseDiagramme';
 import { KampagnenTabelle, type KampagnenZeile } from '@/components/KampagnenTabelle';
 import { ladeUebersicht } from '@/lib/analyse';
+import { kurzZeit, vollZeit } from '@/lib/kurzzeit';
+import { ladeLetzteAktivitaeten } from '@/lib/tracking';
 import { ladeKennzahlen } from '@/lib/campaigns';
 import { getDb, schema } from '@/lib/db';
 import { erforderSeitenRolle } from '@/lib/seiten-zugriff';
@@ -12,12 +14,15 @@ import { hatRolle } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+const AKTIVITAET_LABEL = { video_link_click: 'Video-Link geklickt', play: 'Video gestartet', cta_click: 'Termin-Button geklickt' } as const;
+
 export default async function KampagnenUebersicht() {
   const me = await erforderSeitenRolle();
   const kampagnen = getDb().select().from(schema.campaigns).orderBy(desc(schema.campaigns.createdAt)).all();
   const kennzahlen = ladeKennzahlen();
   const uebersicht = ladeUebersicht();
   const u = uebersicht.kennzahlen;
+  const aktivitaeten = ladeLetzteAktivitaeten(20);
   const prozent = (r: number) => `${(r * 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
   const zeilen: KampagnenZeile[] = kampagnen.map((k) => {
     const z = kennzahlen.get(k.id);
@@ -77,6 +82,30 @@ export default async function KampagnenUebersicht() {
           <Kachel label="Video-Ansichtsrate" wert={prozent(u.angesehenRate)} hinweis={`${u.angesehen} Leads`} />
           <Kachel label="Termin-Klicks" wert={u.terminKlicks} hinweis={prozent(u.terminRate)} />
           <Kachel label="Ungelesene Antworten" wert={uebersicht.ungelesen} hinweis="Zum Postfach" href="/antworten" />
+        </div>
+        <div className="mt-3 rounded-lg border border-slate-200 bg-white p-4" data-testid="letzte-aktivitaeten">
+          <h2 className="mb-2 text-sm font-semibold text-slate-700">Letzte Aktivitäten</h2>
+          {aktivitaeten.length === 0 ? (
+            <p className="text-sm text-slate-500">Noch keine Video-Klicks, Videostarts oder Termin-Klicks.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100 text-sm">
+              {aktivitaeten.map((a) => (
+                <li key={a.eventId} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-1.5">
+                  <span className="w-28 shrink-0 tabular-nums text-xs text-slate-500" title={vollZeit(a.zeit)}>
+                    {kurzZeit(a.zeit)}
+                  </span>
+                  <span className={`w-36 shrink-0 text-xs font-medium ${a.type === 'cta_click' ? 'text-green-700' : 'text-indigo-700'}`}>{AKTIVITAET_LABEL[a.type]}</span>
+                  <Link href={`/leads/${a.leadId}`} className="min-w-0 font-medium text-indigo-600 hover:underline">
+                    {a.firma}
+                  </Link>
+                  {a.ansprechpartner && <span className="text-slate-500">{a.ansprechpartner}</span>}
+                  <Link href={`/kampagnen/${a.campaignId}`} className="text-xs text-slate-400 hover:underline">
+                    {a.kampagne}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <div className="mt-3 rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="mb-2 text-sm font-semibold text-slate-700">Letzte 14 Tage</h2>

@@ -16,6 +16,8 @@ import { klassifizierungVerfuegbar, schreibhilfeVerfuegbar } from '@/lib/ki';
 import { schreibregelnAktiv } from '@/lib/settings';
 import { gmailLink } from '@/lib/lead-status';
 import { setzeAntwortGelesen } from '@/lib/lead-status-db';
+import { vollZeit } from '@/lib/kurzzeit';
+import { fasseAktivitaetZusammen, type Zeitreihe } from '@/lib/lead-aktivitaet';
 import { zeitzoneOderStandard } from '@/lib/time';
 import { leadPageUrl, thumbnailUrl, videoUrl } from '@/lib/media';
 import { Schreibschutz } from '@/components/Schreibschutz';
@@ -34,12 +36,35 @@ const EVENT_LABEL: Record<string, string> = {
   cta_click: 'Termin-Link geklickt',
   email_open: 'E-Mail geöffnet',
   link_click: 'Link in Mail geklickt',
+  video_link_click: 'Video-Link in der Mail geklickt',
   unsubscribe: 'Abgemeldet',
   abwesenheit: 'Abwesenheitsnotiz erhalten',
   untersequenz: 'In Untersequenz übernommen',
 };
 
+const BOT_GRUND: Record<string, string> = { 'user-agent': 'Scanner/Bot-Kennung', 'kurz-nach-versand': 'kurz nach Versand', serie: 'Klickserie' };
+
 const zeit = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'medium' });
+
+function ZeitEintrag({ label, r, gruen = false }: { label: string; r: Zeitreihe; gruen?: boolean }) {
+  return (
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</dt>
+      {r.erster === null ? (
+        <dd className="mt-0.5 text-slate-400">noch nicht</dd>
+      ) : (
+        <dd className="mt-0.5">
+          <span className={`font-medium ${gruen ? 'text-green-700' : ''}`}>{vollZeit(r.erster)}</span>
+          {r.anzahl > 1 && (
+            <span className="block text-xs text-slate-500">
+              zuletzt {vollZeit(r.letzter)} · {r.anzahl}×
+            </span>
+          )}
+        </dd>
+      )}
+    </div>
+  );
+}
 
 export default async function LeadDetail({ params }: { params: Promise<{ id: string }> }) {
   const me = await erforderSeitenRolle();
@@ -70,6 +95,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const name = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
   const link = leadPageUrl(lead.slug);
   const fertig = lead.renderStatus === 'fertig';
+  const akt = fasseAktivitaetZusammen(events);
   const ki = klassifizierungVerfuegbar();
   const schreibhilfe = schreibhilfeVerfuegbar();
   const brain = brainVerbunden();
@@ -149,6 +175,22 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
         {schreiben && <LeadActions leadId={lead.id} campaignId={kampagne.id} sendStatus={lead.sendStatus} />}
       </div>
 
+      {kampagne.mitVideo && (
+        <section className="mb-6 rounded-lg border border-slate-200 bg-white p-4" aria-label="Video-Aktivität" data-testid="aktivitaet-zusammenfassung">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Video-Aktivität</h2>
+          <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+            <ZeitEintrag label="Mail-Link geklickt" r={akt.mailKlick} />
+            <ZeitEintrag label="Video gestartet" r={akt.play} />
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Angeschaut bis</dt>
+              <dd className="mt-0.5 font-medium">{akt.play.anzahl > 0 || akt.maxProgress > 0 ? `${akt.maxProgress} %` : <span className="font-normal text-slate-400">noch nicht angeschaut</span>}</dd>
+            </div>
+            <ZeitEintrag label="Termin-Button geklickt" r={akt.termin} gruen />
+          </dl>
+          {akt.botEvents > 0 && <p className="mt-3 text-xs text-slate-400">{akt.botEvents} Bot-/Scanner-Event(s) nicht mitgezählt (in der Aktivität grau).</p>}
+        </section>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Video</h2>
@@ -175,7 +217,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
                   <span className={`h-2 w-2 shrink-0 rounded-full ${e.isBot ? 'bg-slate-300' : e.type === 'cta_click' ? 'bg-green-500' : 'bg-indigo-500'}`} />
                   <span className="w-44 shrink-0 tabular-nums text-xs">{zeit.format(e.createdAt)}</span>
                   <span className={e.isBot ? '' : 'font-medium'}>{EVENT_LABEL[e.type] ?? e.type}</span>
-                  {e.isBot && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">Bot</span>}
+                  {e.isBot && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">Bot{e.type === 'video_link_click' && typeof e.meta?.grund === 'string' ? ` (${BOT_GRUND[e.meta.grund] ?? e.meta.grund})` : ''}</span>}
                   {e.type === 'abwesenheit' && typeof e.meta?.bis === 'number' && <span className="text-xs text-slate-500">Follow-ups warten bis {zeit.format(new Date(e.meta.bis))}</span>}
                   {e.type === 'link_click' && typeof e.meta?.url === 'string' && (
                     <span className="min-w-0 break-all text-xs text-slate-500">

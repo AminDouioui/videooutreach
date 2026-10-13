@@ -15,7 +15,7 @@ import { timingSafeEqualStr } from './auth';
 export const MAX_URL_LAENGE = 1500;
 
 /** Pfade der eigenen App, die nie umgeleitet werden: Video-Link, Abmeldung, Medien, Pixel, bereits getrackte Links. */
-const AUSNAHMEN = ['/v/', '/abmelden/', '/api/unsubscribe/', '/media/', '/api/o/', '/api/c/'];
+const AUSNAHMEN = ['/v/', '/r/', '/abmelden/', '/api/unsubscribe/', '/media/', '/api/o/', '/api/c/'];
 
 function b64url(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');

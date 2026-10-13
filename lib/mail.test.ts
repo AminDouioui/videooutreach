@@ -24,9 +24,9 @@ describe('buildEmail', () => {
   });
   it('Begrüßung, Vorschaubild verlinkt, Textlink', () => {
     expect(m.html).toContain('Guten Tag Max Mustermann,');
-    expect(m.html).toContain('<a href="https://video.example.de/v/musterbau-k7f3"><img src="https://video.example.de/media/musterbau-k7f3.jpg?v=1700000000000"');
+    expect(m.html).toContain('<a href="https://video.example.de/r/musterbau-k7f3"><img src="https://video.example.de/media/musterbau-k7f3.jpg?v=1700000000000"');
     expect(m.html).toContain('width="320"');
-    expect(m.html).toContain('>Video ansehen: https://video.example.de/v/musterbau-k7f3</a>');
+    expect(m.html).toContain('>Video ansehen: https://video.example.de/r/musterbau-k7f3</a>');
   });
   it('Signatur mit Zeilenumbrüchen, Abmeldezeile', () => {
     expect(m.html).toContain('Amin Douioui<br>Prozessia<br>Tel: 0123');
@@ -34,7 +34,7 @@ describe('buildEmail', () => {
     expect(m.html).toContain('Bis bald<br>zweite Zeile');
   });
   it('Klartext', () => {
-    expect(m.text).toContain('Video ansehen: https://video.example.de/v/musterbau-k7f3');
+    expect(m.text).toContain('Video ansehen: https://video.example.de/r/musterbau-k7f3');
     expect(m.text).toContain('Amin Douioui\nProzessia');
     expect(m.text).toContain('Hier abmelden: https://video.example.de/abmelden/musterbau-k7f3');
     expect(m.text).not.toContain('<a ');

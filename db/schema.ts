@@ -19,6 +19,8 @@ export const EVENT_TYPEN = [
   'unsubscribe',
   'abwesenheit',
   'link_click',
+  // Klick auf Vorschaubild oder Text-Link zur Video-Seite in der Mail (Route /r/<slug>); meta.grund bei Bot-Heuristik
+  'video_link_click',
   // Lead wurde per Untersequenz-Regel in eine andere Kampagne übernommen (meta: zielCampaignId, zielLeadId)
   'untersequenz',
 ] as const;
@@ -346,7 +348,7 @@ export const suppressionList = sqliteTable('suppression_list', {
 
 // ---------------------------------------------------------------- Webhooks & API (Paket 14)
 
-export const WEBHOOK_EREIGNISSE = ['mail_gesendet', 'antwort', 'bounce', 'abwesenheit', 'abmeldung', 'lead_status', 'video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick'] as const;
+export const WEBHOOK_EREIGNISSE = ['mail_gesendet', 'antwort', 'bounce', 'abwesenheit', 'abmeldung', 'lead_status', 'video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick', 'video_klick'] as const;
 export const ZUSTELL_STATUS = ['offen', 'ok', 'fehler'] as const;
 export const API_RECHTE = ['lesen', 'schreiben'] as const;
 

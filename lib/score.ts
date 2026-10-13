@@ -2,6 +2,8 @@
 //
 // Punkte: play +10 (einmalig), progress_50 +10, progress_100 +15, cta_click +30 (einmalig),
 // link_click +10 (einmalig, egal auf welchen Link),
+// video_link_click (Klick auf den Video-Link in der Mail) +3, einmalig und nur, solange noch kein play vorliegt
+// (play zählt stärker; kein doppeltes Zählen),
 // +5 je weiterem Kalendertag (Europe/Berlin) mit page_view/play über den ersten Tag hinaus.
 // progress_25/75 geben 0 Punkte; email_open und unsubscribe zählen nicht.
 
@@ -23,6 +25,7 @@ export function berechneScore(events: ScoreEvent[]): number {
   if (hat('progress_100')) score += 15;
   if (hat('cta_click')) score += 30;
   if (hat('link_click')) score += 10;
+  if (hat('video_link_click') && !hat('play')) score += 3;
   const tage = new Set(echte.filter((e) => e.type === 'page_view' || e.type === 'play').map((e) => berlinTag(e.createdAt)));
   if (tage.size > 1) score += 5 * (tage.size - 1);
   return score;

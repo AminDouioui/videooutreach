@@ -3,7 +3,7 @@ import { getDb, schema } from '@/lib/db';
 import { leadStatusLabel } from '@/lib/lead-status';
 import { leadPageUrl } from '@/lib/media';
 import { fehler } from '@/lib/request';
-import { ladeLeadMetriken } from '@/lib/tracking';
+import { ladeLeadMetriken, videoGeklicktZeit } from '@/lib/tracking';
 import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
@@ -16,6 +16,7 @@ function zelle(v: unknown): string {
   return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+const zeit = (t: number | null | undefined) => (t === null || t === undefined ? null : new Date(t));
 const datum = (d: Date | null) => (d ? new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' }).format(d) : '');
 
 /** CSV-Export: `;` getrennt, UTF-8 mit BOM (Excel). */
@@ -31,14 +32,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const leads = db.select().from(schema.leads).where(eq(schema.leads.campaignId, id)).all();
   const m = ladeLeadMetriken(id);
 
-  const kopf = ['Firma', 'Anrede', 'Vorname', 'Nachname', 'E-Mail', 'Position', 'Website', 'Render-Status', 'Versand-Status', 'Lead-Status', 'Gesendet am', 'Variante', 'Abgemeldet', 'Aufrufe', 'Videostarts', 'Angeschaut max. %', 'Termin-Klick', 'Score', 'Notizen', 'Link'];
-  if (k.trackingPixel) kopf.splice(17, 0, 'Geöffnet (unzuverlässig)');
+  const kopf = ['Firma', 'Anrede', 'Vorname', 'Nachname', 'E-Mail', 'Position', 'Website', 'Render-Status', 'Versand-Status', 'Lead-Status', 'Gesendet am', 'Variante', 'Abgemeldet', 'Aufrufe', 'Videostarts', 'Angeschaut max. %', 'Termin-Klick', 'Video geklickt', 'Video gestartet', 'Termin geklickt', 'Mail-Klicks', 'Score', 'Notizen', 'Link'];
+  if (k.trackingPixel) kopf.splice(21, 0, 'Geöffnet (unzuverlässig)');
   const zeilen = leads
     .sort((a, b) => b.score - a.score)
     .map((l) => {
       const x = m.get(l.id);
-      const z: unknown[] = [l.firma, l.anrede, l.vorname, l.nachname, l.email, l.position, l.website, l.renderStatus, l.sendStatus, leadStatusLabel(l.leadStatus), datum(l.sentAt), l.variante, l.unsubscribed ? 'ja' : 'nein', x?.aufrufe ?? 0, x?.videostarts ?? 0, x?.maxProgress ?? 0, x?.terminKlicks ? 'ja' : 'nein', l.score, l.notizen, leadPageUrl(l.slug)];
-      if (k.trackingPixel) z.splice(17, 0, x?.oeffnungen ?? 0);
+      const z: unknown[] = [l.firma, l.anrede, l.vorname, l.nachname, l.email, l.position, l.website, l.renderStatus, l.sendStatus, leadStatusLabel(l.leadStatus), datum(l.sentAt), l.variante, l.unsubscribed ? 'ja' : 'nein', x?.aufrufe ?? 0, x?.videostarts ?? 0, x?.maxProgress ?? 0, x?.terminKlicks ? 'ja' : 'nein', datum(zeit(videoGeklicktZeit(x))), datum(zeit(x?.playErster)), datum(zeit(x?.terminErster)), x?.mailKlicks ?? 0, l.score, l.notizen, leadPageUrl(l.slug)];
+      if (k.trackingPixel) z.splice(21, 0, x?.oeffnungen ?? 0);
       return z;
     });
   const csv = '﻿' + [kopf, ...zeilen].map((r) => r.map(zelle).join(';')).join('\r\n') + '\r\n';

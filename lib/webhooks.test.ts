@@ -246,7 +246,7 @@ describe('Auslösen an den Quellen', () => {
   });
 
   it('video_angesehen nur beim ersten Nicht-Bot-page_view; Bot-Events lösen nichts aus', () => {
-    const hook = m.wh.legeWebhookAn('https://a.example.com/', ['video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick']);
+    const hook = m.wh.legeWebhookAn('https://a.example.com/', ['video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick', 'video_klick']);
     const l = lead(kampagne().id);
     const ev = (type: Parameters<typeof m.tracking.recordEvent>[0]['type'], isBot: boolean, meta?: Record<string, unknown>) =>
       m.tracking.recordEvent({ leadId: l.id, type, meta, ipHash: 'h', userAgent: isBot ? 'Googlebot' : 'Mozilla', isBot });
@@ -254,6 +254,7 @@ describe('Auslösen an den Quellen', () => {
     ev('play', true);
     ev('cta_click', true);
     ev('link_click', true, { url: 'https://x.de' });
+    ev('video_link_click', true);
     expect(zustellungen(hook.id)).toHaveLength(0);
     ev('page_view', false);
     ev('page_view', false);
@@ -261,9 +262,11 @@ describe('Auslösen an den Quellen', () => {
     ev('play', false);
     ev('cta_click', false);
     ev('link_click', false, { url: 'https://ziel.de/a' });
+    ev('video_link_click', false);
+    ev('video_link_click', false);
     ev('progress_50', false);
     const z = zustellungen(hook.id);
-    expect(z.map((x) => x.ereignis)).toEqual(['video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick']);
+    expect(z.map((x) => x.ereignis)).toEqual(['video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick', 'video_klick']);
     expect((z[3].payload as { daten: { url: string } }).daten.url).toBe('https://ziel.de/a');
     expect((z[0].payload as { daten: { lead: { score: number } } }).daten.lead.score).toBeGreaterThanOrEqual(0);
   });

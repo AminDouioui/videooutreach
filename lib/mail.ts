@@ -89,8 +89,17 @@ export function renderTemplate(tpl: string, vars: Record<string, string>): strin
   });
 }
 
+/** Direkter Link zur Video-Seite (ohne Klick-Erfassung), z. B. für das Lead-Detail. */
 export function videoLink(appUrl: string, slug: string): string {
   return `${appUrl}/v/${slug}`;
+}
+
+/**
+ * Video-Link in der Mail: läuft über /r/<slug>, erfasst den Klick (`video_link_click`) und leitet per 302 auf /v/<slug>.
+ * Schon versendete Mails mit /v/<slug> funktionieren unverändert weiter. Vorschau/Testmail: `?vorschau=1` = kein Event.
+ */
+export function mailVideoLink(appUrl: string, slug: string, vorschau = false): string {
+  return `${appUrl}/r/${slug}${vorschau ? '?vorschau=1' : ''}`;
 }
 
 export function thumbnailAbsUrl(appUrl: string, lead: Pick<MailLead, 'slug' | 'renderedAt'>): string {
@@ -125,7 +134,7 @@ function leadVars(lead: MailLead, appUrl: string, settings: MailSettings, extraS
     website: (lead.website ?? '').trim(),
     email: (lead.email ?? '').trim(),
     absender_name: (settings.senderName ?? '').trim(),
-    video_link: videoLink(appUrl, lead.slug),
+    video_link: mailVideoLink(appUrl, lead.slug, settings.vorschau),
   };
 }
 

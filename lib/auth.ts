@@ -84,7 +84,7 @@ export async function verifySessionToken(token: string | undefined, secret: stri
 }
 
 /** Öffentliche Pfade, die keine Session brauchen. */
-const OEFFENTLICH = ['/login', '/api/auth/login', '/v/', '/abmelden/', '/media/', '/api/t', '/api/o/', '/api/c/', '/api/unsubscribe/', '/api/v1/', '/_next/', '/favicon.ico'];
+const OEFFENTLICH = ['/login', '/api/auth/login', '/v/', '/r/', '/abmelden/', '/media/', '/api/t', '/api/o/', '/api/c/', '/api/unsubscribe/', '/api/v1/', '/_next/', '/favicon.ico'];
 
 export function isPublicPath(pfad: string): boolean {
   // Einladung annehmen: genau die Seite und ihre POST-Route, mit genau einem Token-Segment

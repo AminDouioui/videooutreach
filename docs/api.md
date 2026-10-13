@@ -114,6 +114,7 @@ Ereignisse:
 | `video_gestartet` | Erster Videostart je Lead (kein Bot) |
 | `termin_klick` | Klick auf den Termin-Button (kein Bot) |
 | `link_klick` | Klick auf einen getrackten Link in der Mail (kein Bot; `daten.url`) |
+| `video_klick` | Erster Klick auf den Video-Link (Vorschaubild oder Text-Link) in der Mail je Lead (kein Bot) |
 
 Ereignisse von Bots (Link-Scanner, Mail-Prefetch) lösen nie einen Webhook aus.
 

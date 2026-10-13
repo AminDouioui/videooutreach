@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
+import { kurzZeit, vollZeit } from '@/lib/kurzzeit';
 import { LEAD_STATUS, LEAD_STATUS_INFO } from '@/lib/lead-status';
 import { AbwesendBadge, Badge, LeadStatusBadge } from './Badge';
 import { CopyButton } from './CopyButton';
@@ -26,6 +27,14 @@ export type LeadRow = {
   /** höchster Fortschritt in % */
   maxProgress: number;
   terminKlicks: number;
+  /** Erster Nicht-Bot-Klick auf den Video-Link in der Mail (Unix-ms) */
+  mailKlickErster: number | null;
+  /** Erster Nicht-Bot-Klick auf den Video-Link in der Mail oder erster Videostart, was früher war (Unix-ms) */
+  videoGeklickt: number | null;
+  /** Erster Nicht-Bot-Videostart (Unix-ms) */
+  videoGestartet: number | null;
+  /** Erster Nicht-Bot-Klick auf den Termin-Button (Unix-ms) */
+  terminGeklickt: number | null;
   oeffnungen: number;
   score: number;
   /** Variante der Erstmail (A, B …) oder null */
@@ -48,7 +57,7 @@ export type LeadRow = {
   duplikatAusgeschlossen: boolean;
 };
 
-type SortKey = 'firma' | 'ansprechpartner' | 'email' | 'renderStatus' | 'sendStatus' | 'leadStatus' | 'variante' | 'postfach' | 'zeitzone' | 'flowSchritt' | 'sentAt' | 'aufrufe' | 'maxProgress' | 'terminKlicks' | 'oeffnungen' | 'score';
+type SortKey = 'firma' | 'ansprechpartner' | 'email' | 'renderStatus' | 'sendStatus' | 'leadStatus' | 'variante' | 'postfach' | 'zeitzone' | 'flowSchritt' | 'sentAt' | 'aufrufe' | 'maxProgress' | 'videoGeklickt' | 'videoGestartet' | 'terminGeklickt' | 'oeffnungen' | 'score';
 type FilterKey = 'alle' | 'mit_play' | 'nicht_gesendet' | 'beantwortet' | 'duplikate' | 'fehler' | 'termin';
 
 const FILTER: { key: FilterKey; label: string }[] = [
@@ -130,6 +139,15 @@ export function LeadsTable({
 
   const spalten: { key: SortKey; label: string; rechts?: boolean }[] = [
     { key: 'firma', label: 'Firma' },
+    ...(mitVideo
+      ? [
+          { key: 'videoGeklickt' as SortKey, label: 'Video geklickt' },
+          { key: 'videoGestartet' as SortKey, label: 'Video gestartet' },
+          { key: 'maxProgress' as SortKey, label: 'Angeschaut (max %)', rechts: true },
+          { key: 'terminGeklickt' as SortKey, label: 'Termin geklickt' },
+          { key: 'aufrufe' as SortKey, label: 'Aufrufe', rechts: true },
+        ]
+      : []),
     { key: 'ansprechpartner', label: 'Ansprechpartner' },
     { key: 'email', label: 'E-Mail' },
     ...(mitVideo ? [{ key: 'renderStatus' as SortKey, label: 'Render-Status' }] : []),
@@ -140,13 +158,6 @@ export function LeadsTable({
     ...(mehrerePostfaecher ? [{ key: 'postfach' as SortKey, label: 'Postfach' }] : []),
     ...(mehrereZeitzonen ? [{ key: 'zeitzone' as SortKey, label: 'Ortszeit' }] : []),
     { key: 'sentAt', label: 'Gesendet am' },
-    ...(mitVideo
-      ? [
-          { key: 'aufrufe' as SortKey, label: 'Aufrufe', rechts: true },
-          { key: 'maxProgress' as SortKey, label: 'Angeschaut', rechts: true },
-          { key: 'terminKlicks' as SortKey, label: 'Termin-Klick' },
-        ]
-      : []),
     ...(trackingPixel ? [{ key: 'oeffnungen' as SortKey, label: 'Geöffnet (unzuverlässig)', rechts: true }] : []),
     { key: 'score', label: 'Score', rechts: true },
   ];
@@ -311,6 +322,15 @@ export function LeadsTable({
                     </span>
                   )}
                 </td>
+                {mitVideo && (
+                  <>
+                    <ZeitZelle t={l.videoGeklickt} titel={l.mailKlickErster !== null && l.mailKlickErster === l.videoGeklickt ? 'Klick auf den Video-Link in der Mail' : 'Erster Videostart'} />
+                    <ZeitZelle t={l.videoGestartet} titel="Erster Videostart" />
+                    <td className="px-3 py-2 text-right tabular-nums">{l.videostarts > 0 ? `${l.maxProgress} %` : '–'}</td>
+                    <ZeitZelle t={l.terminGeklickt} titel="Erster Klick auf den Termin-Button" gruen />
+                    <td className="px-3 py-2 text-right tabular-nums">{l.aufrufe}</td>
+                  </>
+                )}
                 <td className="px-3 py-2">{l.ansprechpartner || '–'}</td>
                 <td className="px-3 py-2">{l.email}</td>
                 {mitVideo && (
@@ -353,15 +373,6 @@ export function LeadsTable({
                   </td>
                 )}
                 <td className="whitespace-nowrap px-3 py-2 text-slate-600">{l.sentAt ? datumFormat.format(l.sentAt) : '–'}</td>
-                {mitVideo && (
-                  <>
-                    <td className="px-3 py-2 text-right tabular-nums">{l.aufrufe}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{l.videostarts > 0 ? `${l.maxProgress} %` : '–'}</td>
-                    <td className="px-3 py-2">
-                      {l.terminKlicks > 0 ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Ja</span> : <span className="text-slate-400">–</span>}
-                    </td>
-                  </>
-                )}
                 {trackingPixel && <td className="px-3 py-2 text-right tabular-nums text-slate-500">{l.oeffnungen}</td>}
                 <td className="px-3 py-2 text-right font-semibold tabular-nums">{l.score}</td>
                 {mitVideo && (
@@ -407,6 +418,15 @@ export function LeadsTable({
         </div>
       )}
     </div>
+  );
+}
+
+function ZeitZelle({ t, titel, gruen = false }: { t: number | null; titel: string; gruen?: boolean }) {
+  if (t === null) return <td className="px-3 py-2 text-slate-400">–</td>;
+  return (
+    <td className="whitespace-nowrap px-3 py-2 tabular-nums" title={`${titel}: ${vollZeit(t)}`}>
+      {gruen ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">{kurzZeit(t)}</span> : kurzZeit(t)}
+    </td>
   );
 }
 
