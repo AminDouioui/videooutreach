@@ -120,6 +120,13 @@
       "when": 1791827852978,
       "tag": "0016_anhaenge",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1791900000000,
+      "tag": "0017_bounce_zaehlen_ab",
+      "breakpoints": true
     }
   ]
 }

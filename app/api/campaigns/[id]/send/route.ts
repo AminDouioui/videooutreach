@@ -110,7 +110,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return fehler(k.mitVideo ? 'Keine fertig gerenderten Leads zum Versenden vorhanden' : 'Keine Leads zum Versenden vorhanden');
   }
 
-  db.update(schema.campaigns).set({ status: 'versendet_laufend', pausiertGrund: null }).where(eq(schema.campaigns.id, id)).run();
+  db.update(schema.campaigns).set({ status: 'versendet_laufend', pausiertGrund: null, ...(action === 'resume' ? { bounceZaehlenAb: new Date() } : {}) }).where(eq(schema.campaigns.id, id)).run();
   return NextResponse.json({
     ok: true,
     status: 'versendet_laufend',
