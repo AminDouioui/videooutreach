@@ -106,6 +106,8 @@ export const campaigns = sqliteTable('campaigns', {
   bounceFenster: integer('bounce_fenster').notNull().default(50),
   // Warum die Kampagne automatisch pausiert wurde (Bounce-Schutz); null = nicht automatisch pausiert
   pausiertGrund: text('pausiert_grund'),
+  // Fortsetzen nach dem Bounce-Schutz: nur Erstmails, die ab diesem Zeitpunkt gesendet wurden, zählen für die Quote
+  bounceZaehlenAb: ts('bounce_zaehlen_ab'),
 });
 
 /** Follow-up-Schritte einer Kampagne (Schritt 1 ist die Erstmail aus campaigns). Gesendet im selben Thread. */
