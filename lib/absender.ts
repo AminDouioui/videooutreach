@@ -179,7 +179,11 @@ export function aktualisiereAbsender(id: number, a: AbsenderAenderung): Absender
   if (a.aktiv !== undefined) {
     set.aktiv = a.aktiv;
     // Fortsetzen nach dem Bounce-Schutz löscht dessen Grund (andere Fehler, z. B. Auth, bleiben)
-    if (a.aktiv && istBounceFehler(ladeAbsenderMitId(id)?.fehler)) set.fehler = null;
+    if (a.aktiv) {
+      const alt = ladeAbsenderMitId(id);
+      if (istBounceFehler(alt?.fehler)) set.fehler = null;
+      if (alt && !alt.aktiv) set.bounceZaehlenAb = new Date();
+    }
   }
   if (a.rampeBeginn !== undefined) set.rampeBeginn = a.rampeBeginn && /^\d{4}-\d{2}-\d{2}$/.test(a.rampeBeginn) ? a.rampeBeginn : null;
   if (Object.keys(set).length === 0) return ladeAbsenderMitId(id);

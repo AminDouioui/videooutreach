@@ -51,6 +51,8 @@ export const absender = sqliteTable('absender', {
   fehler: text('fehler'),
   // Erster Tag der Aufwärmrampe ('YYYY-MM-DD'); null = Tag der ersten Mail dieses Postfachs
   rampeBeginn: text('rampe_beginn'),
+  // Wieder aktiviert nach dem Bounce-Schutz: nur Erstmails ab diesem Zeitpunkt zählen für die Bounce-Quote
+  bounceZaehlenAb: ts('bounce_zaehlen_ab'),
   // Postfach-Typ: 'gmail' (OAuth, Gmail-API) oder 'smtp' (SMTP-Versand + IMAP-Lesen, z. B. Outlook/IONOS/Strato)
   typ: text('typ', { enum: ['gmail', 'smtp'] }).notNull().default('gmail'),
   // Nur typ 'smtp': Server und Benutzer (Passwörter stehen verschlüsselt in zugangsdatenEnc)
