@@ -39,7 +39,7 @@ export function pruefeBounceSchutz(lead: { campaignId: number; absenderId: numbe
   if (lead.absenderId !== null) {
     const a = db.select().from(schema.absender).where(eq(schema.absender.id, lead.absenderId)).get();
     if (a) {
-      erg.postfach = berechneBounceQuote(letzteErstmails(eq(schema.leads.absenderId, a.id), BOUNCE_FENSTER_POSTFACH), { schwelleProzent: bounceSchwellePostfach(), fenster: BOUNCE_FENSTER_POSTFACH });
+      erg.postfach = berechneBounceQuote(letzteErstmails(eq(schema.leads.absenderId, a.id), BOUNCE_FENSTER_POSTFACH, a.bounceZaehlenAb), { schwelleProzent: bounceSchwellePostfach(), fenster: BOUNCE_FENSTER_POSTFACH });
       if (erg.postfach.ueberSchwelle && a.aktiv && !a.fehler) {
         db.update(schema.absender).set({ aktiv: false, fehler: postfachBounceFehler(erg.postfach) }).where(eq(schema.absender.id, a.id)).run();
         erg.postfachPausiert = true;
