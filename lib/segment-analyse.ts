@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDb, schema } from './db';
 import { EINWAND_LABEL, istEinwand, type Einwand } from './einwaende';
+import { ctaOrtAusMeta, type CtaOrt } from './video-cta';
 import { normalisiereSpaltenname } from './vorlage';
 
 // Auswertung nach Segment (Rolle, Position, eigene Importspalten wie Branche oder Firmengröße) und Einwand-Verteilung.
@@ -131,4 +132,17 @@ export function ladeEinwandVerteilung(campaignId: number): EinwandZeile[] {
   const zaehler = new Map<Einwand, number>();
   for (const r of rows) if (istEinwand(r.e) && r.e !== 'kein_einwand') zaehler.set(r.e, (zaehler.get(r.e) ?? 0) + 1);
   return [...zaehler.entries()].map(([einwand, anzahl]) => ({ einwand, label: EINWAND_LABEL[einwand], anzahl })).sort((a, b) => b.anzahl - a.anzahl);
+}
+
+/** Termin-Klicks (ohne Bots) nach Platzierung: unter dem Video oder im ab 50 % eingeblendeten zweiten Button */
+export function ladeCtaOrte(campaignId: number): Record<CtaOrt, number> {
+  const rows = getDb()
+    .select({ meta: schema.events.meta })
+    .from(schema.events)
+    .innerJoin(schema.leads, eq(schema.leads.id, schema.events.leadId))
+    .where(and(eq(schema.leads.campaignId, campaignId), eq(schema.events.type, 'cta_click'), eq(schema.events.isBot, false)))
+    .all();
+  const aus: Record<CtaOrt, number> = { unten: 0, video_50: 0 };
+  for (const r of rows) aus[ctaOrtAusMeta(r.meta)]++;
+  return aus;
 }

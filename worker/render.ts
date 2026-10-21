@@ -8,6 +8,7 @@ import { getDb, schema } from '../lib/db';
 import { getEnv } from '../lib/env';
 import { mediaDir, thumbnailPath, videoPath } from '../lib/media';
 import { schliesseKampagneAb } from '../lib/render-queue';
+import { logoUrlAusExtra, pruefeLogoErreichbar } from '../lib/logo';
 import { isInRenderWindow } from '../lib/time';
 import { concatIntroTeaser, ensureTeaserCache, teaserHash } from './assemble';
 import { outreachPropsSchema, TEASER_DATEI, type OutreachProps } from '../remotion/schema';
@@ -106,11 +107,14 @@ async function renderLead(leadId: number): Promise<void> {
   };
   try {
     fs.mkdirSync(mediaDir(), { recursive: true });
+    // Logo des Leads (Importspalte logo): nur wenn erreichbar und ein kleines Bild, sonst ohne Logo rendern
+    const logoUrl = (await pruefeLogoErreichbar(logoUrlAusExtra(lead.extra) ?? '')) ?? undefined;
     const inputProps: OutreachProps = outreachPropsSchema.parse({
       firma: lead.firma,
       anrede: lead.anrede ?? '',
       vorname: lead.vorname ?? '',
       nachname: lead.nachname ?? '',
+      logoUrl,
     });
     const puppeteerInstance = await holeBrowser();
     const common = { serveUrl, puppeteerInstance, browserExecutable: browserExecutable() };

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AbsoluteFill, Easing, interpolate, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, Easing, Img, interpolate, useCurrentFrame } from 'remotion';
 import { Logo, SCHRIFT, firmaSchriftgroesse } from './Brand';
 import { begruessung, INTRO_FRAMES, MARKE, UEBERBLENDUNG_FRAMES, type OutreachProps } from './schema';
 
@@ -12,7 +12,7 @@ function einblenden(frame: number, start: number, dauer = 22) {
 }
 
 /** Intro-Szene (5 s, endet auf reinem Weiß) – gemeinsam für OutreachIntro (Worker) und OutreachVideo (Studio-Vorschau). */
-export const IntroScene: React.FC<OutreachProps> = ({ firma, vorname, nachname }) => {
+export const IntroScene: React.FC<OutreachProps> = ({ firma, vorname, nachname, logoUrl }) => {
   const frame = useCurrentFrame();
   const firmaGroesse = firmaSchriftgroesse(firma, 96, 1040);
   const balken = interpolate(frame, [30, 70], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: weich });
@@ -44,6 +44,12 @@ export const IntroScene: React.FC<OutreachProps> = ({ firma, vorname, nachname }
           </div>
           <div style={{ marginTop: 34, height: 6, width: 120 * balken, borderRadius: 3, background: MARKE.akzent }} />
         </AbsoluteFill>
+        {logoUrl && (
+          // Logo der angeschriebenen Firma (aus der Importspalte logo), oben links, weich eingeblendet
+          <div style={{ position: 'absolute', left: 120, top: 64, maxWidth: 300, height: 84, display: 'flex', alignItems: 'center', ...einblenden(frame, 44) }}>
+            <Img src={logoUrl} style={{ maxWidth: 300, maxHeight: 84, objectFit: 'contain' }} />
+          </div>
+        )}
         <Logo style={{ position: 'absolute', right: 64, bottom: 52, ...einblenden(frame, 60) }} />
       </AbsoluteFill>
     </AbsoluteFill>

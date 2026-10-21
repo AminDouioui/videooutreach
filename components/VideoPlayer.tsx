@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { zeigeZweitenCta } from '@/lib/video-cta';
 
 type Props = {
   slug: string;
@@ -17,8 +18,8 @@ const SCHWELLEN = [
 ] as const;
 
 /** Sendet ein Tracking-Event; sendBeacon als text/plain (kein CORS-Preflight), Fallback fetch keepalive. */
-function sende(slug: string, type: string) {
-  const body = JSON.stringify({ slug, type });
+function sende(slug: string, type: string, meta?: Record<string, unknown>) {
+  const body = JSON.stringify({ slug, type, ...(meta ? { meta } : {}) });
   try {
     if (navigator.sendBeacon && navigator.sendBeacon('/api/t', new Blob([body], { type: 'text/plain' }))) return;
   } catch {
@@ -33,6 +34,7 @@ function sende(slug: string, type: string) {
 
 export function VideoPlayer({ slug, videoSrc, posterSrc, ctaUrl, mailto }: Props) {
   const gesendet = useRef(new Set<string>());
+  const [zweiterCta, setZweiterCta] = useState(false);
 
   const einmal = useCallback(
     (typ: string) => {
@@ -52,6 +54,7 @@ export function VideoPlayer({ slug, videoSrc, posterSrc, ctaUrl, mailto }: Props
     if (!v.duration || !Number.isFinite(v.duration)) return;
     const anteil = v.currentTime / v.duration;
     for (const s of SCHWELLEN) if (anteil >= s.anteil) einmal(s.typ);
+    if (zeigeZweitenCta(anteil)) setZweiterCta(true);
     if (anteil >= 0.99) einmal('progress_100');
   }
 
@@ -67,18 +70,36 @@ export function VideoPlayer({ slug, videoSrc, posterSrc, ctaUrl, mailto }: Props
           className="block aspect-video w-full bg-black"
           onPlay={() => einmal('play')}
           onTimeUpdate={(e) => zeitupdate(e.currentTarget)}
-          onEnded={() => einmal('progress_100')}
+          onEnded={() => {
+            einmal('progress_100');
+            setZweiterCta(true);
+          }}
         >
           Ihr Browser unterstützt keine Videowiedergabe.
         </video>
       </div>
+
+      {zweiterCta && (
+        <div className="mt-4 flex flex-col items-start justify-between gap-3 rounded-2xl border border-[#7b3aec]/20 bg-[#7b3aec]/5 p-4 sm:flex-row sm:items-center" data-testid="zweiter-cta">
+          <p className="text-base font-semibold text-[#0a0a0a]">Passt das für Sie? Dann lassen Sie uns kurz sprechen.</p>
+          <a
+            href={ctaUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => sende(slug, 'cta_click', { ort: 'video_50' })}
+            className="inline-flex shrink-0 items-center justify-center rounded-full bg-[#7b3aec] px-6 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-[#6a2ed6] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7b3aec] focus-visible:ring-offset-2"
+          >
+            15-Minuten-Termin buchen
+          </a>
+        </div>
+      )}
 
       <div className="mt-8 flex flex-col gap-3 sm:flex-row">
         <a
           href={ctaUrl}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={() => sende(slug, 'cta_click')}
+          onClick={() => sende(slug, 'cta_click', { ort: 'unten' })}
           className="inline-flex items-center justify-center rounded-full bg-[#7b3aec] px-7 py-3.5 text-base font-semibold text-white shadow-sm transition hover:bg-[#6a2ed6] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7b3aec] focus-visible:ring-offset-2"
         >
           15-Minuten-Termin buchen

@@ -1,16 +1,17 @@
 import React from 'react';
-import { AbsoluteFill } from 'remotion';
+import { AbsoluteFill, Img } from 'remotion';
 import { Logo, PlayButton, SCHRIFT, firmaSchriftgroesse } from './Brand';
 import { MARKE, type OutreachProps } from './schema';
 
 /** Vorschaubild: wirkt wie ein Video-Frame mit Play-Button. */
-export const OutreachThumbnail: React.FC<OutreachProps> = ({ firma }) => {
+export const OutreachThumbnail: React.FC<OutreachProps> = ({ firma, logoUrl }) => {
   const groesse = firmaSchriftgroesse(firma, 84, 700);
   return (
     <AbsoluteFill style={{ background: MARKE.hintergrund, fontFamily: SCHRIFT }}>
       {/* dezenter lila Verlauf rechts wie bei einem Video-Frame */}
       <AbsoluteFill style={{ background: 'radial-gradient(circle at 78% 50%, rgba(123,58,236,0.13), rgba(123,58,236,0) 55%)' }} />
       <div style={{ position: 'absolute', left: 90, top: 0, bottom: 0, width: 720, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        {logoUrl && <Img src={logoUrl} style={{ alignSelf: 'flex-start', maxWidth: 260, maxHeight: 72, objectFit: 'contain', marginBottom: 26 }} />}
         <div style={{ fontSize: 38, fontWeight: 400, color: MARKE.grau, marginBottom: 10 }}>Ein Video für</div>
         <div style={{ fontSize: groesse, fontWeight: 800, color: MARKE.akzent, lineHeight: 1.08, letterSpacing: -groesse * 0.025, overflowWrap: 'anywhere' }}>
           {firma}

@@ -115,4 +115,16 @@ describe('Datenbank: Segmentleads und Einwand-Verteilung', () => {
       { einwand: 'kein_budget', label: 'Kein Budget / zu teuer', anzahl: 1 },
     ]);
   });
+  it('ladeCtaOrte trennt Termin-Klicks nach Platzierung und ignoriert Bots', async () => {
+    const { getDb, schema } = db;
+    const kamp = getDb().insert(schema.campaigns).values({ name: 'C', ctaUrl: 'https://x.de', emailSubjectTemplate: 's', emailBodyTemplate: 'b' }).returning().get().id;
+    const l = getDb().insert(schema.leads).values({ campaignId: kamp, firma: 'C1', email: 'c1@f.de', slug: 'cta-1' }).returning().get();
+    getDb().insert(schema.events).values([
+      { leadId: l.id, type: 'cta_click', isBot: false, meta: { ort: 'video_50' } },
+      { leadId: l.id, type: 'cta_click', isBot: false, meta: { ort: 'unten' } },
+      { leadId: l.id, type: 'cta_click', isBot: false },
+      { leadId: l.id, type: 'cta_click', isBot: true, meta: { ort: 'video_50' } },
+    ]).run();
+    expect(seg.ladeCtaOrte(kamp)).toEqual({ unten: 2, video_50: 1 });
+  });
 });

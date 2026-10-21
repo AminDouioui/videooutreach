@@ -6,7 +6,7 @@ import { Kachel, TagesDiagramm, TrichterBalken } from '@/components/AnalyseDiagr
 import { VariantenTabelle } from '@/components/VariantenTabelle';
 import { ladeKampagnenAnalyse } from '@/lib/analyse';
 import { kampagnenExtraSpalten } from '@/lib/campaigns';
-import { gruppiereNachSegment, ladeEinwandVerteilung, ladeSegmentLeads, segmentFelder } from '@/lib/segment-analyse';
+import { gruppiereNachSegment, ladeCtaOrte, ladeEinwandVerteilung, ladeSegmentLeads, segmentFelder } from '@/lib/segment-analyse';
 import { getDb, schema } from '@/lib/db';
 import { leadStatusLabel } from '@/lib/lead-status';
 import { ladeFollowups } from '@/lib/send';
@@ -36,6 +36,7 @@ export default async function AnalysePage({ params, searchParams }: { params: Pr
   const gewaehlt = felder.find((f) => f.key === segmentParam) ?? felder[0];
   const segmente = gruppiereNachSegment(ladeSegmentLeads(id), gewaehlt.key);
   const einwaende = ladeEinwandVerteilung(id);
+  const ctaOrte = ladeCtaOrte(id);
 
   return (
     <div>
@@ -57,7 +58,7 @@ export default async function AnalysePage({ params, searchParams }: { params: Pr
         <Kachel label="Erstmails gesendet" wert={trichter.gesendet} />
         <Kachel label="Antworten" wert={trichter.antworten} hinweis={`Antwortrate ${prozent(stufe('antwort').rate ?? 0)}`} />
         {k.mitVideo && <Kachel label="Video-Seite angesehen" wert={stufe('angesehen').anzahl} hinweis={prozent(stufe('angesehen').rate ?? 0)} />}
-        {k.mitVideo && <Kachel label="Termin-Klicks" wert={stufe('termin').anzahl} hinweis={prozent(stufe('termin').rate ?? 0)} />}
+        {k.mitVideo && <Kachel label="Termin-Klicks" wert={stufe('termin').anzahl} hinweis={`${prozent(stufe('termin').rate ?? 0)} · unter dem Video ${ctaOrte.unten}, ab 50 % beim Video ${ctaOrte.video_50}`} />}
         {k.linkTracking && <Kachel label="Link-Klicks" wert={stufe('linkklick').anzahl} hinweis={prozent(stufe('linkklick').rate ?? 0)} />}
         <Kachel label="Bounces" wert={trichter.bounces} hinweis={prozent(trichter.bounceRate)} />
         <Kachel label="Abwesenheiten" wert={trichter.abwesenheiten} hinweis="zählen nicht als Antwort" />
