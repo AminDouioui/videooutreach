@@ -27,6 +27,8 @@ const bodySchema = z.object({
   rampeSchritt: z.coerce.number().int().min(0).max(500),
   rampeBeginn: z.union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT')]),
   bounceSchwellePostfach: z.coerce.number().int().min(1).max(100),
+  // Ab diesem Score gilt ein Lead als heiß (Webhook heisser_lead); fehlt das Feld, bleibt die Einstellung unverändert
+  heissSchwelle: z.coerce.number().int().min(1).max(1000).optional(),
   impressumUrl: urlOderLeer,
   // Prozessia-Schreibregeln prüfen; fehlt das Feld, bleibt die Einstellung unverändert
   schreibregelnAktiv: z.boolean().optional(),
@@ -66,6 +68,7 @@ export async function PUT(req: Request) {
   setSetting('rampe_schritt', String(d.rampeSchritt));
   setOrDelete('rampe_beginn', d.rampeBeginn);
   setSetting('bounce_schwelle_postfach', String(d.bounceSchwellePostfach));
+  if (d.heissSchwelle !== undefined) setSetting('heiss_schwelle', String(d.heissSchwelle));
   setOrDelete('impressum_url', d.impressumUrl);
   setOrDelete('datenschutz_url', d.datenschutzUrl);
   if (d.schreibregelnAktiv !== undefined) setSetting('schreibregeln_aktiv', d.schreibregelnAktiv ? '1' : '0');

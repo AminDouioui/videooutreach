@@ -21,6 +21,8 @@ export type SettingKey =
   | 'bounce_schwelle_postfach'
   // KI-Einordnung von Antworten: 'aus' | 'vorschlagen' (Standard) | 'automatisch'
   | 'ki_auto_status'
+  // Ab diesem Score gilt ein Lead als heiß (Webhook heisser_lead), Standard 40
+  | 'heiss_schwelle'
   // Klassifizierer der Einordnung: 'anthropic' | 'jev' (Standard: Jev, wenn ein TypeSafe- oder OpenRouter-Schlüssel gesetzt ist)
   | 'ki_klassifizierer'
   // Anbieter für Texte/Entwürfe (Antwort-Entwurf, Schreibhilfe): 'openai' | 'anthropic' (Standard: OpenAI, wenn OPENAI_API_KEY gesetzt ist)
@@ -101,6 +103,14 @@ export function bounceSchwellePostfach(): number {
 /** Prozessia-Schreibregeln (keine Gedankenstriche/Trenner/Klammern, Wahrheitsregel) prüfen: Standard an. */
 export function schreibregelnAktiv(): boolean {
   return getSetting('schreibregeln_aktiv') !== '0';
+}
+
+export const HEISS_SCHWELLE_STANDARD = 40;
+
+/** Score, ab dem ein Lead als heiß gilt (Standard 40: z. B. Video komplett gesehen plus Link-Klick oder Termin-Klick plus Play). */
+export function heissSchwelle(): number {
+  const n = Number(getSetting('heiss_schwelle'));
+  return Number.isFinite(n) && n >= 1 && n <= 1000 ? Math.floor(n) : HEISS_SCHWELLE_STANDARD;
 }
 
 export const KI_AUTO_STATUS = ['aus', 'vorschlagen', 'automatisch'] as const;

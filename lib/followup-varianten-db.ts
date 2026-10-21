@@ -1,6 +1,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { getDb, schema } from './db';
 import { alleThreadIds, kuerzelOderA, type FollowupText } from './followup-varianten';
+import { passendeVarianten, verhaltensstufe, wenigsteVersendungen, type Verhaltensstufe } from './verhalten';
 import { STANDARD_VARIANTE, waehleVariante } from './varianten';
 
 // DB-Zugriffe der Follow-up-Varianten
@@ -22,11 +23,28 @@ export function followupVariantenZaehler(campaignId: number, step: number): Reco
   return Object.fromEntries(rows.map((r) => [r.k, r.n]));
 }
 
-/** Variante für das nächste Follow-up dieses Schritts: rotierend unter den aktiven (A ist immer dabei). */
-export function waehleFollowupVariante(schritt: Followup, step: number): FollowupText {
+/** Verhaltensstufe des Leads aus seinen Nicht-Bot-Events (Video gesehen, gestartet, Termin-Klick …) */
+export function ladeVerhaltensstufe(leadId: number): Verhaltensstufe {
+  const events = getDb().select({ type: schema.events.type, isBot: schema.events.isBot }).from(schema.events).where(eq(schema.events.leadId, leadId)).all();
+  return verhaltensstufe(events);
+}
+
+/**
+ * Variante für das nächste Follow-up dieses Schritts. Passt eine aktive Variante genau zum Verhalten des Leads
+ * (`stufe`, z. B. „Video komplett gesehen“), wird unter diesen rotiert. Sonst rotiert die Auswahl unter A und den
+ * aktiven Varianten ohne Verhaltensbezug („immer“).
+ */
+export function waehleFollowupVariante(schritt: Followup, step: number, stufe?: Verhaltensstufe): FollowupText {
   const zusatz = ladeFollowupVarianten(schritt.id);
   const aktive = zusatz.filter((v) => v.aktiv);
-  const kuerzel = aktive.length === 0 ? STANDARD_VARIANTE : waehleVariante(aktive.map((v) => v.kuerzel), followupVariantenZaehler(schritt.campaignId, step));
+  const zaehler = followupVariantenZaehler(schritt.campaignId, step);
+  const spezifisch = stufe ? passendeVarianten(aktive, stufe) : null;
+  const allgemein = aktive.filter((v) => !v.verhalten || v.verhalten === 'immer');
+  const kuerzel = spezifisch
+    ? wenigsteVersendungen(spezifisch.map((v) => v.kuerzel), zaehler)
+    : allgemein.length === 0
+      ? STANDARD_VARIANTE
+      : waehleVariante(allgemein.map((v) => v.kuerzel), zaehler);
   const v = zusatz.find((x) => x.kuerzel === kuerzel);
   return v ? { kuerzel, body: v.text, betreff: v.betreff } : { kuerzel: STANDARD_VARIANTE, body: schritt.body, betreff: schritt.betreff };
 }

@@ -4,6 +4,7 @@ import { hashIp } from './crypto';
 import { getDb, schema } from './db';
 import { clientIp } from './request';
 import { berechneScore } from './score';
+import { heissSchwelle } from './settings';
 import { webhookAusloesen } from './webhooks';
 
 export type EventTyp = (typeof schema.EVENT_TYPEN)[number];
@@ -23,7 +24,26 @@ export function aktualisiereScore(leadId: number): number {
     .all();
   const score = berechneScore(rows);
   db.update(schema.leads).set({ score }).where(eq(schema.leads.id, leadId)).run();
+  meldeHeissenLead(leadId, score);
   return score;
+}
+
+/**
+ * Erreicht der Score die Heiß-Schwelle, wird das einmal je Lead festgehalten (`heissAt`) und der Webhook `heisser_lead`
+ * ausgelöst, damit jemand sofort anruft. Abgemeldete und bereits beendete Leads (Antwort, Bounce) melden nichts.
+ */
+function meldeHeissenLead(leadId: number, score: number): void {
+  try {
+    if (score < heissSchwelle()) return;
+    const db = getDb();
+    const lead = db.select({ heissAt: schema.leads.heissAt, unsubscribed: schema.leads.unsubscribed, flowStopp: schema.leads.flowStopp, firma: schema.leads.firma }).from(schema.leads).where(eq(schema.leads.id, leadId)).get();
+    if (!lead || lead.heissAt || lead.unsubscribed || lead.flowStopp === 'bounce') return;
+    const jetzt = new Date();
+    db.update(schema.leads).set({ heissAt: jetzt }).where(eq(schema.leads.id, leadId)).run();
+    webhookAusloesen('heisser_lead', { leadId, score, firma: lead.firma }, jetzt);
+  } catch (e) {
+    console.error('[webhook] Heißer Lead:', e instanceof Error ? e.message : e);
+  }
 }
 
 /** Speichert ein Event und berechnet den Score neu. */

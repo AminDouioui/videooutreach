@@ -4,6 +4,8 @@ import { index, integer, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } 
 const ts = (name: string) => integer(name, { mode: 'timestamp_ms' });
 const jetzt = sql`(unixepoch() * 1000)`;
 
+// Muss mit VERHALTEN in lib/verhalten.ts übereinstimmen (Test lib/verhalten.test.ts)
+export const FOLLOWUP_VERHALTEN = ['immer', 'nicht_angesehen', 'angesehen', 'gestartet', 'komplett', 'termin_klick'] as const;
 export const KAMPAGNEN_STATUS = ['entwurf', 'rendert', 'bereit', 'versendet_laufend', 'pausiert', 'abgeschlossen'] as const;
 export const RENDER_STATUS = ['wartet', 'rendert', 'fertig', 'fehler'] as const;
 export const SEND_STATUS = ['nicht_gesendet', 'geplant', 'gesendet', 'fehler', 'uebersprungen'] as const;
@@ -171,6 +173,8 @@ export const followupVarianten = sqliteTable(
     text: text('text').notNull(),
     betreff: text('betreff'),
     aktiv: integer('aktiv', { mode: 'boolean' }).notNull().default(true),
+    // Für welches Verhalten des Leads diese Variante gilt (lib/verhalten.ts); 'immer' = normale A/B-Rotation
+    verhalten: text('verhalten', { enum: FOLLOWUP_VERHALTEN }).notNull().default('immer'),
   },
   (t) => [index('followup_varianten_followup_idx').on(t.followupId), uniqueIndex('followup_varianten_kuerzel_idx').on(t.followupId, t.kuerzel)],
 );
@@ -249,6 +253,8 @@ export const leads = sqliteTable(
     abwesendAt: ts('abwesend_at'),
     abwesendBis: ts('abwesend_bis'),
     // KI liest das Rückkehrdatum aus der Notiz: Zeitpunkt der Auswertung und Fehlversuche (höchstens 3)
+    // Score hat die Heiß-Schwelle erreicht (einmal je Lead, löst den Webhook heisser_lead aus)
+    heissAt: ts('heiss_at'),
     abwesendKiAt: ts('abwesend_ki_at'),
     abwesendKiVersuche: integer('abwesend_ki_versuche').notNull().default(0),
     // Automatisch erstellter Antwort-Entwurf (wird nie gesendet, liegt im Antwortfeld der Unibox bereit)
@@ -357,7 +363,7 @@ export const suppressionList = sqliteTable('suppression_list', {
 
 // ---------------------------------------------------------------- Webhooks & API (Paket 14)
 
-export const WEBHOOK_EREIGNISSE = ['mail_gesendet', 'antwort', 'bounce', 'abwesenheit', 'abmeldung', 'lead_status', 'video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick', 'video_klick'] as const;
+export const WEBHOOK_EREIGNISSE = ['mail_gesendet', 'antwort', 'bounce', 'abwesenheit', 'abmeldung', 'lead_status', 'video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick', 'video_klick', 'heisser_lead'] as const;
 export const ZUSTELL_STATUS = ['offen', 'ok', 'fehler'] as const;
 export const API_RECHTE = ['lesen', 'schreiben'] as const;
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { MAX_VARIANTEN, naechstesKuerzel, STANDARD_VARIANTE } from '@/lib/varianten';
+import { VERHALTEN, VERHALTEN_LABEL, type Verhalten } from '@/lib/verhalten';
 import { pruefeFelder } from '@/lib/schreibregeln';
 import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
 import { AnhangEditor, AnhangVorschau, type AnhangInfo } from './AnhangEditor';
@@ -10,7 +11,7 @@ import { platzhalterFuer } from './TemplateEditor';
 import { VorlagenHinweise } from './VorlagenHilfe';
 
 type LeadOption = { id: number; label: string };
-type FVariante = { kuerzel: string; text: string; betreff: string; aktiv: boolean };
+type FVariante = { kuerzel: string; text: string; betreff: string; aktiv: boolean; verhalten?: Verhalten };
 /** Variante A = body/betreff; varianten = B–E. Betreff gesetzt = neuer Thread statt „Re: …“. */
 type Schritt = { /** Datensatz-ID, sobald gespeichert (Anhänge hängen daran) */ id?: number; waitDays: number; body: string; betreff: string; varianten: FVariante[] };
 type Preview = { subject: string; html: string; text: string };
@@ -133,7 +134,7 @@ export function FollowupEditor({
     setWahl({ schritt: schritte.length, kuerzel: STANDARD_VARIANTE });
   }
   /** Variante bearbeiten: A = Schritt selbst, sonst die Zusatzvariante */
-  function varianteAendern(i: number, kuerzel: string, patch: { text?: string; betreff?: string; aktiv?: boolean }) {
+  function varianteAendern(i: number, kuerzel: string, patch: { text?: string; betreff?: string; aktiv?: boolean; verhalten?: Verhalten }) {
     setSchritte((s) =>
       s.map((x, j) => {
         if (j !== i) return x;
@@ -266,6 +267,21 @@ export function FollowupEditor({
                       <label className="flex items-center gap-1.5 text-xs text-slate-600">
                         <input type="checkbox" checked={v.aktiv} onChange={(e) => varianteAendern(i, kuerzel, { aktiv: e.target.checked })} />
                         Aktiv (wird für neue Follow-ups dieses Schritts verwendet)
+                      </label>
+                      <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                        Gilt für
+                        <select
+                          aria-label={`Verhalten Variante ${kuerzel} von Follow-up ${i + 1}`}
+                          value={v.verhalten ?? 'immer'}
+                          onChange={(e) => varianteAendern(i, kuerzel, { verhalten: e.target.value as Verhalten })}
+                          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
+                        >
+                          {VERHALTEN.map((x) => (
+                            <option key={x} value={x}>
+                              {VERHALTEN_LABEL[x]}
+                            </option>
+                          ))}
+                        </select>
                       </label>
                       <button type="button" onClick={() => varianteLoeschen(i, kuerzel)} className={`${klein} ml-auto text-red-700`}>
                         Variante {kuerzel} löschen

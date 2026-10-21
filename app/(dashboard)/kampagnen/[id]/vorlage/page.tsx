@@ -44,7 +44,7 @@ export default async function VorlagePage({ params }: { params: Promise<{ id: st
     waitDays: f.waitDays,
     body: f.body,
     betreff: f.betreff ?? '',
-    varianten: ladeFollowupVarianten(f.id).map((v) => ({ kuerzel: v.kuerzel, text: v.text, betreff: v.betreff ?? '', aktiv: v.aktiv })),
+    varianten: ladeFollowupVarianten(f.id).map((v) => ({ kuerzel: v.kuerzel, text: v.text, betreff: v.betreff ?? '', aktiv: v.aktiv, verhalten: v.verhalten })),
   }));
 
   return (

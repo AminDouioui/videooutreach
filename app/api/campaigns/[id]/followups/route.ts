@@ -5,6 +5,7 @@ import { kampagnenExtraSpalten, speichereFollowups } from '@/lib/campaigns';
 import { getDb, schema } from '@/lib/db';
 import { fehler, parseJson } from '@/lib/request';
 import { MAX_VARIANTEN } from '@/lib/varianten';
+import { VERHALTEN } from '@/lib/verhalten';
 import { pruefeVorlage, STANDARD_VARIABLEN } from '@/lib/vorlage';
 import { erfordereRolle } from '@/lib/session';
 
@@ -28,6 +29,7 @@ const bodySchema = z.object({
               text: z.string().trim().min(1, 'Text einer Variante fehlt').max(20000),
               betreff: z.string().trim().max(300).nullish(),
               aktiv: z.boolean().optional(),
+              verhalten: z.enum(VERHALTEN).optional(),
             }),
           )
           .max(MAX_VARIANTEN - 1, 'Höchstens 5 Varianten (A bis E) je Follow-up')

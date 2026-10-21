@@ -19,7 +19,7 @@ import { startOfDayBerlinMs, todayBerlin } from './time';
 import { kampagneMitVariante, waehleVarianteFuerKampagne } from './varianten-db';
 import { webhookAusloesen } from './webhooks';
 import { staerkeresErgebnis } from './followup-varianten';
-import { threadsDesLeads, waehleFollowupVariante } from './followup-varianten-db';
+import { ladeVerhaltensstufe, threadsDesLeads, waehleFollowupVariante } from './followup-varianten-db';
 import type { ThreadErgebnis } from './gmail';
 
 // Gemeinsame Sendefunktion für Worker-Schleife und „Jetzt senden“-API
@@ -452,7 +452,7 @@ export async function sendFollowup(leadId: number, opts: SendOptions = {}): Prom
       if (aktuell && wartetWegenAbwesenheit(aktuell, jetzt)) return { ok: false, kind: 'abwesend', error: 'Abwesenheitsnotiz erkannt – Follow-up wartet' };
     }
     // Variante rotierend (wenigste Versendungen dieses Schritts); eigener Betreff = neuer Thread
-    const wahl = waehleFollowupVariante(schritt, lead.followupsSent + 1);
+    const wahl = waehleFollowupVariante(schritt, lead.followupsSent + 1, ladeVerhaltensstufe(lead.id));
     const mailSchritt = { body: wahl.body, betreff: wahl.betreff, nr: lead.followupsSent + 1, followupId: schritt.id };
     const { raw } = buildLeadMimeMitId(lead, kampagne, { schritt: mailSchritt, inReplyTo: lead.rfcMessageId ?? undefined, absender: postfach });
     // Neuer Thread: ohne threadId senden. lead.gmailThreadId bleibt die der Erstmail, die neue Thread-ID steht in sent_messages

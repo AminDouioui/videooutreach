@@ -4,7 +4,7 @@ import { oauthConfigured } from './gmail';
 import { postfachStatus, type PostfachStatus } from './rotation';
 import { effektivesGlobalLimit } from './send';
 import { klassifizierungVerfuegbar, schreibhilfeVerfuegbar } from './ki';
-import { bounceSchwellePostfach, jevAnbieter, getSetting, KI_ANBIETER, kiSchluesselMitQuelle, maskiereSchluessel, type KiAnbieter, type KiSchluesselQuelle, globalDailyLimit, kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, rampeEinstellung, schreibregelnAktiv, verfuegbareEntwurfAnbieter, verfuegbareKlassifizierer } from './settings';
+import { bounceSchwellePostfach, heissSchwelle, jevAnbieter, getSetting, KI_ANBIETER, kiSchluesselMitQuelle, maskiereSchluessel, type KiAnbieter, type KiSchluesselQuelle, globalDailyLimit, kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, rampeEinstellung, schreibregelnAktiv, verfuegbareEntwurfAnbieter, verfuegbareKlassifizierer } from './settings';
 import type { Sicherheit } from './smtp-vorlagen';
 import { todayBerlin } from './time';
 
@@ -87,6 +87,7 @@ export function ladeEinstellungen(mitMaske = false) {
     // Leer = automatisch (erste gesendete Mail)
     rampeBeginn: rampe.beginn ?? '',
     bounceSchwellePostfach: bounceSchwellePostfach(),
+    heissSchwelle: heissSchwelle(),
     heuteErlaubt: effektivesGlobalLimit(),
     impressumUrl: getSetting('impressum_url') ?? env.IMPRESSUM_URL ?? '',
     datenschutzUrl: getSetting('datenschutz_url') ?? env.DATENSCHUTZ_URL ?? '',

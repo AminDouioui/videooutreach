@@ -12,6 +12,7 @@ type Werte = {
   rampeSchritt: number;
   rampeBeginn: string;
   bounceSchwellePostfach: number;
+  heissSchwelle: number;
   impressumUrl: string;
   datenschutzUrl: string;
   schreibregelnAktiv: boolean;
@@ -60,7 +61,7 @@ export function GlobalSettingsForm({
   async function speichern(e: React.FormEvent) {
     e.preventDefault();
     setStatus(null);
-    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, kiAutoStatus: klassifiziererOptionen.length ? w.kiAutoStatus : undefined, kiKlassifizierer: klassifiziererOptionen.length ? klassifizierer : undefined, kiEntwurfAnbieter: entwurfOptionen.length ? entwurfAnbieter : undefined, openaiModell: w.openaiModell, jevModell: w.jevModell, typesafeModell: w.typesafeModell, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt), bounceSchwellePostfach: Number(w.bounceSchwellePostfach) }) });
+    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, kiAutoStatus: klassifiziererOptionen.length ? w.kiAutoStatus : undefined, kiKlassifizierer: klassifiziererOptionen.length ? klassifizierer : undefined, kiEntwurfAnbieter: entwurfOptionen.length ? entwurfAnbieter : undefined, openaiModell: w.openaiModell, jevModell: w.jevModell, typesafeModell: w.typesafeModell, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt), bounceSchwellePostfach: Number(w.bounceSchwellePostfach), heissSchwelle: Number(w.heissSchwelle) }) });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setStatus({ text: 'Gespeichert', fehler: false });
@@ -119,6 +120,13 @@ export function GlobalSettingsForm({
         <input required type="number" min={1} max={100} value={w.bounceSchwellePostfach} onChange={(e) => set('bounceSchwellePostfach', Number(e.target.value))} className={feld} />
         <span className="mt-1 block text-xs font-normal text-slate-500">
           Liegt die Bounce-Quote der letzten 50 Erstmails eines Postfachs darüber (ab 20 gesendeten), wird das Postfach pausiert. Wieder aktivieren unter „Postfächer“.
+        </span>
+      </label>
+      <label className="block text-sm font-medium text-slate-700 sm:max-w-xs">
+        Heiß-Schwelle (Score)
+        <input required type="number" min={1} max={1000} value={w.heissSchwelle} onChange={(e) => set('heissSchwelle', Number(e.target.value))} className={feld} />
+        <span className="mt-1 block text-xs font-normal text-slate-500">
+          Erreicht ein Lead diesen Score, löst einmalig der Webhook „Lead ist heiß geworden“ aus (Einstellungen → Integrationen), damit sofort jemand anruft. Standard 40.
         </span>
       </label>
       <div className="grid gap-4 sm:grid-cols-2">

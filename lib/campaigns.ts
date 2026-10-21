@@ -1,5 +1,6 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { anhaengeVonFollowups, kopiereAnhaenge, loescheAnhangDateien, loescheAnhangVerzeichnis } from './anhaenge-db';
+import { istVerhalten } from './verhalten';
 import { getDb, schema } from './db';
 import { firmenDuplikate, firmenSchluessel } from './firma';
 import { deleteMedia } from './media';
@@ -22,7 +23,7 @@ ich melde mich kurz bei Ihnen, weil …
 
 Wenn das für Sie interessant ist, freue ich mich über eine kurze Rückmeldung oder einen 15-Minuten-Termin.`;
 
-export type FollowupVarianteEingabe = { kuerzel: string; text: string; betreff?: string | null; aktiv?: boolean };
+export type FollowupVarianteEingabe = { kuerzel: string; text: string; betreff?: string | null; aktiv?: boolean; verhalten?: string };
 /** Variante A = body/betreff des Schritts; `varianten` sind B–E. Betreff gesetzt = neuer Thread statt „Re: …“. */
 export type FollowupEingabe = { /** Bestehender Schritt (behält seine Anhänge); ohne Angabe oder unbekannt = neuer Schritt */ id?: number; waitDays: number; body: string; betreff?: string | null; varianten?: FollowupVarianteEingabe[] };
 
@@ -54,7 +55,7 @@ export function speichereFollowups(campaignId: number, schritte: FollowupEingabe
       } else id = tx.insert(schema.followups).values({ campaignId, ...werte }).returning().get().id;
       benutzt.add(id);
       for (const v of s.varianten ?? []) {
-        tx.insert(schema.followupVarianten).values({ followupId: id, kuerzel: v.kuerzel, text: v.text, betreff: leerZuNull(v.betreff), aktiv: v.aktiv ?? true }).run();
+        tx.insert(schema.followupVarianten).values({ followupId: id, kuerzel: v.kuerzel, text: v.text, betreff: leerZuNull(v.betreff), aktiv: v.aktiv ?? true, verhalten: istVerhalten(v.verhalten) ? v.verhalten : 'immer' }).run();
       }
       return id;
     });
@@ -105,7 +106,7 @@ export function dupliziereKampagne(campaignId: number): typeof schema.campaigns.
     for (const f of followups) {
       const neu = tx.insert(schema.followups).values({ campaignId: kopie.id, position: f.position, waitDays: f.waitDays, body: f.body, betreff: f.betreff }).returning().get();
       const fv = tx.select().from(schema.followupVarianten).where(eq(schema.followupVarianten.followupId, f.id)).orderBy(schema.followupVarianten.kuerzel).all();
-      for (const v of fv) tx.insert(schema.followupVarianten).values({ followupId: neu.id, kuerzel: v.kuerzel, text: v.text, betreff: v.betreff, aktiv: v.aktiv }).run();
+      for (const v of fv) tx.insert(schema.followupVarianten).values({ followupId: neu.id, kuerzel: v.kuerzel, text: v.text, betreff: v.betreff, aktiv: v.aktiv, verhalten: v.verhalten }).run();
       followupMap.set(f.id, neu.id);
     }
     // Anhänge (Erstmail + Follow-ups) mitkopieren, Erstmail-Anhänge haben followupId null
