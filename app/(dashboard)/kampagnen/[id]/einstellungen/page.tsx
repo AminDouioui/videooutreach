@@ -45,6 +45,8 @@ export default async function KampagnenEinstellungen({ params }: { params: Promi
           linkTracking: k.linkTracking,
           stoppBeiFirmenAntwort: k.stoppBeiFirmenAntwort,
           abAuto: k.abAuto,
+          websiteScreenshot: k.websiteScreenshot,
+          mitVideo: k.mitVideo,
           abwesenheitVerschiebenTage: k.abwesenheitVerschiebenTage,
           bounceSchutz: k.bounceSchutz,
           bounceSchwelleProzent: k.bounceSchwelleProzent,

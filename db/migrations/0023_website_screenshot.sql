@@ -1,0 +1,1 @@
+ALTER TABLE `campaigns` ADD `website_screenshot` integer DEFAULT false NOT NULL;

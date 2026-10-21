@@ -8,6 +8,8 @@ export const outreachPropsSchema = z.object({
   nachname: z.string().default(''),
   logoUrl: z.string().url().optional(),
   websiteScreenshotUrl: z.string().url().optional(),
+  /** Anzeigename der Website in der Adresszeile neben dem Screenshot (z. B. firma.de) */
+  websiteHost: z.string().optional(),
 });
 
 export type OutreachProps = z.infer<typeof outreachPropsSchema>;

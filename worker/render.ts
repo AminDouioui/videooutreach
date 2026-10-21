@@ -10,7 +10,8 @@ import { mediaDir, thumbnailPath, videoPath } from '../lib/media';
 import { schliesseKampagneAb } from '../lib/render-queue';
 import { logoUrlAusExtra, pruefeLogoErreichbar } from '../lib/logo';
 import { isInRenderWindow } from '../lib/time';
-import { concatIntroTeaser, ensureTeaserCache, teaserHash } from './assemble';
+import { cacheDir, concatIntroTeaser, ensureTeaserCache, teaserHash } from './assemble';
+import { findeRemotionBrowser, websiteScreenshotDataUri } from '../lib/website-screenshot';
 import { outreachPropsSchema, TEASER_DATEI, type OutreachProps } from '../remotion/schema';
 
 // Render-Schleife des Workers: Remotion einmal bündeln, dann Leads aus der Warteschlange rendern.
@@ -109,12 +110,21 @@ async function renderLead(leadId: number): Promise<void> {
     fs.mkdirSync(mediaDir(), { recursive: true });
     // Logo des Leads (Importspalte logo): nur wenn erreichbar und ein kleines Bild, sonst ohne Logo rendern
     const logoUrl = (await pruefeLogoErreichbar(logoUrlAusExtra(lead.extra) ?? '')) ?? undefined;
+    // Website-Screenshot (nur Kampagnen mit eingeschalteter Option): Fehler und gesperrte Adressen ergeben kein Bild
+    let website: { dataUri: string; host: string } | null = null;
+    const kampagne = db.select({ screenshot: schema.campaigns.websiteScreenshot }).from(schema.campaigns).where(eq(schema.campaigns.id, lead.campaignId)).get();
+    if (kampagne?.screenshot && lead.website) {
+      const browserPfad = browserExecutable() ?? findeRemotionBrowser(ROOT);
+      website = await websiteScreenshotDataUri(lead.website, cacheDir(), browserPfad ? { browserPfad } : null).catch(() => null);
+    }
     const inputProps: OutreachProps = outreachPropsSchema.parse({
       firma: lead.firma,
       anrede: lead.anrede ?? '',
       vorname: lead.vorname ?? '',
       nachname: lead.nachname ?? '',
       logoUrl,
+      websiteScreenshotUrl: website?.dataUri,
+      websiteHost: website?.host,
     });
     const puppeteerInstance = await holeBrowser();
     const common = { serveUrl, puppeteerInstance, browserExecutable: browserExecutable() };

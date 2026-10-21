@@ -20,6 +20,8 @@ type Werte = {
   stoppBeiFirmenAntwort: boolean;
   abwesenheitVerschiebenTage: number;
   abAuto: boolean;
+  websiteScreenshot: boolean;
+  mitVideo: boolean;
   bounceSchutz: boolean;
   bounceSchwelleProzent: number;
   bounceFenster: number;
@@ -164,6 +166,17 @@ export function CampaignSettingsForm({ campaignId, initial }: { campaignId: numb
           </span>
         </span>
       </label>
+      {w.mitVideo && (
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input type="checkbox" className="mt-1" checked={w.websiteScreenshot} onChange={(e) => set('websiteScreenshot', e.target.checked)} />
+          <span>
+            Screenshot der Kunden-Website im Intro
+            <span className="block text-xs text-slate-500">
+              Beim Rendern ruft der Server die Website des Leads (Importspalte Website) auf und zeigt im Intro ein Browser-Fenster mit deren Startseite. Interne Adressen sind gesperrt; schlägt der Abruf fehl, wird ohne Screenshot gerendert. Gilt für neu gerenderte Videos. Datenschutzhinweis: Es wird nur die öffentliche Startseite abgerufen, das Bild bleibt im Server-Cache (7 Tage).
+            </span>
+          </span>
+        </label>
+      )}
       <label className="flex items-start gap-2 text-sm text-slate-700">
         <input type="checkbox" className="mt-1" checked={w.abAuto} onChange={(e) => set('abAuto', e.target.checked)} />
         <span>

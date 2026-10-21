@@ -29,6 +29,7 @@
     "next": "^15.5.27",
     "nodemailer": "^10.1.0",
     "papaparse": "^5.7.0",
+    "playwright-core": "^1.49.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "remotion": "4.0.534",
