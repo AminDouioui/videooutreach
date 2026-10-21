@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { EINWAENDE, EINWAND_LABEL, STANDARD_KONTER } from '@/lib/einwaende';
 
 type Werte = {
   senderName: string;
@@ -13,6 +14,7 @@ type Werte = {
   rampeBeginn: string;
   bounceSchwellePostfach: number;
   heissSchwelle: number;
+  einwandKonter: Record<string, string>;
   impressumUrl: string;
   datenschutzUrl: string;
   schreibregelnAktiv: boolean;
@@ -61,7 +63,7 @@ export function GlobalSettingsForm({
   async function speichern(e: React.FormEvent) {
     e.preventDefault();
     setStatus(null);
-    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, kiAutoStatus: klassifiziererOptionen.length ? w.kiAutoStatus : undefined, kiKlassifizierer: klassifiziererOptionen.length ? klassifizierer : undefined, kiEntwurfAnbieter: entwurfOptionen.length ? entwurfAnbieter : undefined, openaiModell: w.openaiModell, jevModell: w.jevModell, typesafeModell: w.typesafeModell, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt), bounceSchwellePostfach: Number(w.bounceSchwellePostfach), heissSchwelle: Number(w.heissSchwelle) }) });
+    const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...w, kiAutoStatus: klassifiziererOptionen.length ? w.kiAutoStatus : undefined, kiKlassifizierer: klassifiziererOptionen.length ? klassifizierer : undefined, kiEntwurfAnbieter: entwurfOptionen.length ? entwurfAnbieter : undefined, openaiModell: w.openaiModell, jevModell: w.jevModell, typesafeModell: w.typesafeModell, globalDailyLimit: Number(w.globalDailyLimit), rampeStart: Number(w.rampeStart), rampeSchritt: Number(w.rampeSchritt), bounceSchwellePostfach: Number(w.bounceSchwellePostfach), heissSchwelle: Number(w.heissSchwelle), einwandKonter: w.einwandKonter }) });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setStatus({ text: 'Gespeichert', fehler: false });
@@ -129,6 +131,27 @@ export function GlobalSettingsForm({
           Erreicht ein Lead diesen Score, löst einmalig der Webhook „Lead ist heiß geworden“ aus (Einstellungen → Integrationen), damit sofort jemand anruft. Standard 40.
         </span>
       </label>
+      <details className="rounded-md border border-slate-200 p-3">
+        <summary className="cursor-pointer text-sm font-medium text-slate-700">Konter zu Einwänden (für KI-Antwort-Entwürfe)</summary>
+        <p className="mt-2 text-xs text-slate-500">
+          Erkennt die KI in einer Antwort einen Einwand, nutzt der Entwurf diese Leitlinie sinngemäß. Leer lassen = Standardtext (steht als Platzhalter). Schreibe nur, was ihr belegen könnt.
+        </p>
+        <div className="mt-3 space-y-3">
+          {EINWAENDE.filter((x) => x !== 'kein_einwand').map((x) => (
+            <label key={x} className="block text-xs font-medium text-slate-700">
+              {EINWAND_LABEL[x]}
+              <textarea
+                rows={2}
+                maxLength={1500}
+                value={w.einwandKonter[x] ?? ''}
+                placeholder={STANDARD_KONTER[x as keyof typeof STANDARD_KONTER]}
+                onChange={(e) => set('einwandKonter', { ...w.einwandKonter, [x]: e.target.value })}
+                className={feld}
+              />
+            </label>
+          ))}
+        </div>
+      </details>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block text-sm font-medium text-slate-700">
           Impressum-URL

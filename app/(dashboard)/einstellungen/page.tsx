@@ -53,6 +53,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           rampeBeginn: e.rampeBeginn,
           bounceSchwellePostfach: e.bounceSchwellePostfach,
           heissSchwelle: e.heissSchwelle,
+          einwandKonter: e.einwandKonter,
           impressumUrl: e.impressumUrl,
           datenschutzUrl: e.datenschutzUrl,
           schreibregelnAktiv: e.schreibregelnAktiv,

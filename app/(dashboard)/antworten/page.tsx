@@ -175,7 +175,7 @@ function Detail({ lead, kampagne, zurueck, ki, schreibhilfe, schreiben, brain, r
       {ki && (
         <div className="mt-3">
           <Schreibschutz gesperrt={!schreiben}>
-            <KiEinordnung key={lead.id} aktiv leadId={lead.id} einordnung={lead.kiEinordnung ?? null} />
+            <KiEinordnung key={lead.id} aktiv leadId={lead.id} einordnung={lead.kiEinordnung ?? null} zusatz={{ einwand: lead.kiEinwand, wiedervorlageAt: lead.wiedervorlageAt ? lead.wiedervorlageAt.getTime() : null, wiedervorlageErledigt: !!lead.wiedervorlageErledigtAt, verweis: lead.kiVerweis ?? null }} />
           </Schreibschutz>
         </div>
       )}

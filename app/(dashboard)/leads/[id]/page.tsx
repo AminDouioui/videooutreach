@@ -40,6 +40,7 @@ const EVENT_LABEL: Record<string, string> = {
   unsubscribe: 'Abgemeldet',
   abwesenheit: 'Abwesenheitsnotiz erhalten',
   untersequenz: 'In Untersequenz übernommen',
+  verweis: 'Verweis in der Antwort: neuer Lead angelegt',
 };
 
 const BOT_GRUND: Record<string, string> = { 'user-agent': 'Scanner/Bot-Kennung', 'kurz-nach-versand': 'kurz nach Versand', serie: 'Klickserie' };
@@ -229,6 +230,11 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
                       Lead in Ziel-Kampagne ansehen
                     </Link>
                   )}
+                  {e.type === 'verweis' && typeof e.meta?.zielLeadId === 'number' && (
+                    <Link href={`/leads/${e.meta.zielLeadId}`} className="text-xs text-indigo-600 hover:underline">
+                      Neuen Lead ansehen
+                    </Link>
+                  )}
                   {e.type === 'email_open' && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">unzuverlässig</span>}
                 </li>
               ))}
@@ -269,7 +275,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
             )}
             {ki && (lead.flowStopp === 'beantwortet' || lead.kiEinordnung) && (
               <Schreibschutz gesperrt={!schreiben}>
-                <KiEinordnung key={lead.id} aktiv leadId={lead.id} einordnung={lead.kiEinordnung ?? null} />
+                <KiEinordnung key={lead.id} aktiv leadId={lead.id} einordnung={lead.kiEinordnung ?? null} zusatz={{ einwand: lead.kiEinwand, wiedervorlageAt: lead.wiedervorlageAt ? lead.wiedervorlageAt.getTime() : null, wiedervorlageErledigt: !!lead.wiedervorlageErledigtAt, verweis: lead.kiVerweis ?? null }} />
               </Schreibschutz>
             )}
             {gmailUrl && (

@@ -1,7 +1,7 @@
 // Webhook-Ereignisse und ihre Bezeichnungen (ohne Node-Importe, auch im Browser nutzbar).
 // Muss mit WEBHOOK_EREIGNISSE in db/schema.ts übereinstimmen (Test lib/webhook-logik.test.ts).
 
-export const WEBHOOK_EREIGNISSE = ['mail_gesendet', 'antwort', 'bounce', 'abwesenheit', 'abmeldung', 'lead_status', 'video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick', 'video_klick', 'heisser_lead'] as const;
+export const WEBHOOK_EREIGNISSE = ['mail_gesendet', 'antwort', 'bounce', 'abwesenheit', 'abmeldung', 'lead_status', 'video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick', 'video_klick', 'heisser_lead', 'wiedervorlage'] as const;
 
 export const TEST_EREIGNIS = 'test';
 
@@ -17,6 +17,7 @@ export const EREIGNIS_LABEL: Record<string, string> = {
   termin_klick: 'Termin-Button geklickt',
   link_klick: 'Link in Mail geklickt',
   video_klick: 'Video-Link in der Mail geklickt',
+  wiedervorlage: 'Wiedervorlage fällig (Lead bat um späteren Kontakt)',
   heisser_lead: 'Lead ist heiß geworden (Score über der Schwelle)',
   test: 'Test',
 };

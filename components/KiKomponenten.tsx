@@ -2,6 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import Link from 'next/link';
+import { EINWAND_LABEL, istEinwand } from '@/lib/einwaende';
 import { KI_KATEGORIE_LABEL, type KiKategorie } from '@/lib/ki-kategorien';
 import type { SchreibVerstoss } from '@/lib/schreibregeln';
 import { SchreibregelnWarnung } from './VorlagenHilfe';
@@ -134,13 +136,32 @@ export function KiVorschlag({
 export type KiEinordnungDaten = { kategorie: string; konfidenz: number; begruendung: string; at: number; angewendet?: boolean; modell?: string };
 
 /** Anzeige der gespeicherten KI-Einordnung mit „Mit KI einordnen“ und „Vorschlag übernehmen“. */
-export function KiEinordnung({ aktiv, leadId, einordnung }: { aktiv: boolean; leadId: number; einordnung: KiEinordnungDaten | null }) {
+export type KiZusatzDaten = {
+  einwand?: string | null;
+  /** Zeitpunkt der Wiedervorlage (ms) und ob sie schon ausgelöst wurde */
+  wiedervorlageAt?: number | null;
+  wiedervorlageErledigt?: boolean;
+  verweis?: { name: string | null; email: string | null; position: string | null; angelegtLeadId?: number } | null;
+};
+
+export function KiEinordnung({ aktiv, leadId, einordnung, zusatz }: { aktiv: boolean; leadId: number; einordnung: KiEinordnungDaten | null; zusatz?: KiZusatzDaten }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   if (!aktiv) return null;
   const label = einordnung ? (KI_KATEGORIE_LABEL[einordnung.kategorie as KiKategorie] ?? einordnung.kategorie) : null;
+
+  async function verweisAnlegen() {
+    setBusy('verweis');
+    setFehler(null);
+    setInfo(null);
+    const r = await post(`/api/leads/${leadId}/ki/verweis`);
+    setBusy(null);
+    if (!r.ok) return setFehler(meldung(r));
+    setInfo('Neuer Lead angelegt.');
+    router.refresh();
+  }
 
   async function ausfuehren(name: 'einordnen' | 'uebernehmen') {
     setBusy(name);
@@ -174,6 +195,35 @@ export function KiEinordnung({ aktiv, leadId, einordnung }: { aktiv: boolean; le
         </div>
       ) : (
         <p className="mt-1 text-xs text-slate-500">Noch nicht eingeordnet.</p>
+      )}
+      {zusatz && (istEinwand(zusatz.einwand) && zusatz.einwand !== 'kein_einwand' ? true : zusatz.wiedervorlageAt || zusatz.verweis) && (
+        <ul className="mt-2 space-y-1 text-xs text-slate-700" data-testid="ki-zusatz">
+          {istEinwand(zusatz.einwand) && zusatz.einwand !== 'kein_einwand' && <li data-testid="ki-einwand">Einwand: <strong>{EINWAND_LABEL[zusatz.einwand]}</strong></li>}
+          {zusatz.wiedervorlageAt && (
+            <li data-testid="ki-wiedervorlage">
+              Wiedervorlage: <strong>{zeit.format(new Date(zusatz.wiedervorlageAt))}</strong> {zusatz.wiedervorlageErledigt ? '(ausgelöst, Entwurf liegt bereit)' : '(Antwort wird dann wieder ungelesen, Entwurf liegt bereit)'}
+            </li>
+          )}
+          {zusatz.verweis && (
+            <li data-testid="ki-verweis" className="flex flex-wrap items-center gap-2">
+              <span>
+                Verwiesen an: <strong>{[zusatz.verweis.name, zusatz.verweis.position].filter(Boolean).join(', ') || 'unbekannt'}</strong>
+                {zusatz.verweis.email ? ` · ${zusatz.verweis.email}` : ' · keine Adresse genannt'}
+              </span>
+              {zusatz.verweis.angelegtLeadId ? (
+                <Link href={`/leads/${zusatz.verweis.angelegtLeadId}`} className="text-indigo-600 hover:underline">
+                  Lead angelegt, ansehen
+                </Link>
+              ) : (
+                zusatz.verweis.email && (
+                  <button type="button" onClick={verweisAnlegen} disabled={!!busy} className={knopf}>
+                    {busy === 'verweis' ? 'Wird angelegt …' : 'Neuen Lead anlegen'}
+                  </button>
+                )
+              )}
+            </li>
+          )}
+        </ul>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => ausfuehren('einordnen')} disabled={!!busy} className={knopf}>

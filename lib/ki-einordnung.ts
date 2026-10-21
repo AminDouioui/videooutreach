@@ -3,7 +3,7 @@ import { kannThreadLesen, ladeAbsender, postfachFuerLead } from './absender';
 import { fehlerText, ladeThread, leadThreads, UniboxFehler } from './antworten';
 import { getDb, schema } from './db';
 import type { ThreadLader } from './gmail';
-import { anthropicClient, entwerfeAntwortGeprueft, klassifizierungVerfuegbar, leseRueckkehr, schreibhilfeVerfuegbar, KiFehler, KLASSIFIZIERUNG_NICHT_AKTIV, kiFehlerAus, MAX_EINORDNUNG_ZEICHEN, ordneAntwortEin, type Einordnung, type KiClient } from './ki';
+import { anthropicClient, entwerfeAntwortGeprueft, klassifizierungVerfuegbar, leseRueckkehr, leseVerweis, leseWiedervorlage, ordneEinwandEin, schreibhilfeVerfuegbar, KiFehler, KLASSIFIZIERUNG_NICHT_AKTIV, kiFehlerAus, MAX_EINORDNUNG_ZEICHEN, ordneAntwortEin, type Einordnung, type KiClient } from './ki';
 import { kontextFuerPrompt, ladeLeadKontext, type BrainFetch } from './brain';
 import { ordneAntwortMitJev, type JevFetch } from './ki-jev';
 import { openaiClient } from './ki-openai';
@@ -12,7 +12,10 @@ import type { LeadStatus } from './lead-status';
 import { setzeLeadStatus } from './lead-status-db';
 import type { ThreadNachricht } from './mail-parse';
 import { merkeAbwesenheit } from './send';
-import { kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, schreibregelnAktiv, type KiKlassifizierer } from './settings';
+import { konterFuer } from './einwaende';
+import { legeVerweisLeadAn } from './verweis-db';
+import { webhookAusloesen } from './webhooks';
+import { einwandKonter, kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, schreibregelnAktiv, type KiKlassifizierer } from './settings';
 import type { SchreibVerstoss } from './schreibregeln';
 import { unsubscribeBySlug } from './suppression';
 import { startOfDayBerlinMs, todayBerlin } from './time';
@@ -137,13 +140,13 @@ function speichere(leadId: number, e: Einordnung, jetzt: Date, angewendet: boole
 export type LeadKiErgebnis<T> = ({ ok: true } & T) | { ok: false; status: number; error: string };
 
 /** Lädt den Verlauf des Leads (Antwort-Thread) als bereinigte Nachrichten. Wirft UniboxFehler/GmailSendError. */
-async function ladeVerlauf(lead: Lead, opt: KiOptionen): Promise<ThreadNachricht[]> {
+async function ladeVerlauf(lead: Lead, opt: KiOptionen, frisch = true): Promise<ThreadNachricht[]> {
   const t = leadThreads(lead);
   if (!t.postfach) throw new UniboxFehler('Diesem Lead ist kein Postfach zugeordnet.');
   if (!t.lesezugriff) throw new UniboxFehler(`Für ${t.postfach.email} fehlt der Lesezugriff (Einstellungen → Postfächer „Lesezugriff erteilen“).`);
   const threadId = t.threads[t.start];
   if (!threadId) throw new UniboxFehler('Zu diesem Lead gibt es noch keinen Mail-Verlauf.');
-  return ladeThread(t.postfach, threadId, { lader: opt.lader, frisch: true, jetzt: opt.jetzt?.getTime() });
+  return ladeThread(t.postfach, threadId, { lader: opt.lader, frisch, jetzt: opt.jetzt?.getTime() });
 }
 
 function fehlerAus(e: unknown): { status: number; error: string } {
@@ -187,7 +190,7 @@ export function uebernimmEinordnung(leadId: number, jetzt: Date = new Date()): L
 export type EntwurfBrain = { status: 'genutzt' | 'nicht_verbunden' | 'nichts_gefunden' | 'fehler'; meldung?: string };
 
 /** Entwurf einer Antwort auf Basis des Verlaufs, des Kampagnen-Terminlinks und (wenn das Brain verbunden ist) des Lead-Kontexts. Nichts wird gesendet oder gespeichert. */
-export async function entwerfeLeadAntwort(leadId: number, opt: KiOptionen = {}): Promise<LeadKiErgebnis<{ text: string; verstoesse: SchreibVerstoss[]; brain: EntwurfBrain }>> {
+export async function entwerfeLeadAntwort(leadId: number, opt: KiOptionen = {}, extra: { anlass?: string } = {}): Promise<LeadKiErgebnis<{ text: string; verstoesse: SchreibVerstoss[]; brain: EntwurfBrain }>> {
   const lead = ladeLead(leadId);
   if (!lead) return { ok: false, status: 404, error: 'Lead nicht gefunden' };
   try {
@@ -198,7 +201,7 @@ export async function entwerfeLeadAntwort(leadId: number, opt: KiOptionen = {}):
     const k = await ladeLeadKontext({ id: lead.id, email: lead.email, firma: lead.firma, website: lead.website }, { fetch: opt.brainFetch });
     const kontext = k.status === 'ok' ? kontextFuerPrompt(k.daten) : '';
     const brain: EntwurfBrain = k.status === 'nicht_konfiguriert' ? { status: 'nicht_verbunden' } : k.status === 'fehler' ? { status: 'fehler', meldung: k.meldung } : kontext ? { status: 'genutzt' } : { status: 'nichts_gefunden' };
-    const res = await entwerfeAntwortGeprueft({ verlauf, ctaUrl: kampagne?.cta ?? '', absenderName: postfach?.name ?? undefined, brainKontext: kontext || undefined }, schreibClient(opt), { schreibregeln: opt.schreibregeln ?? schreibregelnAktiv() });
+    const res = await entwerfeAntwortGeprueft({ verlauf, ctaUrl: kampagne?.cta ?? '', absenderName: postfach?.name ?? undefined, brainKontext: kontext || undefined, konter: konterFuer(lead.kiEinwand, einwandKonter()) ?? undefined, anlass: extra.anlass }, schreibClient(opt), { schreibregeln: opt.schreibregeln ?? schreibregelnAktiv() });
     return { ok: true, text: res.text, verstoesse: res.verstoesse, brain };
   } catch (err) {
     return { ok: false, ...fehlerAus(err) };
@@ -225,13 +228,13 @@ export const ABWESENHEIT_MAX_TAGE = 180;
 const TAG_MS = 24 * 3600_000;
 
 /** Erster Moment (Berlin) des Rückkehrtags, wenn das Datum in der Zukunft und im Rahmen liegt, sonst null. */
-export function rueckkehrZeitpunkt(datum: string | null, jetzt: Date): Date | null {
+export function rueckkehrZeitpunkt(datum: string | null, jetzt: Date, maxTage = ABWESENHEIT_MAX_TAGE): Date | null {
   if (!datum) return null;
   const [y, m, d] = datum.split('-').map(Number);
   const mittag = new Date(Date.UTC(y, m - 1, d, 12));
   if (Number.isNaN(mittag.getTime()) || mittag.getUTCDate() !== d) return null;
   const bis = new Date(startOfDayBerlinMs(mittag));
-  return bis.getTime() > jetzt.getTime() && bis.getTime() <= jetzt.getTime() + ABWESENHEIT_MAX_TAGE * TAG_MS ? bis : null;
+  return bis.getTime() > jetzt.getTime() && bis.getTime() <= jetzt.getTime() + maxTage * TAG_MS ? bis : null;
 }
 
 /**
@@ -302,6 +305,108 @@ export async function verarbeiteAbwesenheitsWarteschlange(opt: KiOptionen & { lo
   }
 }
 
+// ---------------------------------------------------------------- Einwand, Wiedervorlage, Verweis
+
+/** Kategorien, bei denen der Einwand gelesen wird (bei Interesse meist „kein Einwand“) */
+const EINWAND_KATEGORIEN: ReadonlySet<string> = new Set(['interessiert', 'spaeter', 'nicht_interessiert', 'falscher_ansprechpartner', 'sonstiges']);
+/** Eine Wiedervorlage weiter als ein Jahr in der Zukunft gilt als Fehlinterpretation */
+const WIEDERVORLAGE_MAX_TAGE = 400;
+/** Uhrzeit (Berlin) der Wiedervorlage am gewählten Tag */
+const WIEDERVORLAGE_STUNDE = 8;
+
+/**
+ * Liest nach der Einordnung zusätzliche Angaben aus der Antwort: den Einwand (für Konter und Auswertung), bei „später“ das
+ * Datum der Wiedervorlage und bei „falscher Ansprechpartner“ den Verweis (im Modus „automatisch“ bei hoher Sicherheit gleich
+ * als neuer Lead). Jeder Schritt ist für sich fehlertolerant: ein Fehler lässt die Einordnung gültig und blockiert nichts.
+ */
+export async function reichereAntwortAn(leadId: number, e: Pick<Einordnung, 'kategorie' | 'konfidenz'>, opt: KiOptionen = {}): Promise<string[]> {
+  const notizen: string[] = [];
+  if (!opt.ki && !opt.openaiFetch && !schreibhilfeVerfuegbar()) return notizen;
+  const lead = ladeLead(leadId);
+  if (!lead) return notizen;
+  const jetzt = opt.jetzt ?? new Date();
+  let text: string | null = null;
+  try {
+    text = letzteFremdeNachricht(await ladeVerlauf(lead, opt, false));
+  } catch {
+    return notizen;
+  }
+  if (!text) return notizen;
+  const client = schreibClient(opt);
+  const db = getDb();
+  if (EINWAND_KATEGORIEN.has(e.kategorie)) {
+    try {
+      const einwand = await ordneEinwandEin(text, client);
+      db.update(schema.leads).set({ kiEinwand: einwand }).where(eq(schema.leads.id, leadId)).run();
+      notizen.push(`Einwand ${einwand}`);
+    } catch {
+      /* bleibt ohne Einwand */
+    }
+  }
+  if (e.kategorie === 'spaeter') {
+    try {
+      const datum = await leseWiedervorlage(text, todayBerlin(jetzt), client);
+      const tag = rueckkehrZeitpunkt(datum, jetzt, WIEDERVORLAGE_MAX_TAGE);
+      if (tag) {
+        db.update(schema.leads).set({ wiedervorlageAt: new Date(tag.getTime() + WIEDERVORLAGE_STUNDE * 3600_000), wiedervorlageErledigtAt: null }).where(eq(schema.leads.id, leadId)).run();
+        notizen.push(`Wiedervorlage ${datum}`);
+      }
+    } catch {
+      /* ohne Datum keine Wiedervorlage */
+    }
+  }
+  if (e.kategorie === 'falscher_ansprechpartner') {
+    try {
+      const v = await leseVerweis(text, client);
+      if (v.name || v.email) {
+        db.update(schema.leads).set({ kiVerweis: { name: v.name, email: v.email, position: v.position } }).where(eq(schema.leads.id, leadId)).run();
+        notizen.push('Verweis erkannt');
+        if (v.email && kiAutoStatus() === 'automatisch' && e.konfidenz >= KI_SCHWELLE) {
+          const r = legeVerweisLeadAn(leadId, jetzt);
+          notizen.push(r.ok ? `Lead ${r.neuerLeadId} angelegt` : `Lead nicht angelegt: ${r.error}`);
+        }
+      }
+    } catch {
+      /* ohne Verweis nichts anzulegen */
+    }
+  }
+  return notizen;
+}
+
+/**
+ * Löst fällige Wiedervorlagen aus (höchstens eine je Aufruf): der Lead hatte um späteren Kontakt gebeten, das Datum ist da.
+ * Die Antwort wird wieder ungelesen, der Webhook `wiedervorlage` geht raus und, soweit möglich, liegt ein Entwurf bereit.
+ * Es wird nie automatisch gesendet: wer um Zeit gebeten hat, bekommt eine persönlich geprüfte Nachricht.
+ */
+export async function verarbeiteWiedervorlagen(opt: KiOptionen & { log?: (msg: string) => void } = {}): Promise<number | null> {
+  try {
+    const jetzt = opt.jetzt ?? new Date();
+    const lead = getDb()
+      .select()
+      .from(schema.leads)
+      .where(and(isNull(schema.leads.wiedervorlageErledigtAt), sql`${schema.leads.wiedervorlageAt} <= ${jetzt.getTime()}`, eq(schema.leads.unsubscribed, false)))
+      .orderBy(sql`${schema.leads.wiedervorlageAt}`)
+      .get();
+    if (!lead) return null;
+    const db = getDb();
+    // Abgemeldet, gewonnen oder nicht mehr interessiert: nichts mehr zu tun
+    const erledigt = ['nicht_interessiert', 'gewonnen', 'verloren', 'termin_gebucht'].includes(lead.leadStatus);
+    db.update(schema.leads).set({ wiedervorlageErledigtAt: jetzt }).where(eq(schema.leads.id, lead.id)).run();
+    if (erledigt) return lead.id;
+    if (opt.ki || opt.openaiFetch || schreibhilfeVerfuegbar()) {
+      const res = await entwerfeLeadAntwort(lead.id, opt, { anlass: 'Wiedervorlage: Der Lead hat zuvor darum gebeten, sich später wieder zu melden. Nimm freundlich Bezug darauf und knüpfe an den bisherigen Verlauf an.' });
+      if (res.ok) db.update(schema.leads).set({ kiEntwurf: { text: res.text, at: jetzt.getTime(), verstoesse: res.verstoesse.length } }).where(eq(schema.leads.id, lead.id)).run();
+      else opt.log?.(`Wiedervorlage Lead ${lead.id}: kein Entwurf (${res.error})`);
+    }
+    db.update(schema.leads).set({ antwortGelesen: false }).where(eq(schema.leads.id, lead.id)).run();
+    webhookAusloesen('wiedervorlage', { leadId: lead.id, geplantFuer: lead.wiedervorlageAt ? lead.wiedervorlageAt.toISOString() : null }, jetzt);
+    return lead.id;
+  } catch (e) {
+    opt.log?.(`Wiedervorlage: ${kiFehlerAus(e).message}`);
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------- Warteschlange (Worker)
 
 /**
@@ -341,9 +446,11 @@ export async function verarbeiteKiWarteschlange(opt: KiOptionen & { log?: (msg: 
       getDb().update(schema.leads).set({ kiVersuche: lead.kiVersuche + 1, kiVersuchAt: jetzt }).where(eq(schema.leads.id, lead.id)).run();
       // Nur die Art des Fehlers loggen, nie Inhalte
       opt.log?.(`KI-Einordnung Lead ${lead.id} fehlgeschlagen (Versuch ${lead.kiVersuche + 1}/${KI_MAX_VERSUCHE}): ${res.error}`);
-    } else if (ENTWURF_KATEGORIEN.has(res.einordnung.kategorie)) {
-      // Antwort-Entwurf zum Prüfen bereitlegen; schlägt das fehl, bleibt die Einordnung gültig
-      await erstelleAutoEntwurf(lead.id, opt).catch(() => false);
+    } else {
+      // Einwand, Wiedervorlage-Datum und Verweis lesen; danach (mit dem Konter zum Einwand) den Entwurf bereitlegen.
+      // Jeder Schritt fängt seine Fehler selbst ab, die Einordnung bleibt in jedem Fall gültig.
+      await reichereAntwortAn(lead.id, res.einordnung as Einordnung, opt).catch(() => []);
+      if (ENTWURF_KATEGORIEN.has(res.einordnung.kategorie)) await erstelleAutoEntwurf(lead.id, opt).catch(() => false);
     }
     return lead.id;
   } catch (e) {

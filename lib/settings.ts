@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { decrypt, encrypt } from './crypto';
 import { getDb, schema } from './db';
 import { getEnv } from './env';
+import { parseKonterEinstellung, type Einwand } from './einwaende';
 
 // Key/Value-Einstellungen in der Tabelle `settings`
 
@@ -21,6 +22,8 @@ export type SettingKey =
   | 'bounce_schwelle_postfach'
   // KI-Einordnung von Antworten: 'aus' | 'vorschlagen' (Standard) | 'automatisch'
   | 'ki_auto_status'
+  // Eigene Konter zu Einwänden als JSON {einwand: text} (lib/einwaende.ts), sonst gelten die Standardtexte
+  | 'einwand_konter'
   // Ab diesem Score gilt ein Lead als heiß (Webhook heisser_lead), Standard 40
   | 'heiss_schwelle'
   // Klassifizierer der Einordnung: 'anthropic' | 'jev' (Standard: Jev, wenn ein TypeSafe- oder OpenRouter-Schlüssel gesetzt ist)
@@ -103,6 +106,11 @@ export function bounceSchwellePostfach(): number {
 /** Prozessia-Schreibregeln (keine Gedankenstriche/Trenner/Klammern, Wahrheitsregel) prüfen: Standard an. */
 export function schreibregelnAktiv(): boolean {
   return getSetting('schreibregeln_aktiv') !== '0';
+}
+
+/** Eigene Konter zu Einwänden (Überschreibungen der Standardtexte) */
+export function einwandKonter(): Partial<Record<Einwand, string>> {
+  return parseKonterEinstellung(getSetting('einwand_konter'));
 }
 
 export const HEISS_SCHWELLE_STANDARD = 40;

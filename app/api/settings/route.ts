@@ -4,6 +4,7 @@ import { ladeEinstellungen } from '@/lib/settings-view';
 import { parseJson } from '@/lib/request';
 import { deleteSetting, KI_AUTO_STATUS, KI_ENTWURF_ANBIETER, KI_KLASSIFIZIERER, verfuegbareEntwurfAnbieter, verfuegbareKlassifizierer, setSetting, type SettingKey } from '@/lib/settings';
 import { hatRolle } from '@/lib/auth';
+import { istEinwand } from '@/lib/einwaende';
 import { erfordereRolle } from '@/lib/session';
 
 export const runtime = 'nodejs';
@@ -27,6 +28,8 @@ const bodySchema = z.object({
   rampeSchritt: z.coerce.number().int().min(0).max(500),
   rampeBeginn: z.union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT')]),
   bounceSchwellePostfach: z.coerce.number().int().min(1).max(100),
+  // Eigene Konter zu Einwänden {einwand: text}; leere Texte = Standard. Fehlt das Feld, bleibt die Einstellung unverändert
+  einwandKonter: z.record(z.string(), z.string().max(1500)).optional(),
   // Ab diesem Score gilt ein Lead als heiß (Webhook heisser_lead); fehlt das Feld, bleibt die Einstellung unverändert
   heissSchwelle: z.coerce.number().int().min(1).max(1000).optional(),
   impressumUrl: urlOderLeer,
@@ -68,6 +71,10 @@ export async function PUT(req: Request) {
   setSetting('rampe_schritt', String(d.rampeSchritt));
   setOrDelete('rampe_beginn', d.rampeBeginn);
   setSetting('bounce_schwelle_postfach', String(d.bounceSchwellePostfach));
+  if (d.einwandKonter !== undefined) {
+    const sauber = Object.fromEntries(Object.entries(d.einwandKonter).filter(([k, t]) => istEinwand(k) && k !== 'kein_einwand' && t.trim()).map(([k, t]) => [k, t.trim()]));
+    setOrDelete('einwand_konter', Object.keys(sauber).length ? JSON.stringify(sauber) : '');
+  }
   if (d.heissSchwelle !== undefined) setSetting('heiss_schwelle', String(d.heissSchwelle));
   setOrDelete('impressum_url', d.impressumUrl);
   setOrDelete('datenschutz_url', d.datenschutzUrl);

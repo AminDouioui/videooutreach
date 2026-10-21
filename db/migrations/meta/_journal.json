@@ -148,6 +148,13 @@
       "when": 1792596593847,
       "tag": "0020_verhalten_heiss",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1792596866475,
+      "tag": "0021_antwort_intelligenz",
+      "breakpoints": true
     }
   ]
 }

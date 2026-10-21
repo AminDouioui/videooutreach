@@ -500,12 +500,18 @@ describe('Jev (Einordnung) + OpenAI (Entwürfe) ohne Anthropic-Schlüssel', () =
 // ---------------------------------------------------------------- Abwesenheit: Rückkehrdatum und Auto-Entwurf
 
 /** Client, der je nach Schema antwortet: Einordnung, Rückkehrdatum oder Entwurf */
-function mehrfach(antworten: { klasse?: object; rueckkehr?: object | Error; entwurf?: object | Error }) {
+function mehrfach(antworten: { klasse?: object; rueckkehr?: object | Error; entwurf?: object | Error; wiedervorlage?: object | Error; einwand?: object | Error; verweis?: object | Error }) {
   const anfragen: KiAnfrage[] = [];
   const ki: KiClient = async (a) => {
     anfragen.push(a);
     const props = (a.schema as { properties: Record<string, unknown> }).properties;
-    const antwort = 'datum' in props ? antworten.rueckkehr : 'text' in props ? antworten.entwurf : antworten.klasse;
+    const antwort =
+      'vertretung' in props ? antworten.rueckkehr
+      : 'datum' in props ? antworten.wiedervorlage
+      : 'einwand' in props ? antworten.einwand
+      : 'name' in props ? antworten.verweis
+      : 'text' in props ? antworten.entwurf
+      : antworten.klasse;
     if (!antwort) throw new Error('unerwartete Anfrage');
     if (antwort instanceof Error) throw antwort;
     return JSON.stringify(antwort);
@@ -616,5 +622,132 @@ describe('Auto-Entwurf', () => {
     expect(lead(l.id).kiEinordnung?.kategorie).toBe('spaeter');
     expect(lead(l.id).kiEntwurf).toBeNull();
     expect(lead(l.id).kiVersuche).toBe(0);
+  });
+});
+
+
+// ---------------------------------------------------------------- Einwand, Wiedervorlage, Verweis
+
+describe('Einwand, Wiedervorlage und Verweis', () => {
+  beforeEach(raeumeAuf);
+  const THREAD_SPAETER = () => thread('amin@prozessia.de', 'Aktuell keine Kapazität. Melden Sie sich bitte im Herbst nochmal.');
+
+  it('„später“: Einwand und Wiedervorlage werden gespeichert, der Entwurf nutzt den Konter', async () => {
+    const l = await neuerLead();
+    const f = mehrfach({ klasse: klasse('spaeter'), einwand: { einwand: 'keine_zeit' }, wiedervorlage: { datum: '2026-10-01' }, entwurf: { text: 'Guten Tag Max,\n\ngern im Herbst.' } });
+    await m.ki.verarbeiteKiWarteschlange({ ki: f.ki, lader: lader(THREAD_SPAETER()), jetzt: T0 });
+    const x = lead(l.id);
+    expect(x.kiEinwand).toBe('keine_zeit');
+    expect(x.wiedervorlageAt?.toISOString()).toBe('2026-10-01T06:00:00.000Z'); // 08:00 Berlin (Sommerzeit)
+    expect(x.wiedervorlageErledigtAt).toBeNull();
+    expect(x.kiEntwurf?.text).toContain('im Herbst');
+    const entwurfAnfrage = f.anfragen.find((a) => 'text' in (a.schema as { properties: object }).properties)!;
+    expect(entwurfAnfrage.nutzer).toContain('<konter>');
+  });
+
+  it('Datum in der Vergangenheit oder ohne Angabe ergibt keine Wiedervorlage', async () => {
+    const a = await neuerLead();
+    await m.ki.verarbeiteKiWarteschlange({ ki: mehrfach({ klasse: klasse('spaeter'), einwand: { einwand: 'kein_einwand' }, wiedervorlage: { datum: '2025-01-01' }, entwurf: { text: 'x' } }).ki, lader: lader(THREAD_SPAETER()), jetzt: T0 });
+    expect(lead(a.id).wiedervorlageAt).toBeNull();
+    const b = await neuerLead();
+    await m.ki.verarbeiteKiWarteschlange({ ki: mehrfach({ klasse: klasse('spaeter'), einwand: { einwand: 'kein_einwand' }, wiedervorlage: { datum: null }, entwurf: { text: 'x' } }).ki, lader: lader(THREAD_SPAETER()), jetzt: T0 });
+    expect(lead(b.id).wiedervorlageAt).toBeNull();
+    expect(lead(b.id).kiEinwand).toBe('kein_einwand');
+  });
+
+  it('fällige Wiedervorlage: Antwort wieder ungelesen, Entwurf bereit, Webhook, nur einmal', async () => {
+    const hook = (await import('./webhooks')).legeWebhookAn('https://hook.example/w', ['wiedervorlage']);
+    const l = await neuerLead({ leadStatus: 'spaeter', antwortGelesen: true, wiedervorlageAt: new Date(T0.getTime() + 24 * 3600_000), kiEinwand: 'keine_zeit' });
+    const f = mehrfach({ entwurf: { text: 'Guten Tag Max,\n\nSie hatten um einen Kontakt im Herbst gebeten.' } });
+    expect(await m.ki.verarbeiteWiedervorlagen({ ki: f.ki, lader: lader(THREAD_SPAETER()), jetzt: T0 })).toBeNull(); // noch nicht fällig
+    const spaeter = new Date(T0.getTime() + 25 * 3600_000);
+    expect(await m.ki.verarbeiteWiedervorlagen({ ki: f.ki, lader: lader(THREAD_SPAETER()), jetzt: spaeter })).toBe(l.id);
+    const x = lead(l.id);
+    expect(x.antwortGelesen).toBe(false);
+    expect(x.wiedervorlageErledigtAt?.getTime()).toBe(spaeter.getTime());
+    expect(x.kiEntwurf?.text).toContain('Herbst');
+    expect(f.anfragen[0].nutzer).toContain('<anlass>Wiedervorlage');
+    const z = m.db.getDb().select().from(m.db.schema.webhookZustellungen).where(eq(m.db.schema.webhookZustellungen.webhookId, hook.id)).all();
+    expect(z).toHaveLength(1);
+    expect(z[0].ereignis).toBe('wiedervorlage');
+    expect(await m.ki.verarbeiteWiedervorlagen({ ki: f.ki, lader: lader(THREAD_SPAETER()), jetzt: spaeter })).toBeNull();
+  });
+
+  it('Wiedervorlage bei abgemeldeten oder abgelehnten Leads löst nichts aus', async () => {
+    const hook = (await import('./webhooks')).legeWebhookAn('https://hook.example/w2', ['wiedervorlage']);
+    const absage = await neuerLead({ leadStatus: 'nicht_interessiert', antwortGelesen: true, wiedervorlageAt: T0 });
+    const weg = await neuerLead({ unsubscribed: true, antwortGelesen: true, wiedervorlageAt: T0 });
+    const f = mehrfach({ entwurf: { text: 'x' } });
+    await m.ki.verarbeiteWiedervorlagen({ ki: f.ki, lader: lader(THREAD_SPAETER()), jetzt: new Date(T0.getTime() + 1000) });
+    await m.ki.verarbeiteWiedervorlagen({ ki: f.ki, lader: lader(THREAD_SPAETER()), jetzt: new Date(T0.getTime() + 1000) });
+    expect(lead(absage.id).antwortGelesen).toBe(true);
+    expect(lead(absage.id).kiEntwurf).toBeNull();
+    expect(lead(weg.id).wiedervorlageErledigtAt).toBeNull();
+    expect(f.anfragen).toHaveLength(0);
+    expect(m.db.getDb().select().from(m.db.schema.webhookZustellungen).where(eq(m.db.schema.webhookZustellungen.webhookId, hook.id)).all()).toHaveLength(0);
+  });
+
+  const THREAD_VERWEIS = () => thread('amin@prozessia.de', 'Dafür bin ich nicht zuständig. Bitte wenden Sie sich an Frau Anna Meier aus dem Einkauf, anna.meier@kunde.de.');
+  const verweis = { name: 'Frau Anna Meier', email: 'Anna.Meier@Kunde.de', position: 'Einkauf' };
+
+  it('Verweis wird gespeichert; im Modus „vorschlagen“ entsteht noch kein Lead', async () => {
+    const l = await neuerLead();
+    const f = mehrfach({ klasse: klasse('falscher_ansprechpartner'), einwand: { einwand: 'kein_entscheider' }, verweis, entwurf: { text: 'Vielen Dank.' } });
+    await m.ki.verarbeiteKiWarteschlange({ ki: f.ki, lader: lader(THREAD_VERWEIS()), jetzt: T0 });
+    expect(lead(l.id).kiVerweis).toEqual({ name: 'Frau Anna Meier', email: 'anna.meier@kunde.de', position: 'Einkauf' });
+    expect(m.db.getDb().select().from(m.db.schema.leads).where(eq(m.db.schema.leads.herkunftLeadId, l.id)).all()).toHaveLength(0);
+  });
+
+  it('Modus „automatisch“ legt bei hoher Sicherheit den neuen Lead an, mit Verweisendem, Postfach und Event', async () => {
+    m.settings.setSetting('ki_auto_status', 'automatisch');
+    const l = await neuerLead({ vorname: 'Max', nachname: 'Muster', website: 'https://kunde.de' });
+    const f = mehrfach({ klasse: klasse('falscher_ansprechpartner', 0.95), einwand: { einwand: 'kein_entscheider' }, verweis, entwurf: { text: 'Vielen Dank.' } });
+    await m.ki.verarbeiteKiWarteschlange({ ki: f.ki, lader: lader(THREAD_VERWEIS()), jetzt: T0 });
+    const neu = m.db.getDb().select().from(m.db.schema.leads).where(eq(m.db.schema.leads.herkunftLeadId, l.id)).all();
+    expect(neu).toHaveLength(1);
+    expect(neu[0]).toMatchObject({ campaignId: l.campaignId, email: 'anna.meier@kunde.de', anrede: 'Frau', vorname: 'Anna', nachname: 'Meier', position: 'Einkauf', website: 'https://kunde.de', absenderId: postfachId, sendStatus: 'nicht_gesendet' });
+    expect(neu[0].extra).toMatchObject({ verwiesen_von: 'Max Muster' });
+    expect(lead(l.id).kiVerweis?.angelegtLeadId).toBe(neu[0].id);
+    expect(m.db.getDb().select().from(m.db.schema.events).where(eq(m.db.schema.events.leadId, l.id)).all().some((e) => e.type === 'verweis')).toBe(true);
+  });
+
+  it('legeVerweisLeadAn: ohne Adresse, Sperrliste, Duplikat, doppelt und derselbe Lead werden abgelehnt', async () => {
+    const { legeVerweisLeadAn } = await import('./verweis-db');
+    const set = (id: number, v: { name: string | null; email: string | null; position: string | null }) => m.db.getDb().update(m.db.schema.leads).set({ kiVerweis: v }).where(eq(m.db.schema.leads.id, id)).run();
+    const l = await neuerLead();
+    expect(legeVerweisLeadAn(l.id)).toMatchObject({ ok: false, status: 409 });
+    set(l.id, { name: 'Anna Meier', email: null, position: null });
+    expect(legeVerweisLeadAn(l.id)).toMatchObject({ ok: false, status: 422 });
+    set(l.id, { name: 'X', email: l.email, position: null });
+    expect(legeVerweisLeadAn(l.id)).toMatchObject({ ok: false, error: expect.stringContaining('denselben') });
+    m.db.getDb().insert(m.db.schema.suppressionList).values({ email: 'gesperrt@kunde.de', reason: 'manuell' }).run();
+    set(l.id, { name: 'X', email: 'gesperrt@kunde.de', position: null });
+    expect(legeVerweisLeadAn(l.id)).toMatchObject({ ok: false, error: expect.stringContaining('Sperrliste') });
+    set(l.id, { name: 'Neu Person', email: 'neu.person@kunde.de', position: null });
+    expect(legeVerweisLeadAn(l.id)).toMatchObject({ ok: true });
+    expect(legeVerweisLeadAn(l.id)).toMatchObject({ ok: false, error: expect.stringContaining('schon angelegt') });
+    const l2 = await neuerLead();
+    set(l2.id, { name: 'Neu Person', email: 'neu.person@kunde.de', position: null });
+    expect(legeVerweisLeadAn(l2.id).ok).toBe(true); // andere Kampagne: kein Duplikat
+    const l3 = await neuerLead();
+    m.db.getDb().update(m.db.schema.leads).set({ kiVerweis: { name: 'A', email: 'a@x.de', position: null } }).where(eq(m.db.schema.leads.id, l3.id)).run();
+    m.db.getDb().insert(m.db.schema.leads).values({ campaignId: l3.campaignId, firma: 'Dup', email: 'A@X.de', slug: 'dup-verweis' }).run();
+    expect(legeVerweisLeadAn(l3.id)).toMatchObject({ ok: false, error: expect.stringContaining('schon in der Kampagne') });
+  });
+
+  it('eigener Konter aus den Einstellungen ersetzt den Standard im Entwurf', async () => {
+    m.settings.setSetting('einwand_konter', JSON.stringify({ keine_zeit: 'Unser eigener Konter zu Zeitmangel.' }));
+    const l = await neuerLead({ kiEinwand: 'keine_zeit' });
+    const f = mehrfach({ entwurf: { text: 'Hallo' } });
+    await m.ki.entwerfeLeadAntwort(l.id, { ki: f.ki, lader: lader() });
+    expect(f.anfragen[0].nutzer).toContain('Unser eigener Konter zu Zeitmangel.');
+    m.settings.deleteSetting('einwand_konter');
+    const f2 = mehrfach({ entwurf: { text: 'Hallo' } });
+    await m.ki.entwerfeLeadAntwort(l.id, { ki: f2.ki, lader: lader() });
+    expect(f2.anfragen[0].nutzer).toContain('wenige Minuten');
+    const ohne = await neuerLead({ kiEinwand: 'kein_einwand' });
+    const f3 = mehrfach({ entwurf: { text: 'Hallo' } });
+    await m.ki.entwerfeLeadAntwort(ohne.id, { ki: f3.ki, lader: lader() });
+    expect(f3.anfragen[0].nutzer).not.toContain('<konter>');
   });
 });

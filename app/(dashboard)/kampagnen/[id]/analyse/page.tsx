@@ -5,6 +5,8 @@ import { notFound } from 'next/navigation';
 import { Kachel, TagesDiagramm, TrichterBalken } from '@/components/AnalyseDiagramme';
 import { VariantenTabelle } from '@/components/VariantenTabelle';
 import { ladeKampagnenAnalyse } from '@/lib/analyse';
+import { kampagnenExtraSpalten } from '@/lib/campaigns';
+import { gruppiereNachSegment, ladeEinwandVerteilung, ladeSegmentLeads, segmentFelder } from '@/lib/segment-analyse';
 import { getDb, schema } from '@/lib/db';
 import { leadStatusLabel } from '@/lib/lead-status';
 import { ladeFollowups } from '@/lib/send';
@@ -15,9 +17,10 @@ export const dynamic = 'force-dynamic';
 
 const prozent = (r: number) => `${(r * 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
 
-export default async function AnalysePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AnalysePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ segment?: string }> }) {
   await erforderSeitenRolle();
   const id = Number((await params).id);
+  const segmentParam = (await searchParams).segment;
   if (!Number.isInteger(id)) notFound();
   const k = getDb().select().from(schema.campaigns).where(eq(schema.campaigns.id, id)).get();
   if (!k) notFound();
@@ -29,6 +32,10 @@ export default async function AnalysePage({ params }: { params: Promise<{ id: st
   const varianten = ladeVariantenStatistik(id);
   const gefuellteStatus = trichter.statusVerteilung.filter((s) => s.anzahl > 0);
   const th = 'px-3 py-2 text-right';
+  const felder = segmentFelder(kampagnenExtraSpalten(id));
+  const gewaehlt = felder.find((f) => f.key === segmentParam) ?? felder[0];
+  const segmente = gruppiereNachSegment(ladeSegmentLeads(id), gewaehlt.key);
+  const einwaende = ladeEinwandVerteilung(id);
 
   return (
     <div>
@@ -151,6 +158,66 @@ export default async function AnalysePage({ params }: { params: Promise<{ id: st
         <TagesDiagramm tage={tage} ohneVideo={!k.mitVideo} />
         <p className="mt-2 text-xs text-slate-500">Berliner Tage. Video-Ansichten = Leads, die die Video-Seite an diesem Tag erstmals aufgerufen haben.</p>
       </section>
+
+      <section className="mb-6 rounded-lg border border-slate-200 bg-white p-4" data-testid="segment-auswertung">
+        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-500">Auswertung nach Segment</h2>
+        <p className="mb-3 text-xs text-slate-500">Wo funktioniert die Kampagne am besten? Raten beziehen sich auf gesendete Erstmails des Segments. Positiv = interessiert, Termin gebucht oder gewonnen.</p>
+        <div className="mb-3 flex flex-wrap gap-2" role="tablist">
+          {felder.map((f) => (
+            <Link key={f.key} href={`?segment=${encodeURIComponent(f.key)}`} className={`rounded-md border px-2.5 py-1 text-xs font-medium ${f.key === gewaehlt.key ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}>
+              {f.label}
+            </Link>
+          ))}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-3 py-2 text-left">{gewaehlt.label}</th>
+                <th className={th}>Leads</th>
+                <th className={th}>Gesendet</th>
+                {k.mitVideo && <th className={th}>Angesehen</th>}
+                {k.mitVideo && <th className={th}>Termin-Klicks</th>}
+                <th className={th}>Antworten</th>
+                <th className={th}>Antwortrate</th>
+                <th className={th}>Positiv</th>
+              </tr>
+            </thead>
+            <tbody>
+              {segmente.map((z) => (
+                <tr key={z.segment} className="border-t border-slate-100">
+                  <td className="px-3 py-2 font-medium">{z.segment}</td>
+                  <td className={th}>{z.leads}</td>
+                  <td className={th}>{z.gesendet}</td>
+                  {k.mitVideo && <td className={th}>{z.angesehen}</td>}
+                  {k.mitVideo && <td className={th}>{z.termin}</td>}
+                  <td className={th}>{z.antworten}</td>
+                  <td className={th}>{z.antwortRate === null ? '–' : prozent(z.antwortRate)}</td>
+                  <td className={th}>
+                    {z.positiv}
+                    {z.positivRate !== null && <span className="ml-1 text-xs text-slate-500">({prozent(z.positivRate)})</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {einwaende.length > 0 && (
+        <section className="mb-6 rounded-lg border border-slate-200 bg-white p-4" data-testid="einwand-auswertung">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-500">Einwände in den Antworten</h2>
+          <p className="mb-3 text-xs text-slate-500">Von der KI erkannt. Daran lassen sich Vorlagen und Konter ausrichten.</p>
+          <ul className="space-y-1 text-sm">
+            {einwaende.map((e) => (
+              <li key={e.einwand} className="flex justify-between border-b border-slate-100 py-1">
+                <span>{e.label}</span>
+                <span className="font-medium tabular-nums">{e.anzahl}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {varianten.length > 1 && <VariantenTabelle statistik={varianten} mitVideo={k.mitVideo} />}
     </div>

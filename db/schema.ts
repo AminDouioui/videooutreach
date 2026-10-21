@@ -25,6 +25,8 @@ export const EVENT_TYPEN = [
   'video_link_click',
   // Lead wurde per Untersequenz-Regel in eine andere Kampagne übernommen (meta: zielCampaignId, zielLeadId)
   'untersequenz',
+  // Aus einem Verweis in der Antwort wurde ein neuer Lead angelegt (meta: zielLeadId)
+  'verweis',
 ] as const;
 
 /**
@@ -257,6 +259,13 @@ export const leads = sqliteTable(
     heissAt: ts('heiss_at'),
     abwesendKiAt: ts('abwesend_ki_at'),
     abwesendKiVersuche: integer('abwesend_ki_versuche').notNull().default(0),
+    // Einwand aus der Antwort (lib/einwaende.ts), vom Worker per KI erkannt
+    kiEinwand: text('ki_einwand'),
+    // „Melden Sie sich im Herbst“: Datum der Wiedervorlage und wann sie ausgelöst wurde (Antwort wird wieder ungelesen, Entwurf liegt bereit)
+    wiedervorlageAt: ts('wiedervorlage_at'),
+    wiedervorlageErledigtAt: ts('wiedervorlage_erledigt_at'),
+    // „Wenden Sie sich an Frau Meier“: von der KI gelesener Verweis; angelegtLeadId = daraus entstandener Lead
+    kiVerweis: text('ki_verweis', { mode: 'json' }).$type<{ name: string | null; email: string | null; position: string | null; angelegtLeadId?: number }>(),
     // Automatisch erstellter Antwort-Entwurf (wird nie gesendet, liegt im Antwortfeld der Unibox bereit)
     kiEntwurf: text('ki_entwurf', { mode: 'json' }).$type<{ text: string; at: number; verstoesse?: number }>(),
     // Manueller Vertriebsstatus (wie „Lead Status“ bei Instantly)
@@ -363,7 +372,7 @@ export const suppressionList = sqliteTable('suppression_list', {
 
 // ---------------------------------------------------------------- Webhooks & API (Paket 14)
 
-export const WEBHOOK_EREIGNISSE = ['mail_gesendet', 'antwort', 'bounce', 'abwesenheit', 'abmeldung', 'lead_status', 'video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick', 'video_klick', 'heisser_lead'] as const;
+export const WEBHOOK_EREIGNISSE = ['mail_gesendet', 'antwort', 'bounce', 'abwesenheit', 'abmeldung', 'lead_status', 'video_angesehen', 'video_gestartet', 'termin_klick', 'link_klick', 'video_klick', 'heisser_lead', 'wiedervorlage'] as const;
 export const ZUSTELL_STATUS = ['offen', 'ok', 'fehler'] as const;
 export const API_RECHTE = ['lesen', 'schreiben'] as const;
 
