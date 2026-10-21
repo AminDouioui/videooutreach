@@ -24,6 +24,7 @@ export function ThreadAnsicht({
   gmailUrl,
   kiAktiv = false,
   schreibregeln = false,
+  kiEntwurf = null,
 }: {
   leadId: number;
   threads: string[];
@@ -36,13 +37,16 @@ export function ThreadAnsicht({
   kiAktiv?: boolean;
   /** Prozessia-Schreibregeln prüfen (Einstellung): „Antwort senden“ blockiert bei Verstoß, außer „Trotzdem senden“ */
   schreibregeln?: boolean;
+  /** Von der KI automatisch vorbereiteter Antwort-Entwurf (leads.kiEntwurf), steht im Antwortfeld bereit */
+  kiEntwurf?: { text: string } | null;
 }) {
   const [index, setIndex] = useState(Math.min(start, Math.max(threads.length - 1, 0)));
   const [nachrichten, setNachrichten] = useState<ThreadNachricht[] | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [laedt, setLaedt] = useState(threads.length > 0);
   const [neuLaden, setNeuLaden] = useState(0);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(antwortenErlaubt ? (kiEntwurf?.text ?? '') : '');
+  const [entwurfBereit, setEntwurfBereit] = useState(!!kiEntwurf?.text && antwortenErlaubt);
   const [sendet, setSendet] = useState(false);
   const [sendFehler, setSendFehler] = useState<string | null>(null);
   const [gesendet, setGesendet] = useState(false);
@@ -193,6 +197,7 @@ export function ThreadAnsicht({
             value={text}
             onChange={(e) => {
               setText(e.target.value);
+              setEntwurfBereit(false);
               setServerVerstoesse([]);
             }}
             aria-describedby={verstoesse.length > 0 ? `regeln-${leadId}` : undefined}
@@ -201,6 +206,11 @@ export function ThreadAnsicht({
             placeholder="Antwort schreiben …"
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
           />
+          {entwurfBereit && (
+            <p className="text-xs text-indigo-700" data-testid="auto-entwurf-hinweis">
+              Die KI hat diesen Entwurf vorbereitet. Bitte lesen und anpassen, gesendet wird erst mit „Antwort senden“.
+            </p>
+          )}
           {verstoesse.length > 0 && (
             <div id={`regeln-${leadId}`} className="space-y-2">
               <SchreibregelnWarnung titel="Schreibregeln" hinweis={stilVerstoesse.length > 0 ? 'Zum Senden bitte umformulieren oder „Trotzdem senden“ wählen.' : 'Nur ein Hinweis, gesendet werden kann trotzdem.'} verstoesse={verstoesse.map((verstoss) => ({ ort: '', verstoss }))} />
@@ -216,7 +226,7 @@ export function ThreadAnsicht({
             <button type="submit" disabled={sendet || !text.trim()} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">
               {sendet ? 'Wird gesendet …' : 'Antwort senden'}
             </button>
-            <KiEntwurfKnopf aktiv={kiAktiv} leadId={leadId} vorhandenerText={text} onEntwurf={setText} />
+            <KiEntwurfKnopf aktiv={kiAktiv} leadId={leadId} vorhandenerText={text} onEntwurf={(t) => { setText(t); setEntwurfBereit(false); }} />
             <span className="text-xs text-slate-500">Geht im selben Thread über {postfachEmail} raus, mit der Signatur des Postfachs (ohne Abmeldelink).</span>
           </div>
           {sendFehler && (

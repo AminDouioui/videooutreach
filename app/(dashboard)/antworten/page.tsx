@@ -186,7 +186,7 @@ function Detail({ lead, kampagne, zurueck, ki, schreibhilfe, schreiben, brain, r
       )}
       <div className="mt-3">
         {t.lesezugriff && t.postfach ? (
-          <ThreadAnsicht leadId={lead.id} threads={t.threads} start={t.start} antwortenErlaubt={schreiben} postfachEmail={t.postfach.email} gmailUrl={gmailUrl} kiAktiv={schreibhilfe} schreibregeln={regeln} />
+          <ThreadAnsicht leadId={lead.id} threads={t.threads} start={t.start} antwortenErlaubt={schreiben} postfachEmail={t.postfach.email} gmailUrl={gmailUrl} kiAktiv={schreibhilfe} schreibregeln={regeln} kiEntwurf={lead.kiEntwurf ?? null} />
         ) : (
           <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             <p className="font-medium">Verlauf nur in Gmail</p>

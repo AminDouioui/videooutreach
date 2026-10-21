@@ -292,6 +292,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               gmailUrl={gmailUrl}
               kiAktiv={schreibhilfe}
               schreibregeln={regeln}
+              kiEntwurf={lead.kiEntwurf ?? null}
             />
           </section>
         )}

@@ -251,7 +251,8 @@ describe('Antwortpfad & Warteschlange: Fehlertoleranz', () => {
     expect(await m.ki.verarbeiteKiWarteschlange({ ki: gut.ki, lader: lader(), jetzt: new Date(T0.getTime() + 11 * 60_000) })).toBe(l.id);
     expect(lead(l.id).kiEinordnung?.kategorie).toBe('spaeter');
     expect(await m.ki.verarbeiteKiWarteschlange({ ki: gut.ki, lader: lader(), jetzt: new Date(T0.getTime() + 60 * 60_000) })).toBeNull();
-    expect(gut.anfragen).toHaveLength(1);
+    // Eine Einordnung; die zweite Anfrage ist der automatische Entwurf („später“), er scheitert hier am Testformat und bleibt still
+    expect(gut.anfragen.filter((a) => 'kategorie' in (a.schema as { properties: object }).properties)).toHaveLength(1);
   });
   it('tut nichts bei Einstellung „aus“, ohne Lesezugriff, ohne Schlüssel/Client und für alte Antworten', async () => {
     const x = await neuerLead({ antwortAt: T0 });
@@ -493,5 +494,127 @@ describe('Jev (Einordnung) + OpenAI (Entwürfe) ohne Anthropic-Schlüssel', () =
     expect((await res.json()).error).toContain('OPENAI_API_KEY');
     await setze({});
     expect((await m.routen.entwurfHandler({ lader: lader() })(post(), { params: Promise.resolve({ id: String(l.id) }) })).status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------- Abwesenheit: Rückkehrdatum und Auto-Entwurf
+
+/** Client, der je nach Schema antwortet: Einordnung, Rückkehrdatum oder Entwurf */
+function mehrfach(antworten: { klasse?: object; rueckkehr?: object | Error; entwurf?: object | Error }) {
+  const anfragen: KiAnfrage[] = [];
+  const ki: KiClient = async (a) => {
+    anfragen.push(a);
+    const props = (a.schema as { properties: Record<string, unknown> }).properties;
+    const antwort = 'datum' in props ? antworten.rueckkehr : 'text' in props ? antworten.entwurf : antworten.klasse;
+    if (!antwort) throw new Error('unerwartete Anfrage');
+    if (antwort instanceof Error) throw antwort;
+    return JSON.stringify(antwort);
+  };
+  return { anfragen, ki };
+}
+const ABWESEND_TEXT = 'Ich bin bis einschließlich 31.07.2026 nicht im Büro und ab dem 3. August wieder erreichbar.';
+const abwesenheitsThread = () => thread('amin@prozessia.de', ABWESEND_TEXT);
+/** Alte Leads aus früheren Tests dürfen die Warteschlangen nicht blockieren (sie nehmen je Aufruf den ältesten Lead) */
+function raeumeAuf() {
+  const { getDb, schema } = m.db;
+  getDb().update(schema.leads).set({ kiVersuche: 3, abwesendKiVersuche: 3 }).run();
+}
+const neuerAbwesender = (extra: Partial<typeof import('@/db/schema').leads.$inferInsert> = {}) =>
+  neuerLead({ flowStopp: null, antwortAt: null, abwesendAt: T0, abwesendBis: new Date(T0.getTime() + 7 * 24 * 3600_000), ...extra });
+
+describe('Abwesenheit: Rückkehrdatum', () => {
+  beforeEach(raeumeAuf);
+  it('rueckkehrZeitpunkt: nur Zukunft bis 180 Tage, Beginn des Berliner Tages', () => {
+    expect(m.ki.rueckkehrZeitpunkt('2026-08-03', T0)?.toISOString()).toBe('2026-08-02T22:00:00.000Z');
+    expect(m.ki.rueckkehrZeitpunkt('2026-07-14', T0)).toBeNull();
+    expect(m.ki.rueckkehrZeitpunkt('2027-07-15', T0)).toBeNull();
+    expect(m.ki.rueckkehrZeitpunkt('2026-02-31', T0)).toBeNull();
+    expect(m.ki.rueckkehrZeitpunkt(null, T0)).toBeNull();
+  });
+
+  it('setzt abwesendBis auf das Rückkehrdatum aus der Notiz, es geht nur der Text ohne Zitat raus', async () => {
+    const l = await neuerAbwesender();
+    const { anfragen, ki } = mehrfach({ rueckkehr: { datum: '2026-08-03', vertretung: '' } });
+    const res = await m.ki.leseAbwesenheitsRueckkehr(l.id, { ki, lader: lader(abwesenheitsThread()), jetzt: T0 });
+    expect(res).toMatchObject({ ok: true });
+    expect(lead(l.id).abwesendBis?.toISOString()).toBe('2026-08-02T22:00:00.000Z');
+    expect(lead(l.id).abwesendKiAt?.getTime()).toBe(T0.getTime());
+    expect(anfragen[0].nutzer).toContain('<heute>2026-07-15</heute>');
+    expect(anfragen[0].nutzer).toContain(ABWESEND_TEXT);
+    expect(anfragen[0].nutzer).not.toContain('Am 1. Okt.');
+  });
+
+  it('ohne erkennbares Datum bleibt die Wartezeit der Kampagne', async () => {
+    const l = await neuerAbwesender();
+    const vorher = lead(l.id).abwesendBis!.getTime();
+    const res = await m.ki.leseAbwesenheitsRueckkehr(l.id, { ki: mehrfach({ rueckkehr: { datum: null, vertretung: '' } }).ki, lader: lader(abwesenheitsThread()), jetzt: T0 });
+    expect(res).toMatchObject({ ok: true, bis: null });
+    expect(lead(l.id).abwesendBis?.getTime()).toBe(vorher);
+    expect(lead(l.id).abwesendKiAt).not.toBeNull();
+  });
+
+  it('unplausibles Datum (Vergangenheit, zu weit weg) wird ignoriert', async () => {
+    const l = await neuerAbwesender();
+    const vorher = lead(l.id).abwesendBis!.getTime();
+    await m.ki.leseAbwesenheitsRueckkehr(l.id, { ki: mehrfach({ rueckkehr: { datum: '2025-01-01', vertretung: '' } }).ki, lader: lader(abwesenheitsThread()), jetzt: T0 });
+    expect(lead(l.id).abwesendBis?.getTime()).toBe(vorher);
+  });
+
+  it('Warteschlange: ein Lead pro Aufruf, danach nichts mehr; KI-Fehler zählen Versuche, höchstens 3', async () => {
+    const l = await neuerAbwesender();
+    const { KiFehler } = await import('./ki');
+    const kaputt = mehrfach({ rueckkehr: new KiFehler('Rate-Limit', 'limit', true) });
+    const logs: string[] = [];
+    const lauf = (ki: KiClient, jetzt: Date) => m.ki.verarbeiteAbwesenheitsWarteschlange({ ki, lader: lader(abwesenheitsThread()), jetzt, log: (s) => logs.push(s) });
+    expect(await lauf(kaputt.ki, T0)).toBe(l.id);
+    expect(lead(l.id).abwesendKiVersuche).toBe(1);
+    expect(logs[0]).toContain('Versuch 1/3');
+    expect(await lauf(kaputt.ki, new Date(T0.getTime() + 60_000))).toBeNull(); // Wartezeit
+    const gut = mehrfach({ rueckkehr: { datum: '2026-08-03', vertretung: 'Frau Meier' } });
+    expect(await lauf(gut.ki, new Date(T0.getTime() + 11 * 60_000))).toBe(l.id);
+    expect(lead(l.id).abwesendBis?.toISOString()).toBe('2026-08-02T22:00:00.000Z');
+    expect(await lauf(gut.ki, new Date(T0.getTime() + 3 * 3600_000))).toBeNull();
+  });
+
+  it('Warteschlange: Kampagne ohne Verschieben (abwesendBis leer), Modus „aus“ und beantwortete Leads bleiben unberührt', async () => {
+    const ohne = await neuerAbwesender({ abwesendBis: null });
+    const beantwortet = await neuerAbwesender({ flowStopp: 'beantwortet' });
+    const f = mehrfach({ rueckkehr: { datum: '2026-08-03', vertretung: '' } });
+    expect(await m.ki.verarbeiteAbwesenheitsWarteschlange({ ki: f.ki, lader: lader(abwesenheitsThread()), jetzt: T0 })).toBeNull();
+    expect(lead(ohne.id).abwesendKiAt).toBeNull();
+    expect(lead(beantwortet.id).abwesendKiAt).toBeNull();
+    m.settings.setSetting('ki_auto_status', 'aus');
+    await neuerAbwesender();
+    expect(await m.ki.verarbeiteAbwesenheitsWarteschlange({ ki: f.ki, lader: lader(abwesenheitsThread()), jetzt: T0 })).toBeNull();
+    expect(f.anfragen).toHaveLength(0);
+  });
+});
+
+describe('Auto-Entwurf', () => {
+  beforeEach(raeumeAuf);
+  it('legt nach der Einordnung „interessiert“ einen Entwurf ab, ohne zu senden', async () => {
+    const l = await neuerLead();
+    const f = mehrfach({ klasse: klasse('interessiert'), entwurf: { text: 'Guten Tag Max,\n\ngern telefonieren wir am Dienstag.' } });
+    expect(await m.ki.verarbeiteKiWarteschlange({ ki: f.ki, lader: lader(), jetzt: T0 })).toBe(l.id);
+    expect(lead(l.id).kiEntwurf).toEqual({ text: 'Guten Tag Max,\n\ngern telefonieren wir am Dienstag.', at: T0.getTime(), verstoesse: 0 });
+  });
+
+  it('kein Entwurf bei Absage, Abwesenheit und Abmeldung', async () => {
+    for (const k of ['nicht_interessiert', 'abwesenheit', 'abmeldung']) {
+      const l = await neuerLead();
+      const f = mehrfach({ klasse: klasse(k), entwurf: { text: 'Hallo' } });
+      await m.ki.verarbeiteKiWarteschlange({ ki: f.ki, lader: lader(), jetzt: T0 });
+      expect(lead(l.id).kiEntwurf).toBeNull();
+      expect(lead(l.id).kiEinordnung?.kategorie).toBe(k);
+    }
+  });
+
+  it('Fehler beim Entwurf ändern nichts an der Einordnung', async () => {
+    const l = await neuerLead();
+    const f = mehrfach({ klasse: klasse('spaeter'), entwurf: new Error('kaputt') });
+    await m.ki.verarbeiteKiWarteschlange({ ki: f.ki, lader: lader(), jetzt: T0 });
+    expect(lead(l.id).kiEinordnung?.kategorie).toBe('spaeter');
+    expect(lead(l.id).kiEntwurf).toBeNull();
+    expect(lead(l.id).kiVersuche).toBe(0);
   });
 });

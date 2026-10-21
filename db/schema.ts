@@ -248,6 +248,11 @@ export const leads = sqliteTable(
     // Abwesenheitsnotiz erkannt (zählt nicht als Antwort); Follow-ups warten bis abwesendBis (null = nicht verschoben)
     abwesendAt: ts('abwesend_at'),
     abwesendBis: ts('abwesend_bis'),
+    // KI liest das Rückkehrdatum aus der Notiz: Zeitpunkt der Auswertung und Fehlversuche (höchstens 3)
+    abwesendKiAt: ts('abwesend_ki_at'),
+    abwesendKiVersuche: integer('abwesend_ki_versuche').notNull().default(0),
+    // Automatisch erstellter Antwort-Entwurf (wird nie gesendet, liegt im Antwortfeld der Unibox bereit)
+    kiEntwurf: text('ki_entwurf', { mode: 'json' }).$type<{ text: string; at: number; verstoesse?: number }>(),
     // Manueller Vertriebsstatus (wie „Lead Status“ bei Instantly)
     leadStatus: text('lead_status', { enum: LEAD_STATUS }).notNull().default('offen'),
     leadStatusAt: ts('lead_status_at'),

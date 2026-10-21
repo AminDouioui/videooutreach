@@ -212,7 +212,7 @@ export async function sendeAntwort(leadId: number, textRoh: string, threadWunsch
       .insert(schema.sentMessages)
       .values({ leadId: lead.id, campaignId: lead.campaignId, step: ANTWORT_STEP, variante: null, gmailMessageId: res.id, gmailThreadId: res.threadId || threadId, absenderId: postfach.id, sentAt: jetzt })
       .run();
-    getDb().update(schema.leads).set({ antwortGelesen: true }).where(eq(schema.leads.id, lead.id)).run();
+    getDb().update(schema.leads).set({ antwortGelesen: true, kiEntwurf: null }).where(eq(schema.leads.id, lead.id)).run();
     leereThreadCache(postfach.id, threadId);
     return { ok: true, threadId: res.threadId || threadId, messageId: res.id };
   } catch (e) {

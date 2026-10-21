@@ -3,7 +3,7 @@ import { kannThreadLesen, ladeAbsender, postfachFuerLead } from './absender';
 import { fehlerText, ladeThread, leadThreads, UniboxFehler } from './antworten';
 import { getDb, schema } from './db';
 import type { ThreadLader } from './gmail';
-import { anthropicClient, entwerfeAntwortGeprueft, klassifizierungVerfuegbar, KiFehler, KLASSIFIZIERUNG_NICHT_AKTIV, kiFehlerAus, MAX_EINORDNUNG_ZEICHEN, ordneAntwortEin, type Einordnung, type KiClient } from './ki';
+import { anthropicClient, entwerfeAntwortGeprueft, klassifizierungVerfuegbar, leseRueckkehr, schreibhilfeVerfuegbar, KiFehler, KLASSIFIZIERUNG_NICHT_AKTIV, kiFehlerAus, MAX_EINORDNUNG_ZEICHEN, ordneAntwortEin, type Einordnung, type KiClient } from './ki';
 import { kontextFuerPrompt, ladeLeadKontext, type BrainFetch } from './brain';
 import { ordneAntwortMitJev, type JevFetch } from './ki-jev';
 import { openaiClient } from './ki-openai';
@@ -15,6 +15,7 @@ import { merkeAbwesenheit } from './send';
 import { kiAutoStatus, kiEntwurfAnbieter, kiKlassifizierer, schreibregelnAktiv, type KiKlassifizierer } from './settings';
 import type { SchreibVerstoss } from './schreibregeln';
 import { unsubscribeBySlug } from './suppression';
+import { startOfDayBerlinMs, todayBerlin } from './time';
 
 // Einordnung von Antworten mit KI: letzte fremde Nachricht lesen, klassifizieren, speichern (leads.kiEinordnung) und je
 // nach Einstellung `ki_auto_status` nur vorschlagen oder automatisch anwenden. Fehler der KI dürfen den Versand und die
@@ -204,6 +205,103 @@ export async function entwerfeLeadAntwort(leadId: number, opt: KiOptionen = {}):
   }
 }
 
+/** Nach diesen Kategorien liegt automatisch ein Antwort-Entwurf bereit (bei Absage, Abmeldung und Abwesenheit nicht) */
+const ENTWURF_KATEGORIEN: ReadonlySet<string> = new Set(['interessiert', 'spaeter', 'falscher_ansprechpartner', 'sonstiges']);
+
+/** Legt einen Antwort-Entwurf an (leads.kiEntwurf), ohne zu senden. Fehler und fehlender Schlüssel bleiben still: der Button „Entwurf mit KI“ funktioniert weiter. */
+async function erstelleAutoEntwurf(leadId: number, opt: KiOptionen): Promise<boolean> {
+  if (!opt.ki && !opt.openaiFetch && !schreibhilfeVerfuegbar()) return false;
+  if (ladeLead(leadId)?.kiEntwurf) return false;
+  const res = await entwerfeLeadAntwort(leadId, opt);
+  if (!res.ok) return false;
+  getDb().update(schema.leads).set({ kiEntwurf: { text: res.text, at: (opt.jetzt ?? new Date()).getTime(), verstoesse: res.verstoesse.length } }).where(eq(schema.leads.id, leadId)).run();
+  return true;
+}
+
+// ---------------------------------------------------------------- Abwesenheit: Rückkehrdatum
+
+/** Weiter als das in der Zukunft gilt ein erkanntes Rückkehrdatum als Fehlinterpretation */
+export const ABWESENHEIT_MAX_TAGE = 180;
+const TAG_MS = 24 * 3600_000;
+
+/** Erster Moment (Berlin) des Rückkehrtags, wenn das Datum in der Zukunft und im Rahmen liegt, sonst null. */
+export function rueckkehrZeitpunkt(datum: string | null, jetzt: Date): Date | null {
+  if (!datum) return null;
+  const [y, m, d] = datum.split('-').map(Number);
+  const mittag = new Date(Date.UTC(y, m - 1, d, 12));
+  if (Number.isNaN(mittag.getTime()) || mittag.getUTCDate() !== d) return null;
+  const bis = new Date(startOfDayBerlinMs(mittag));
+  return bis.getTime() > jetzt.getTime() && bis.getTime() <= jetzt.getTime() + ABWESENHEIT_MAX_TAGE * TAG_MS ? bis : null;
+}
+
+/**
+ * Liest das Rückkehrdatum aus der Abwesenheitsnotiz des Leads und setzt `abwesendBis` darauf: die Follow-ups warten dann
+ * genau bis zu diesem Tag (statt pauschal N Tage). Ohne erkennbares Datum bleibt die Wartezeit der Kampagne.
+ */
+export async function leseAbwesenheitsRueckkehr(leadId: number, opt: KiOptionen = {}): Promise<LeadKiErgebnis<{ bis: Date | null; vertretung: string }>> {
+  const lead = ladeLead(leadId);
+  if (!lead) return { ok: false, status: 404, error: 'Lead nicht gefunden' };
+  const jetzt = opt.jetzt ?? new Date();
+  try {
+    const text = letzteFremdeNachricht(await ladeVerlauf(lead, opt));
+    if (!text) throw new UniboxFehler('Im Thread gibt es keine Abwesenheitsnotiz, die gelesen werden könnte.');
+    const r = await leseRueckkehr(text, todayBerlin(jetzt), schreibClient(opt));
+    const bis = rueckkehrZeitpunkt(r.datum, jetzt);
+    getDb()
+      .update(schema.leads)
+      .set({ abwesendKiAt: jetzt, ...(bis ? { abwesendBis: bis } : {}) })
+      .where(eq(schema.leads.id, leadId))
+      .run();
+    return { ok: true, bis, vertretung: r.vertretung };
+  } catch (err) {
+    return { ok: false, ...fehlerAus(err) };
+  }
+}
+
+/**
+ * Wertet höchstens eine neue Abwesenheitsnotiz pro Aufruf aus (Worker). Voraussetzungen: Schlüssel für Texte (OpenAI oder
+ * Anthropic), Einstellung ≠ „aus“, Postfach mit Lesezugriff, Notiz der letzten 14 Tage, Follow-ups warten noch
+ * (`abwesendBis` in der Zukunft; bei Kampagnen ohne Verschieben bleibt alles wie es ist). Höchstens 3 Versuche je Lead.
+ */
+export async function verarbeiteAbwesenheitsWarteschlange(opt: KiOptionen & { log?: (msg: string) => void } = {}): Promise<number | null> {
+  try {
+    if (!opt.ki && !opt.openaiFetch && !schreibhilfeVerfuegbar()) return null;
+    if (kiAutoStatus() === 'aus') return null;
+    const jetzt = opt.jetzt ?? new Date();
+    const lesbar = ladeAbsender().filter(kannThreadLesen).map((a) => a.id);
+    if (lesbar.length === 0) return null;
+    const lead = getDb()
+      .select()
+      .from(schema.leads)
+      .where(
+        and(
+          isNull(schema.leads.flowStopp),
+          isNull(schema.leads.abwesendKiAt),
+          lt(schema.leads.abwesendKiVersuche, KI_MAX_VERSUCHE),
+          sql`${schema.leads.abwesendAt} > ${jetzt.getTime() - NEUE_ANTWORT_MS}`,
+          sql`${schema.leads.abwesendBis} > ${jetzt.getTime()}`,
+          or(isNull(schema.leads.kiVersuchAt), sql`${schema.leads.kiVersuchAt} + ${schema.leads.abwesendKiVersuche} * ${WIEDERHOLUNG_MS} <= ${jetzt.getTime()}`),
+        ),
+      )
+      .orderBy(sql`${schema.leads.abwesendAt}`)
+      .all()
+      .find((l) => {
+        const p = postfachFuerLead(l);
+        return !!p && lesbar.includes(p.id);
+      });
+    if (!lead) return null;
+    const res = await leseAbwesenheitsRueckkehr(lead.id, opt);
+    if (!res.ok) {
+      getDb().update(schema.leads).set({ abwesendKiVersuche: lead.abwesendKiVersuche + 1, kiVersuchAt: jetzt }).where(eq(schema.leads.id, lead.id)).run();
+      opt.log?.(`Rückkehrdatum Lead ${lead.id} nicht gelesen (Versuch ${lead.abwesendKiVersuche + 1}/${KI_MAX_VERSUCHE}): ${res.error}`);
+    }
+    return lead.id;
+  } catch (e) {
+    opt.log?.(`Abwesenheits-Warteschlange: ${kiFehlerAus(e).message}`);
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------- Warteschlange (Worker)
 
 /**
@@ -243,6 +341,9 @@ export async function verarbeiteKiWarteschlange(opt: KiOptionen & { log?: (msg: 
       getDb().update(schema.leads).set({ kiVersuche: lead.kiVersuche + 1, kiVersuchAt: jetzt }).where(eq(schema.leads.id, lead.id)).run();
       // Nur die Art des Fehlers loggen, nie Inhalte
       opt.log?.(`KI-Einordnung Lead ${lead.id} fehlgeschlagen (Versuch ${lead.kiVersuche + 1}/${KI_MAX_VERSUCHE}): ${res.error}`);
+    } else if (ENTWURF_KATEGORIEN.has(res.einordnung.kategorie)) {
+      // Antwort-Entwurf zum Prüfen bereitlegen; schlägt das fehl, bleibt die Einordnung gültig
+      await erstelleAutoEntwurf(lead.id, opt).catch(() => false);
     }
     return lead.id;
   } catch (e) {
