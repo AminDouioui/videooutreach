@@ -3,6 +3,7 @@ import { kannAntwortenPruefen, ladeAbsender, ladePostfachZustaende, markiereAuth
 import { getDb, schema } from './db';
 import { getEnv } from './env';
 import { GmailSendError, type GmailSender, type ThreadLader, type ThreadPruefer } from './gmail';
+import { abAutomatik } from './ab-auto-db';
 import { verarbeiteAbwesenheitsWarteschlange, verarbeiteKiWarteschlange, verarbeiteWiedervorlagen } from './ki-einordnung';
 import type { KiClient } from './ki';
 import { FLOW_ENDENDE_STATUS } from './lead-status';
@@ -300,6 +301,8 @@ export async function runSendTick(deps: TickDeps = {}): Promise<TickResult> {
     await verarbeiteKiWarteschlange({ ki: deps.ki, lader: deps.lader, jetzt, log });
     // Rückkehrdatum aus erkannten Abwesenheitsnotizen lesen: die Follow-ups warten dann bis zu diesem Tag
     await verarbeiteAbwesenheitsWarteschlange({ ki: deps.ki, lader: deps.lader, jetzt, log });
+    // A/B-Automatik (nur Kampagnen mit eingeschalteter Automatik, höchstens stündlich)
+    abAutomatik(jetzt, log);
     // Fällige Wiedervorlagen („melden Sie sich im Herbst“): Antwort wieder ungelesen, Entwurf bereit, Webhook
     await verarbeiteWiedervorlagen({ ki: deps.ki, lader: deps.lader, jetzt, log });
   }

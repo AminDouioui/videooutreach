@@ -36,6 +36,7 @@ const bodySchema = z
     trackingPixel: z.boolean(),
     linkTracking: z.boolean(),
     stoppBeiFirmenAntwort: z.boolean(),
+    abAuto: z.boolean().optional(),
     abwesenheitVerschiebenTage: z.coerce.number().int().min(0).max(60),
     bounceSchutz: z.boolean(),
     bounceSchwelleProzent: z.coerce.number().int().min(1).max(100),

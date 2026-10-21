@@ -104,6 +104,9 @@ export const campaigns = sqliteTable('campaigns', {
   mitVideo: integer('mit_video', { mode: 'boolean' }).notNull().default(true),
   // Antwortet jemand einer Firma, werden die Flows aller anderen Leads mit derselben Domain gestoppt
   stoppBeiFirmenAntwort: integer('stopp_bei_firmen_antwort', { mode: 'boolean' }).notNull().default(true),
+  // A/B-Automatik (lib/ab-auto.ts): deutlich schwächere Erstmail-Varianten (B–E) werden abgeschaltet; abAutoLog = Protokoll der Entscheidungen
+  abAuto: integer('ab_auto', { mode: 'boolean' }).notNull().default(false),
+  abAutoLog: text('ab_auto_log', { mode: 'json' }).$type<{ at: number; kuerzel: string; grund: string }[]>(),
   // Follow-ups eines Leads mit erkannter Abwesenheitsnotiz um so viele Tage verschieben (0 = nicht verschieben)
   abwesenheitVerschiebenTage: integer('abwesenheit_verschieben_tage').notNull().default(7),
   // Bounce-Schutz: Kampagne pausiert, wenn die Bounce-Quote der letzten `bounceFenster` Erstmails über der Schwelle liegt

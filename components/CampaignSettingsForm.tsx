@@ -19,6 +19,7 @@ type Werte = {
   linkTracking: boolean;
   stoppBeiFirmenAntwort: boolean;
   abwesenheitVerschiebenTage: number;
+  abAuto: boolean;
   bounceSchutz: boolean;
   bounceSchwelleProzent: number;
   bounceFenster: number;
@@ -160,6 +161,15 @@ export function CampaignSettingsForm({ campaignId, initial }: { campaignId: numb
           Bei Antwort einer Firma alle Kontakte dieser Firma stoppen
           <span className="block text-xs text-slate-500">
             Antwortet ein Kontakt, bekommen die anderen Leads mit derselben E-Mail-Domain keine Follow-ups und keine Erstmail mehr. Private Mail-Anbieter (gmail.com, gmx.de, web.de …) sind ausgenommen.
+          </span>
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-sm text-slate-700">
+        <input type="checkbox" className="mt-1" checked={w.abAuto} onChange={(e) => set('abAuto', e.target.checked)} />
+        <span>
+          A/B-Automatik: deutlich schwächere Varianten abschalten
+          <span className="block text-xs text-slate-500">
+            Hat eine Erstmail-Variante (B bis E) nach mindestens 40 gesendeten Mails eine statistisch deutlich niedrigere Antwortrate als die beste, wird sie abgeschaltet. Variante A bleibt immer aktiv und wird nur gemeldet. Das Protokoll steht in der Analyse.
           </span>
         </span>
       </label>

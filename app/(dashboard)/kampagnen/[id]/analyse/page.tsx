@@ -219,6 +219,24 @@ export default async function AnalysePage({ params, searchParams }: { params: Pr
         </section>
       )}
 
+      {k.abAuto && (
+        <section className="mb-6 rounded-lg border border-slate-200 bg-white p-4" data-testid="ab-auto-protokoll">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-500">A/B-Automatik</h2>
+          {(k.abAutoLog ?? []).length === 0 ? (
+            <p className="text-sm text-slate-600">Eingeschaltet. Noch keine Entscheidung: bewertet wird ab 40 gesendeten Mails je Variante, nur bei statistisch deutlichem Unterschied.</p>
+          ) : (
+            <ul className="space-y-1 text-sm">
+              {[...(k.abAutoLog ?? [])].reverse().map((l, i) => (
+                <li key={i} className="border-b border-slate-100 py-1">
+                  <span className="mr-2 text-xs tabular-nums text-slate-500">{new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' }).format(l.at)}</span>
+                  <strong>Variante {l.kuerzel}:</strong> {l.grund}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {varianten.length > 1 && <VariantenTabelle statistik={varianten} mitVideo={k.mitVideo} />}
     </div>
   );
