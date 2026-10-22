@@ -37,7 +37,7 @@ const VOLLSTAENDIGKEIT = { name: 0.1, adresse: 0.15, domain: 0.15, branche: 0.1,
 
 export type DatenScore = { score: number; vollstaendigkeit: number; konfidenz: number; email: number; aktualitaet: number; fehlend: string[] };
 
-export function berechneDatenScore(g: GoldenFirma, jetzt: number, gewichte: typeof DATEN_SCORE_GEWICHTE = DATEN_SCORE_GEWICHTE): DatenScore {
+export function berechneDatenScore(g: GoldenFirma, jetzt: number, gewichte: Record<keyof typeof DATEN_SCORE_GEWICHTE, number> = DATEN_SCORE_GEWICHTE): DatenScore {
   const hat: Record<keyof typeof VOLLSTAENDIGKEIT, number> = {
     name: g.name ? 1 : 0,
     adresse: [g.strasse, g.plz, g.ort].filter(Boolean).length / 3,
