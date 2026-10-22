@@ -176,6 +176,13 @@
       "when": 1792530000000,
       "tag": "0024_leadgen_uebernahme",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1792620000000,
+      "tag": "0025_leadgen_ereignisse",
+      "breakpoints": true
     }
   ]
 }

@@ -4,7 +4,7 @@ Selbst gehostete Web-App für personalisierte Video-Kaltakquise: Leads importier
 
 ## Inhalt
 
-1. [Überblick](#überblick) · 2. [Funktionen](#funktionen) · 3. [Architektur](#architektur) · 4. [Lokale Entwicklung](#lokale-entwicklung) · 5. [Umgebungsvariablen](#umgebungsvariablen) · 6. [Gmail-Einrichtung](#gmail-einrichtung) · 7. [Versandregeln](#versandregeln) · 8. [Tracking, Bot-Erkennung, Score](#tracking-bot-erkennung-und-score) · 9. [Rendern mit Remotion](#rendern-mit-remotion) · 10. [Deployment](#deployment) · 11. [Fehlerbehebung](#fehlerbehebung) · 12. [Datenschutz](#datenschutz-hinweise)
+1. [Überblick](#überblick) · 2. [Funktionen](#funktionen) · 3. [Architektur](#architektur) · 4. [Lokale Entwicklung](#lokale-entwicklung) · 5. [Umgebungsvariablen](#umgebungsvariablen) · 6. [Gmail-Einrichtung](#gmail-einrichtung) · 7. [Versandregeln](#versandregeln) · 8. [Tracking, Bot-Erkennung, Score](#tracking-bot-erkennung-und-score) · 9. [Rendern mit Remotion](#rendern-mit-remotion) · 10. [Lead-Generierung](#lead-generierung) · 11. [Deployment](#deployment) · 12. [Fehlerbehebung](#fehlerbehebung) · 13. [Datenschutz](#datenschutz-hinweise)
 
 ## Überblick
 
@@ -122,6 +122,11 @@ Vorlage: `.env.example`. Die `.env` gehört nie ins Repository. Fehlende Pflicht
 | `OPENAI_API_KEY` | nein | Alternative zur Eingabe in der App. Schlüssel für OpenAI als Anbieter der Antwort-Entwürfe und der Schreibhilfe (statt Anthropic). Datenschutz: Mailtexte gehen an OpenAI (USA) |
 | `OPENAI_MODEL`, `OPENAI_BASE_URL` | nein | OpenAI-Modell (Standard `gpt-5.5`, nicht offiziell verifiziert: bei „model not found“ anpassen, siehe platform.openai.com/docs/models) und Basis-URL (Standard `https://api.openai.com/v1`, für Tests/Proxy überschreibbar) |
 | `JEV_MODELL`, `JEV_BASE_URL` | nein | Nur für den OpenRouter-Zugang: Jev-Modell (Standard `typesafe/jev-1.13`, Alias `~typesafe/jev-latest`) und Basis-URL (Standard `https://openrouter.ai/api`, für Tests/Proxy überschreibbar) |
+| `BRAVE_SEARCH_API_KEY` | nein | Websuche der Lead-Generierung (Brave Search API); alternativ in der App unter *Leads generieren → Einstellungen* (dort gespeichert, verschlüsselt, hat Vorrang) |
+| `REACHER_URL`, `REACHER_API_KEY` | nein | Externer SMTP-Prüfdienst (check-if-email-exists) und optionaler Zugangsschlüssel; ohne ihn gibt es keine verifizierten E-Mails |
+| `LEADGEN_HR_LIVE`, `LEADGEN_BA_LIVE` | nein | `1` gibt den Netz-Abruf bei Handelsregister bzw. Bundesanzeiger frei (standardmäßig aus; Nutzungsbedingungen vorher prüfen, der Abruf selbst ist nicht eingebaut) |
+| `LEADGEN_CRAWL_UA` | nein | User-Agent des Crawlers, mit Kontaktadresse (Standard `ProzessiaLeadBot/1.0 (+mailto:kontakt@prozessia.de)`) |
+| `LEADGEN_EXTRAKTION_MODELL`, `LEADGEN_LLM_PREIS_EIN`, `LEADGEN_LLM_PREIS_AUS` | nein | Kleines Modell für die Extraktion (leer = `OPENAI_MODEL`) und Preise in Cent je 1 Mio. Token für die Kostenanzeige |
 | `BRAIN_URL`, `BRAIN_API_TOKEN` | nein | Alternative zur Eingabe unter Einstellungen → Integrationen → Brain (dort gespeicherte Werte haben Vorrang). Basis-URL des Brains (z. B. `https://brain.prozessia.space`) und der Wert von `EXTERN_API_TOKEN` im Brain. Datenschutz: Der Brain-Kontext geht beim „Entwurf mit KI“ an den gewählten KI-Anbieter |
 | `ANTHROPIC_MODEL_SCHREIBEN`, `ANTHROPIC_MODEL_KLASSIFIZIEREN` | nein | Modelle für Schreibhilfe/Antwort-Entwurf (Standard `claude-sonnet-5-5`) und Klassifikation (Standard `claude-haiku-5-5`) |
 
@@ -180,6 +185,42 @@ Die Erstmail und jeder Follow-up-Schritt können unabhängig voneinander Dateian
 - **Teaser austauschen:** Datei `remotion/public/teaser.mp4` durch das neue Video ersetzen (gleicher Dateiname, 16:9 empfohlen, mit Ton). Der Worker erkennt die Änderung und kodiert den Teaser beim nächsten Job automatisch neu. Bereits gerenderte Videos bleiben unverändert; sie müssen pro Lead mit „Video neu rendern“ neu erzeugt werden. Im Docker-Betrieb danach `docker compose up -d --build`, da der Teaser im Image liegt.
 - Komposition ansehen/ändern: `npm run remotion:studio`.
 - Rendern braucht RAM (Chrome): für `RENDER_CONCURRENCY=1` rund 2 bis 3 GB freien Speicher einplanen.
+
+## Lead-Generierung
+
+Neuer Bereich **Leads generieren** (Navigation): Aus Filtern (Branche, Mitarbeiterklasse, Region/PLZ, Rechtsform, Zielrolle, Mindest-Score, „nur verifizierte E-Mails“) entstehen Leads mit Firma, Ansprechpartner, verifizierter E-Mail und Telefon. Das ist keine „KI sucht im Internet“-Funktion, sondern eine Daten-Pipeline wie bei großen B2B-Datenanbietern; das LLM ist nur ein Baustein der Extraktion. Code: `lib/leadgen/`, Worker-Schleife `worker/leadgen.ts`, Oberfläche `app/(dashboard)/leads-generieren/`.
+
+**Stufen** (jede ein idempotenter Job in `pipeline_jobs`, Wiederholung mit Backoff, Fehler sichtbar mit „Erneut versuchen“, Kosten je Lauf):
+
+1. **Ingestion**: Connectors liefern Rohdokumente, unverändert und versioniert in `raw_documents` (Hash, Abrufzeitpunkt, nichts wird überschrieben). Quellen: OffeneRegister-Dump (Datei), Handelsregister (gedrosselt, aus), Bundesanzeiger-Jahresabschlüsse (Datei; Abruf aus), Bekanntmachungen (Datei), Platzhalter für North Data, Firmenwebseiten (Crawler).
+2. **Normalisierung**: Rechtsform getrennt, `name_normalized`, Adresse/PLZ/Bundesland, Telefon (E.164, Mobil/Festnetz), Person (Vorname, Nachname, Titel, Rolle), Registernummer.
+3. **Entity Resolution**: Blocking (PLZ + Namenswort), gewichteter Vergleich (Register hart, Domain, Name nach Jaro-Winkler, Adresse), Schwellen sicher/unsicher/getrennt. Unsichere Paare stehen unter *Leads generieren → Unsichere Firmen-Treffer* zur manuellen Prüfung. Ergebnis: stabile `company_id`/`person_id`.
+4. **Domain und Crawling**: Domain per Brave Search, bestätigt durch das Impressum (Firmenname oder Registernummer). Crawler mit robots.txt, Rate-Limit je Domain, eigenem User-Agent, Cache und Schutz vor Zielen im internen Netz.
+5. **Extraktion**: erst deterministisch (E-Mail, Telefon, Registernummer, USt-IdNr, Mitarbeiterzahl), dann das LLM nur für die Zuordnung (Wer ist Geschäftsführer, welche Nummer ist die Zentrale). **Grounding-Check**: Jeder Wert des LLM muss im Quelltext stehen, sonst wird er verworfen. Providerunabhängig (`ExtractionProvider`), erste Implementierung OpenAI mit Structured Outputs.
+6. **Kontakt-Engine** (Rolle rein, verifizierte E-Mail raus): Personen zur Rolle finden (Website, Register, gezielte Websuche mit Vorlagen, Stellenanzeigen, Pressemitteilungen, Ausstellerlisten; Berufsnetzwerke nur über Trefferzeilen der Suchmaschine, nie abgerufen), Rollen-Synonyme mit Fallback auf die nächsthöhere Rolle, E-Mail-Muster der Domain rückwärts aus bekannten Adressen lernen, Kandidaten bilden (Umlaute, Doppelnamen, Zusätze), Verifizierung (MX, SMTP bis RCPT TO über einen externen Prüfdienst, Catch-All-Erkennung, Rate-Limit je Domain, Cache), Fallback-Kaskade (weitere Muster, „best guess, catch-all“, generische Postfächer als unpersönlich markiert, „Rolle offen“ mit Wiedervorlage).
+7. **Golden Record** mit Herkunft je Feld: `attribute_observations` ist die Quelle der Wahrheit, `companies`/`persons`/`contact_points` sind eine jederzeit neu berechenbare Sicht (Survivorship: Register vor Webseite für Geschäftsführer, Bundesanzeiger vor Schätzung bei der Mitarbeiterzahl, neu vor alt bei gleicher Quelle). Die Mitarbeiterzahl trägt immer Typ (exakt, Größenklasse, Schätzung) und Herkunft.
+8. **Scoring**: Datenqualität (Vollständigkeit, Konfidenz, E-Mail-Status, Aktualität) und ICP-Fit (Branche, Mitarbeiterklasse, Region, Rechtsform), Gewichte in `lib/leadgen/config.ts`.
+9. **Auslieferung**: Ergebnisliste mit Quelle und Konfidenz je Feld, Auswahl, **Übernahme in eine Kampagne** mit Dedup gegen alle Kontakte/Kampagnen und Abgleich mit der Sperrliste, CSV-Export.
+10. **Aktualisierung**: Re-Verifizierung der E-Mail alle 30 Tage, Re-Crawl alle 90 Tage, offene Rollen nach 7 Tagen (nur für Firmen in Kampagnen und offene Rollen, höchstens 100 je Planung; abschaltbar mit der Einstellung `leadgen_refresh_aktiv = 0`), Golden Record täglich neu (Decay: Konfidenz halbiert sich je Halbwertszeit des Felds, E-Mail-Status nach 90 Tagen, Person nach 365). **Change Detection**: Geschäftsführerwechsel und Neueintragungen aus Registerständen und Bekanntmachungen erscheinen als Outreach-Trigger.
+
+### Einrichtung
+
+1. **Bestand importieren**: OffeneRegister-Dump (JSON Lines, Datenstand ca. 2019, nur Seed, nie Wahrheit; vorher mit `bunzip2` entpacken) und nur die Zielgruppe übernehmen: `npm run leadgen:offeneregister -- datei.jsonl --plz 70,71,72 --name "werkzeug|formen|maschinen" --limit 5000`. Das Feldformat des Dumps stammt aus veröffentlichten Beispielsätzen (Docs von CedarDB); ein Lauf gegen einen vollständigen Dump wurde noch nicht durchgeführt. Das Registerseed trägt `retrieved_at` als Alter der Angaben.
+2. **Schlüssel und Dienste**: Brave-Search-Schlüssel (App: *Leads generieren → Einstellungen*, oder `BRAVE_SEARCH_API_KEY`), OpenAI-Schlüssel (Einstellungen → KI), kleines Extraktionsmodell (`LEADGEN_EXTRAKTION_MODELL`), und für die SMTP-Prüfung ein [check-if-email-exists/Reacher](https://github.com/reacherhq/check-if-email-exists)-Dienst unter `REACHER_URL`. Reacher gehört auf einen Host mit offenem Port 25, der **nicht** die Reputation der Versand-Domain trägt (Hetzner Cloud sperrt Port 25 standardmäßig). Ohne diesen Dienst gibt es keine verifizierten E-Mails, nur Best-Guess- und generische Treffer. Die Antwortfelder des Dienstes sind nach der Reacher-Doku umgesetzt, aber nicht gegen eine laufende Instanz getestet.
+3. **Worker** (`npm run worker`, in Docker der Service `worker`) führt die Jobs aus. Ohne laufenden Worker bleiben Läufe in „Läuft“ stehen.
+
+### Quellen, Rechtliches, Grenzen
+
+- **Handelsregister** (handelsregister.de): keine offizielle API, die Nutzungsordnung begrenzt Abrufe (nach Angaben Dritter 60 je Stunde, die Seite warnt vor Massenabfragen). Der Connector ist deshalb standardmäßig aus (`LEADGEN_HR_LIVE=1`), gedrosselt und cached, und der eigentliche Abruf ist **nicht eingebaut**. Für größere Mengen: Whitelist-IP bei der Servicestelle Registerportal beantragen oder einen lizenzierten Anbieter (North Data) anbinden (`connectors/northdata.ts` ist der vorbereitete Platzhalter).
+- **Bundesanzeiger/Unternehmensregister**: Nutzungsbedingungen für automatisierte Abrufe sind nicht geprüft. Jahresabschlüsse lassen sich deshalb per Datei importieren (`JahresabschlussDateiConnector`, JSON Lines mit Firma, Register, Bilanzstichtag, Text); der Netz-Abruf ist aus (`LEADGEN_BA_LIVE=1`) und ohne Scraper.
+- **Berufsnetzwerke**: nur öffentliche Trefferzeilen der Websuche im Rahmen deren Bedingungen, keine Abrufe von Login- oder Profilseiten.
+- **Kontaktdaten**: nur öffentliche Geschäftsdaten; Mobilnummern nur, wenn sie öffentlich auf der Webseite oder im Register stehen; keine Crowd-, Adressbuch- oder zugekauften Mobildaten.
+- **DSGVO/UWG**: Die Herkunft jedes Datums steht in `attribute_observations`, `contact_points.herkunft` und `leadgen_uebernahmen` (Nachweis für die Informationspflicht nach Art. 14). *Person löschen und sperren* entfernt alle Daten der Person, setzt die Adresse auf die Sperrliste, anonymisiert Leads und blockiert über Hashes (nie den Namen) jedes Wiederauftauchen bei Import, Crawl und Suche; Namen in gespeicherten Rohseiten werden bestmöglich geschwärzt. Ob Kaltakquise per E-Mail zulässig ist (§ 7 UWG), klärt diese Funktion nicht, das ist vorher rechtlich zu prüfen.
+- Ein Lauf kostet Search-, LLM- und Prüfdienst-Aufrufe; die Kosten je Lauf stehen im Fortschritt (Preise für die LLM-Schätzung optional über `LEADGEN_LLM_PREIS_EIN`/`LEADGEN_LLM_PREIS_AUS`).
+
+### Tests und Kennzahlen
+
+`npm test` deckt Normalisierung, Entity Resolution, Grounding, Survivorship, Kontakt-Engine (Muster, Kandidaten, Catch-All, Abbruch, Fallback), Orchestrierung, Übernahme, Löschen und Change Detection ab, mit Fake-Diensten (kein Netzzugriff). Die Beispieldaten unter `test/fixtures/leadgen/` sind frei erfunden und nur zum Prüfen von Format und Logik gedacht, sie sagen nichts über die Abdeckung bei echten Daten aus. Kennzahl: `ladeKennzahlen()` (Firmen, mit Geschäftsführer, mit verifizierter E-Mail).
 
 ## Deployment
 

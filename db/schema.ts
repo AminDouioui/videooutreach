@@ -793,6 +793,32 @@ export const leadgenUebernahmen = sqliteTable(
   (t) => [index('leadgen_uebernahmen_lead_idx').on(t.leadId), index('leadgen_uebernahmen_company_idx').on(t.companyId)],
 );
 
+export const REGISTER_EREIGNIS_TYP = ['neueintragung', 'gf_neu', 'gf_ausgeschieden', 'gf_wechsel'] as const;
+export const REGISTER_EREIGNIS_STATUS = ['neu', 'gesehen', 'angereichert'] as const;
+
+/**
+ * Ereignisse aus dem Handelsregister (Geschäftsführerwechsel, Neueintragungen) als Outreach-Trigger. `companyId` wird über die
+ * Zuordnung Quelle → Firma nachgetragen, sobald die Entity Resolution die Firma kennt.
+ */
+export const registerEreignisse = sqliteTable(
+  'register_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    quelle: text('quelle').notNull(),
+    referenz: text('referenz').notNull(),
+    companyId: integer('company_id'),
+    typ: text('typ', { enum: REGISTER_EREIGNIS_TYP }).notNull(),
+    // Beteiligte Personen (Name, Rolle), Registerangabe und Datum der Bekanntmachung
+    daten: text('daten', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+    // Eindeutigkeit: dasselbe Ereignis aus derselben Quelle wird nur einmal gespeichert
+    schluessel: text('schluessel').notNull(),
+    status: text('status', { enum: REGISTER_EREIGNIS_STATUS }).notNull().default('neu'),
+    erkanntAm: ts('erkannt_am').notNull().default(jetzt),
+    bearbeitetAm: ts('bearbeitet_am'),
+  },
+  (t) => [uniqueIndex('register_events_schluessel_idx').on(t.schluessel), index('register_events_status_idx').on(t.status, t.erkanntAm), index('register_events_company_idx').on(t.companyId)],
+);
+
 export type RawDocumentRow = typeof rawDocuments.$inferSelect;
 export type AttributeObservation = typeof attributeObservations.$inferSelect;
 

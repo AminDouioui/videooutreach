@@ -19,6 +19,8 @@ export const LaufFilterSchema = z.object({
   mindestScore: z.number().int().min(0).max(100).default(0),
   nurVerifizierteEmail: z.boolean().default(true),
   maxFirmen: z.number().int().min(1).max(2000).default(200),
+  // Aktualisierungslauf (Re-Crawl, Re-Verifizierung) statt Neusuche: die Firmen stehen schon fest, es gibt keine Auswahl-Stufe
+  refresh: z.boolean().optional(),
 });
 export type LaufFilter = z.infer<typeof LaufFilterSchema>;
 

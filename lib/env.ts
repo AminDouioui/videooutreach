@@ -53,6 +53,7 @@ const envSchema = z.object({
   REACHER_URL: opt(z.string().url()),
   REACHER_API_KEY: opt(z.string()),
   LEADGEN_HR_LIVE: opt(z.string()),
+  LEADGEN_BA_LIVE: opt(z.string()),
   LEADGEN_CRAWL_UA: opt(z.string()),
   LEADGEN_EXTRAKTION_MODELL: opt(z.string()),
   // Preise für die Kostenschätzung der Extraktion in Cent je 1 Mio. Token (leer = 0, also keine Kostenschätzung, nur Token-Zähler)

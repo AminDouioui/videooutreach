@@ -44,7 +44,12 @@ export type SettingKey =
   | 'extraktion_modell'
   // Lead-Generierung: eigene Rollen-Synonyme und Suchvorlagen als JSON (leer = Standard aus lib/leadgen/config.ts)
   | 'leadgen_rollen'
-  | 'leadgen_suchvorlagen';
+  | 'leadgen_suchvorlagen'
+  // Aktualisierung: '0' = aus (Standard: an), Intervalle als JSON, Zeitpunkte der letzten Planung (Unix-ms)
+  | 'leadgen_refresh_aktiv'
+  | 'leadgen_intervalle'
+  | 'leadgen_refresh_zuletzt'
+  | 'leadgen_golden_zuletzt';
 
 export function getSetting(key: SettingKey): string | null {
   const row = getDb().select().from(schema.settings).where(eq(schema.settings.key, key)).get();

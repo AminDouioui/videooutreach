@@ -93,5 +93,11 @@ export function normalisiereOffeneRegister(doc: RawDocument): NormalisierterSatz
     adresse,
     status: text(satz.current_status),
     personen,
+    // Datenstand laut Dump (Abrufzeitpunkt der Registerdaten): so zerfallen die Angaben des alten Bestands von Anfang an
+    datenStand: ((): number | null => {
+      const t = text(satz.retrieved_at);
+      const ms = t ? Date.parse(t) : NaN;
+      return Number.isFinite(ms) && ms > 0 && ms <= Date.now() ? ms : null;
+    })(),
   };
 }

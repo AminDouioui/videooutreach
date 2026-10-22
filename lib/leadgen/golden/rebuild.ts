@@ -109,6 +109,12 @@ export function berechneGolden(companyId: number, opt: { db?: Db; jetzt?: number
     const liste = aktuell.filter((o) => o.entityType === 'person' && o.entityId === p.id && o.feld === 'person').map(alsBeobachtung);
     const g = waehleGewinner('person', liste, jetzt);
     if (!g) continue;
+    // Eine spätere Registerbeobachtung „ausgeschieden“ (Bekanntmachung) beendet die Rolle
+    const ausgeschieden = aktuell.some((o) => o.entityType === 'person' && o.entityId === p.id && o.feld === 'person_ausgeschieden' && o.beobachtetAm.getTime() >= g.beobachtetAm);
+    if (ausgeschieden) {
+      db.update(schema.persons).set({ rolle: 'ausgeschieden', rolleText: 'ausgeschieden (Handelsregister)', herkunft: { rolle: herkunftEintrag(g) } }).where(eq(schema.persons.id, p.id)).run();
+      continue;
+    }
     const w = g.wert as { rolle?: string; rolleOriginal?: string | null };
     const rolleText = w.rolleOriginal || w.rolle || null;
     const klass = rolleText ? standardRollen.klassifiziere(rolleText) : null;

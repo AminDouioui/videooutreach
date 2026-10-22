@@ -53,6 +53,11 @@ export type NormalisierterSatz = {
   adresse: NormalisierteAdresse | null;
   status: string | null;
   personen: NormalisiertePerson[];
+  /** Mitarbeiterzahl bzw. Größenklasse aus einem Jahresabschluss (Bundesanzeiger); `stichtag` = Bilanzstichtag (Unix-ms), maßgeblich für das Alter der Angabe */
+  mitarbeiter?: { zahl: number | null; klasse: 'hgb_klein' | 'hgb_mittel' | 'hgb_gross' | null; stichtag: number | null };
+  umsatzEur?: number | null;
+  /** Datenstand der Quelle (Unix-ms), z. B. `retrieved_at` im OffeneRegister-Dump: das Alter der Angaben, nicht der Zeitpunkt des Imports */
+  datenStand?: number | null;
 };
 
 export type NeueBeobachtung = {
@@ -61,4 +66,6 @@ export type NeueBeobachtung = {
   wert: unknown;
   konfidenz: number;
   typ?: (typeof BEOBACHTUNG_TYP)[number];
+  /** Zeitpunkt, auf den sich die Angabe bezieht (z. B. Bilanzstichtag); Standard: jetzt */
+  beobachtetAm?: number;
 };

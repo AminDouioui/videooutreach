@@ -38,7 +38,8 @@ export class HandelsregisterConnector implements Connector {
   constructor(private readonly opt: HandelsregisterOptionen) {}
 
   async *fetch(): AsyncIterable<RawDocument> {
-    if (!this.opt.aktiv) throw new HandelsregisterDeaktiviert();
+    // Ausdrücklich freigegeben (Option oder LEADGEN_HR_LIVE=1), sonst aus
+    if (!(this.opt.aktiv ?? process.env.LEADGEN_HR_LIVE === '1')) throw new HandelsregisterDeaktiviert();
     const jetzt = this.opt.jetzt ?? Date.now;
     const warte = this.opt.warte ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
     const abstand = this.opt.minAbstandMs ?? HR_MIN_ABSTAND_MS;

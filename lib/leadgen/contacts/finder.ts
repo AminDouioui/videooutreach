@@ -51,6 +51,8 @@ export class WebsiteFinder implements PersonenFinder {
       .where(and(eq(schema.attributeObservations.entityType, 'person'), eq(schema.attributeObservations.feld, 'person'), eq(schema.persons.companyId, ctx.firma.id)))
       .all();
     return zeilen.flatMap(({ attribute_observations: o, persons: p }) => {
+      // Laut Handelsregister ausgeschiedene Personen sind keine Ansprechpartner mehr
+      if (p.rolle === 'ausgeschieden') return [];
       const w = o.wert as { rolleOriginal?: string | null; rolle?: string; url?: string };
       const rolle = w.rolleOriginal || w.rolle;
       if (!rolle) return [];

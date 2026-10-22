@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { desc, sql } from 'drizzle-orm';
 import { LeadgenEinstellungen } from '@/components/LeadgenEinstellungen';
+import { LeadgenEreignisse } from '@/components/LeadgenEreignisse';
 import { LeadgenFilter } from '@/components/LeadgenFilter';
 import { hatRolle } from '@/lib/auth';
 import { getDb, schema } from '@/lib/db';
+import { EREIGNIS_LABEL, ladeEreignisse } from '@/lib/leadgen/ereignisse';
 import { extraktionsModell } from '@/lib/leadgen/extract/openai-provider';
 import { braveSchluessel } from '@/lib/leadgen/search/brave';
 import { ladeRollenDefinitionen, pruefeVoraussetzungen } from '@/lib/leadgen/standard-deps';
@@ -20,6 +22,7 @@ export default async function LeadsGenerierenSeite() {
   const voraus = pruefeVoraussetzungen();
   const laeufe = db.select().from(schema.pipelineRuns).orderBy(desc(schema.pipelineRuns.id)).limit(15).all();
   const firmen = new Map(db.select({ runId: schema.lauffirmen.runId, n: sql<number>`count(*)` }).from(schema.lauffirmen).groupBy(schema.lauffirmen.runId).all().map((x) => [x.runId, x.n]));
+  const ereignisse = ladeEreignisse({ nurNeue: true, limit: 20 }).map((e) => ({ ...e, text: EREIGNIS_LABEL[e.typ] }));
   const pruefFaelle = db.select({ n: sql<number>`count(*)` }).from(schema.matchReview).where(sql`${schema.matchReview.status} = 'offen'`).get()?.n ?? 0;
 
   return (
@@ -47,6 +50,8 @@ export default async function LeadsGenerierenSeite() {
         </div>
       )}
 
+      <LeadgenEreignisse ereignisse={ereignisse} />
+
       {hatRolle(me.rolle, 'mitglied') ? <LeadgenFilter rollen={ladeRollenDefinitionen().map((r) => ({ key: r.key, label: r.label }))} /> : <p className="text-sm text-slate-500">Mit der Rolle „Nur lesen“ lassen sich keine Läufe starten.</p>}
       {me.rolle === 'admin' && <LeadgenEinstellungen braveGesetzt={!!braveSchluessel()} modell={extraktionsModell()} />}
 
@@ -69,7 +74,7 @@ export default async function LeadsGenerierenSeite() {
                 <tr key={r.id}>
                   <td className="px-2 py-2">
                     <Link href={`/leads-generieren/${r.id}`} className="text-indigo-600 hover:underline">
-                      Lauf {r.id}
+                      Lauf {r.id}{(r.filter as { refresh?: boolean }).refresh ? ' (Auffrischung)' : ''}
                     </Link>
                   </td>
                   <td className="px-2 py-2 text-slate-600">{datum.format(r.gestartetAm)}</td>

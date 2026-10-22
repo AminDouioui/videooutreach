@@ -90,6 +90,8 @@ const ERWARTET: Record<string, string> = {
   'GET leadgen/runs/[id]/export.csv': 'lesen',
   'POST leadgen/jobs/[id]/erneut': 'mitglied',
   'DELETE leadgen/personen/[id]': 'mitglied',
+  'GET leadgen/ereignisse': 'lesen',
+  'POST leadgen/ereignisse': 'mitglied',
   'GET leadgen/pruefung': 'lesen',
   'POST leadgen/pruefung': 'mitglied',
   'GET leadgen/einstellungen': 'lesen',
