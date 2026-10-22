@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
+import { index, integer, real, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 
 const ts = (name: string) => integer(name, { mode: 'timestamp_ms' });
 const jetzt = sql`(unixepoch() * 1000)`;
@@ -398,6 +398,102 @@ export const apiSchluessel = sqliteTable('api_schluessel', {
   createdAt: ts('created_at').notNull().default(jetzt),
   widerrufenAt: ts('widerrufen_at'),
 });
+
+// ---------------------------------------------------------------- Lead-Generierung (Daten-Pipeline, siehe lib/leadgen)
+
+export const PIPELINE_RUN_STATUS = ['laeuft', 'fertig', 'fehler', 'abgebrochen'] as const;
+export const PIPELINE_JOB_STATUS = ['offen', 'laeuft', 'fertig', 'fehler'] as const;
+export const PIPELINE_STUFEN = ['ingestion', 'normalisierung', 'resolution', 'domain', 'crawl', 'extraktion', 'kontakt', 'golden', 'scoring'] as const;
+export const BEOBACHTUNG_TYP = ['exakt', 'klasse', 'schaetzung'] as const;
+
+/**
+ * Rohdaten-Schicht: Quellinhalte unverändert. Nichts wird überschrieben; ändert sich der Inhalt einer Quelle (anderer Hash),
+ * entsteht eine neue Zeile (Version). `referenz` ist die ID im Quellsystem (z. B. Registernummer oder URL).
+ */
+export const rawDocuments = sqliteTable(
+  'raw_documents',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    quelle: text('quelle').notNull(),
+    referenz: text('referenz').notNull(),
+    url: text('url'),
+    contentType: text('content_type').notNull().default('application/json'),
+    inhalt: text('inhalt').notNull(),
+    inhaltHash: text('inhalt_hash').notNull(),
+    abgerufenAm: ts('abgerufen_am').notNull().default(jetzt),
+  },
+  (t) => [uniqueIndex('raw_documents_version_idx').on(t.quelle, t.referenz, t.inhaltHash), index('raw_documents_ref_idx').on(t.quelle, t.referenz)],
+);
+
+/**
+ * Jeder Feldwert als Beobachtung mit Herkunft; der Golden Record wird daraus abgeleitet. `entityId` ist in Phase 1 noch leer
+ * (Quellsatz ohne aufgelöste Entität) und wird von der Entity Resolution über `rawDocumentId` nachgetragen.
+ */
+export const attributeObservations = sqliteTable(
+  'attribute_observations',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    entityType: text('entity_type', { enum: ['company', 'person', 'contact_point'] }).notNull(),
+    entityId: integer('entity_id'),
+    feld: text('feld').notNull(),
+    wert: text('wert', { mode: 'json' }).$type<unknown>().notNull(),
+    quelle: text('quelle').notNull(),
+    rawDocumentId: integer('raw_document_id').references(() => rawDocuments.id, { onDelete: 'restrict' }),
+    konfidenz: real('konfidenz').notNull().default(1),
+    // Art des Werts, vor allem für die Mitarbeiterzahl: exakt, Größenklasse oder Schätzung
+    typ: text('typ', { enum: BEOBACHTUNG_TYP }).notNull().default('exakt'),
+    beobachtetAm: ts('beobachtet_am').notNull().default(jetzt),
+  },
+  (t) => [index('attribute_observations_entity_idx').on(t.entityType, t.entityId, t.feld), index('attribute_observations_raw_idx').on(t.rawDocumentId)],
+);
+
+export const pipelineRuns = sqliteTable('pipeline_runs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  // Filter des Nutzers (Branche, Mitarbeiterklasse, Region …) als JSON
+  filter: text('filter', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  status: text('status', { enum: PIPELINE_RUN_STATUS }).notNull().default('laeuft'),
+  gestartetAm: ts('gestartet_am').notNull().default(jetzt),
+  beendetAm: ts('beendet_am'),
+});
+
+/** Ein Job je Lauf, Stufe und Entität (idempotent durch den Unique-Index); Wiederholung mit Backoff über `naechsterVersuchAt`. */
+export const pipelineJobs = sqliteTable(
+  'pipeline_jobs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    runId: integer('run_id')
+      .notNull()
+      .references(() => pipelineRuns.id, { onDelete: 'cascade' }),
+    stufe: text('stufe', { enum: PIPELINE_STUFEN }).notNull(),
+    // 0 = Job auf Lauf-Ebene (keine einzelne Entität)
+    entityId: integer('entity_id').notNull().default(0),
+    status: text('status', { enum: PIPELINE_JOB_STATUS }).notNull().default('offen'),
+    versuche: integer('versuche').notNull().default(0),
+    naechsterVersuchAt: ts('naechster_versuch_at'),
+    fehler: text('fehler'),
+    createdAt: ts('created_at').notNull().default(jetzt),
+    updatedAt: ts('updated_at').notNull().default(jetzt),
+  },
+  (t) => [uniqueIndex('pipeline_jobs_eindeutig_idx').on(t.runId, t.stufe, t.entityId), index('pipeline_jobs_faellig_idx').on(t.status, t.naechsterVersuchAt)],
+);
+
+/** Kosten je Aufruf (LLM, Search-API, Verifizierung) für das Kosten-Tracking pro Lauf; Beträge in Zehntel-Cent. */
+export const leadgenKosten = sqliteTable(
+  'leadgen_kosten',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    runId: integer('run_id').references(() => pipelineRuns.id, { onDelete: 'cascade' }),
+    anbieter: text('anbieter').notNull(),
+    art: text('art').notNull(),
+    einheiten: integer('einheiten').notNull().default(1),
+    kostenMilliCent: integer('kosten_milli_cent').notNull().default(0),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [index('leadgen_kosten_run_idx').on(t.runId)],
+);
+
+export type RawDocumentRow = typeof rawDocuments.$inferSelect;
+export type AttributeObservation = typeof attributeObservations.$inferSelect;
 
 export const BENUTZER_ROLLEN = ['admin', 'mitglied', 'lesen'] as const;
 
