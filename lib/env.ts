@@ -51,6 +51,7 @@ const envSchema = z.object({
   // Optional: Lead-Generierung (lib/leadgen). Search-API (Brave), SMTP-Prüfdienst (Reacher), Crawler und Extraktionsmodell.
   BRAVE_SEARCH_API_KEY: opt(z.string()),
   REACHER_URL: opt(z.string().url()),
+  REACHER_API_KEY: opt(z.string()),
   LEADGEN_HR_LIVE: opt(z.string()),
   LEADGEN_CRAWL_UA: opt(z.string()),
   LEADGEN_EXTRAKTION_MODELL: opt(z.string()),

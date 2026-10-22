@@ -632,6 +632,94 @@ export const extractionRuns = sqliteTable(
   (t) => [index('extraction_runs_company_idx').on(t.companyId)],
 );
 
+export const VERIFIZIERUNG_STATUS = ['gueltig', 'ungueltig', 'catch_all', 'unbekannt', 'risky'] as const;
+export const KONTAKT_STATUS = ['gueltig', 'catch_all_best_guess', 'generisch', 'generisch_unverifiziert', 'oeffentlich'] as const;
+export const KONTAKT_ERGEBNIS_STATUS = ['gefunden', 'rolle_offen', 'keine_domain', 'fehler'] as const;
+
+/** Ergebnis jeder Adress-Prüfung (SMTP bis RCPT TO, ohne zu senden); jede Adresse wird nur einmal je Gültigkeitsdauer geprüft. */
+export const emailVerifications = sqliteTable(
+  'email_verifications',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    adresse: text('adresse').notNull(),
+    domain: text('domain').notNull(),
+    status: text('status', { enum: VERIFIZIERUNG_STATUS }).notNull(),
+    details: text('details', { mode: 'json' }).$type<Record<string, unknown>>(),
+    verifier: text('verifier').notNull(),
+    geprueftAm: ts('geprueft_am').notNull().default(jetzt),
+  },
+  (t) => [uniqueIndex('email_verifications_adresse_idx').on(t.adresse), index('email_verifications_domain_idx').on(t.domain)],
+);
+
+/** Belege je Domain und Muster (aus bekannten Adressen mit Namen abgeleitet), Grundlage der Muster-Konfidenz. */
+export const domainEmailPatterns = sqliteTable(
+  'domain_email_patterns',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    domain: text('domain').notNull(),
+    muster: text('muster').notNull(),
+    belege: real('belege').notNull().default(0),
+    aktualisiertAm: ts('aktualisiert_am').notNull().default(jetzt),
+  },
+  (t) => [uniqueIndex('domain_email_patterns_idx').on(t.domain, t.muster)],
+);
+
+/** Mail-Eigenschaften einer Domain: MX vorhanden, Catch-All (null = nicht feststellbar). Gilt 30 Tage. */
+export const domainMailStatus = sqliteTable('domain_mail_status', {
+  domain: text('domain').primaryKey(),
+  mx: text('mx', { enum: ['ok', 'kein_mx', 'unbekannt'] }).notNull(),
+  catchAll: integer('catch_all', { mode: 'boolean' }),
+  geprueftAm: ts('geprueft_am').notNull().default(jetzt),
+});
+
+/** Kontaktdaten (Golden Record): E-Mail-Adressen und Rufnummern mit Status und Herkunft. */
+export const contactPoints = sqliteTable(
+  'contact_points',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    companyId: integer('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    personId: integer('person_id').references(() => persons.id, { onDelete: 'set null' }),
+    typ: text('typ', { enum: ['email', 'telefon'] }).notNull(),
+    wert: text('wert').notNull(),
+    status: text('status', { enum: KONTAKT_STATUS }).notNull(),
+    // Telefon: zentrale | durchwahl | mobil
+    art: text('art'),
+    rolleKey: text('rolle_key'),
+    muster: text('muster'),
+    konfidenz: real('konfidenz').notNull().default(0),
+    herkunft: text('herkunft', { mode: 'json' }).$type<Record<string, unknown>>(),
+    verifiziertAm: ts('verifiziert_am'),
+    createdAt: ts('created_at').notNull().default(jetzt),
+    updatedAt: ts('updated_at').notNull().default(jetzt),
+  },
+  (t) => [uniqueIndex('contact_points_eindeutig_idx').on(t.companyId, t.typ, t.wert), index('contact_points_person_idx').on(t.personId)],
+);
+
+/** Ergebnis der Kontakt-Engine je Firma und Zielrolle (auch „Rolle offen“ mit Termin der nächsten Anreicherung). */
+export const kontaktErgebnisse = sqliteTable(
+  'kontakt_ergebnisse',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    companyId: integer('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    rolleKey: text('rolle_key').notNull(),
+    status: text('status', { enum: KONTAKT_ERGEBNIS_STATUS }).notNull(),
+    personId: integer('person_id').references(() => persons.id, { onDelete: 'set null' }),
+    contactPointId: integer('contact_point_id').references(() => contactPoints.id, { onDelete: 'set null' }),
+    // exakt | synonym | fallback (nächsthöhere Rolle) | keiner
+    rollenTreffer: text('rollen_treffer'),
+    konfidenz: real('konfidenz').notNull().default(0),
+    details: text('details', { mode: 'json' }).$type<Record<string, unknown>>(),
+    versuche: integer('versuche').notNull().default(0),
+    naechsteAnreicherungAt: ts('naechste_anreicherung_at'),
+    updatedAt: ts('updated_at').notNull().default(jetzt),
+  },
+  (t) => [uniqueIndex('kontakt_ergebnisse_eindeutig_idx').on(t.companyId, t.rolleKey), index('kontakt_ergebnisse_faellig_idx').on(t.status, t.naechsteAnreicherungAt)],
+);
+
 export type RawDocumentRow = typeof rawDocuments.$inferSelect;
 export type AttributeObservation = typeof attributeObservations.$inferSelect;
 

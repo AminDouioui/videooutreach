@@ -43,3 +43,17 @@ export const BRANCHEN_SCHEMA = aus(
   brancheZod,
   z.toJSONSchema(brancheZod) as Record<string, unknown>,
 );
+
+const personenRolleZod = z.object({
+  personen: z.array(z.object({ vorname: z.string().nullable(), nachname: z.string(), rolle: z.string() })),
+});
+export type PersonenRolleExtraktion = z.infer<typeof personenRolleZod>;
+
+/** Für Treffer der Personensuche (Stellenanzeigen, Pressemitteilungen, Ausstellerlisten, Profil-Snippets): Name und exakte Rollenbezeichnung. */
+export const PERSONEN_ROLLE_SCHEMA = aus(
+  'personen_rolle',
+  'Nenne alle namentlich genannten Personen dieser Firma mit ihrer Rolle. „rolle“ ist die Bezeichnung exakt wie im Text (z. B. „Leiter Einkauf“). ' +
+    'Nur Personen, die laut Text bei der genannten Firma arbeiten. Vor- und Nachname getrennt, Titel weglassen. Keine Personen anderer Firmen.',
+  personenRolleZod,
+  z.toJSONSchema(personenRolleZod) as Record<string, unknown>,
+);

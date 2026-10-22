@@ -249,6 +249,8 @@ export function bestaetigeMatch(reviewId: number, db: Db = getDb()): void {
     t.run(sql`update or ignore domains set company_id = ${gewinner} where company_id = ${verlierer}`);
     t.run(sql`update or ignore crawl_pages set company_id = ${gewinner} where company_id = ${verlierer}`);
     t.run(sql`update extraction_runs set company_id = ${gewinner} where company_id = ${verlierer}`);
+    t.run(sql`update or ignore contact_points set company_id = ${gewinner} where company_id = ${verlierer}`);
+    t.run(sql`update or ignore kontakt_ergebnisse set company_id = ${gewinner} where company_id = ${verlierer}`);
     for (const b of t.select().from(schema.companyBlocks).where(eq(schema.companyBlocks.companyId, verlierer)).all()) {
       t.insert(schema.companyBlocks).values({ companyId: gewinner, schluessel: b.schluessel }).onConflictDoNothing().run();
     }
