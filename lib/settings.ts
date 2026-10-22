@@ -41,7 +41,10 @@ export type SettingKey =
   | 'brain_token'
   // Lead-Generierung: Brave-Search-Schlüssel (AES-GCM verschlüsselt), Modell der Extraktion (Klartext, leer = LEADGEN_EXTRAKTION_MODELL bzw. KI-Standardmodell)
   | 'brave_api_key'
-  | 'extraktion_modell';
+  | 'extraktion_modell'
+  // Lead-Generierung: eigene Rollen-Synonyme und Suchvorlagen als JSON (leer = Standard aus lib/leadgen/config.ts)
+  | 'leadgen_rollen'
+  | 'leadgen_suchvorlagen';
 
 export function getSetting(key: SettingKey): string | null {
   const row = getDb().select().from(schema.settings).where(eq(schema.settings.key, key)).get();

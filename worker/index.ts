@@ -1,6 +1,7 @@
 // Worker: Render- und Versand-Schleife. Start: `npm run worker`
 import { getDb } from '../lib/db';
 import { bundleRemotion, pruefeTeaserCache, recoverRenderJobs, startRenderLoop } from './render';
+import { startLeadgenLoop } from './leadgen';
 import { startSendLoop } from './send';
 import { startWebhookLoop } from './webhooks';
 
@@ -23,7 +24,11 @@ async function main() {
   const webhooks = startWebhookLoop();
   stoppers.push(() => webhooks.stop());
 
-  console.log('[worker] Läuft – Render-, Versand- und Webhook-Schleife aktiv.');
+  // Lead-Pipeline (worker/leadgen.ts)
+  const leadgen = startLeadgenLoop();
+  stoppers.push(() => leadgen.stop());
+
+  console.log('[worker] Läuft – Render-, Versand-, Webhook- und Lead-Pipeline-Schleife aktiv.');
 
   let beendet = false;
   const beenden = (signal: string) => {

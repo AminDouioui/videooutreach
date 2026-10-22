@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { getDb, schema, type Db } from '@/lib/db';
 import { registerSchluessel } from '../normalize/register';
+import { istPersonBeiFirmaGesperrt } from '../sperre';
 import { blockingSchluessel, normalisiereDomain, personenSchluessel, vergleicheFirmen, vergleichePersonen, type FirmaMerkmale, type MatchErgebnis } from './match';
 
 // Stufe 3: Entity Resolution. Ein Unternehmen existiert genau einmal, egal aus wie vielen Quellen es kommt.
@@ -116,7 +117,9 @@ export function ordnePersonAufFirma(
   p: { vorname: string | null; nachname: string },
   quelle: string,
   referenz: string,
-): { personId: number; status: 'neu' | 'sicher' | 'unsicher'; vorhanden: boolean; score: number } {
+): { personId: number; status: 'neu' | 'sicher' | 'unsicher'; vorhanden: boolean; score: number } | null {
+  // Gelöschte (gesperrte) Personen kommen nie wieder in den Golden Record
+  if (istPersonBeiFirmaGesperrt(tx, p, companyId)) return null;
   const key = personenSchluessel(p);
   const mapRef = `${referenz}#${key}`;
   const bekannt = tx.select().from(schema.entityMap).where(and(eq(schema.entityMap.quelle, quelle), eq(schema.entityMap.referenz, mapRef), eq(schema.entityMap.entityType, 'person'))).get();
@@ -149,6 +152,13 @@ export function ordnePersonAufFirma(
 function loesePersonenAuf(tx: Tx, satz: Quellsatz, companyId: number, erg: ResolveErgebnis): void {
   for (const p of satz.personen) {
     const r = ordnePersonAufFirma(tx, companyId, p, satz.quelle, satz.referenz);
+    if (!r) {
+      // Gesperrt: die schon gespeicherten Beobachtungen dieser Person aus dem Quelldokument entfernen
+      tx.run(
+        sql`delete from attribute_observations where raw_document_id = ${satz.rawDocumentId} and entity_type = 'person' and feld = 'person' and entity_id is null and lower(json_extract(wert, '$.nachname')) = ${p.nachname.toLowerCase()} and coalesce(lower(json_extract(wert, '$.vorname')), '') = ${(p.vorname ?? '').toLowerCase()}`,
+      );
+      continue;
+    }
     if (!r.vorhanden) {
       if (r.status === 'neu') erg.neuePersonen++;
       else if (r.status === 'sicher') erg.personenZusammengefuehrt++;

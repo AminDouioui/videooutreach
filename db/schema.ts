@@ -267,9 +267,13 @@ export const leads = sqliteTable(
     dealNotiz: text('deal_notiz'),
     // Per Untersequenz übernommen: Lead, aus dem dieser Datensatz kopiert wurde (null = importiert/angelegt)
     herkunftLeadId: integer('herkunft_lead_id').references((): AnySQLiteColumn => leads.id, { onDelete: 'set null' }),
+    // Aus der Lead-Generierung übernommen: Firma und Person im Golden Record (für Dedup und Herkunftsnachweis nach Art. 14 DSGVO); null = importiert/angelegt
+    leadgenCompanyId: integer('leadgen_company_id'),
+    leadgenPersonId: integer('leadgen_person_id'),
     createdAt: ts('created_at').notNull().default(jetzt),
   },
   (t) => [
+    index('leads_leadgen_company_idx').on(t.leadgenCompanyId),
     index('leads_herkunft_idx').on(t.herkunftLeadId),
     index('leads_campaign_idx').on(t.campaignId),
     index('leads_email_idx').on(t.email),
@@ -742,6 +746,52 @@ export const scores = sqliteTable('scores', {
   details: text('details', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
   berechnetAm: ts('berechnet_am').notNull().default(jetzt),
 });
+
+/** Firmen eines Laufs mit ihren Scores (ICP-Fit nach dem Filter des Laufs, Datenqualität, Gesamt = Mittel); Grundlage der Ergebnisliste. */
+export const lauffirmen = sqliteTable(
+  'lauf_firmen',
+  {
+    runId: integer('run_id')
+      .notNull()
+      .references(() => pipelineRuns.id, { onDelete: 'cascade' }),
+    companyId: integer('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    icpScore: integer('icp_score'),
+    datenScore: integer('daten_score'),
+    gesamtScore: integer('gesamt_score'),
+  },
+  (t) => [uniqueIndex('lauf_firmen_eindeutig_idx').on(t.runId, t.companyId), index('lauf_firmen_gesamt_idx').on(t.runId, t.gesamtScore)],
+);
+
+/**
+ * Sperrliste gelöschter Personen: nur Hashes (HMAC über Name und Firmenkennung), nie der Name selbst. Verhindert, dass dieselbe Person
+ * bei einem späteren Import, Crawl oder einer Suche wieder auftaucht.
+ */
+export const personSperre = sqliteTable('person_sperre', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  hash: text('hash').notNull().unique(),
+  grund: text('grund'),
+  createdAt: ts('created_at').notNull().default(jetzt),
+});
+
+/** Protokoll jeder Übernahme in eine Kampagne mit Herkunft der Daten (Nachweis für die Informationspflicht nach Art. 14 DSGVO). */
+export const leadgenUebernahmen = sqliteTable(
+  'leadgen_uebernahmen',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    runId: integer('run_id'),
+    companyId: integer('company_id').notNull(),
+    personId: integer('person_id'),
+    leadId: integer('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+    campaignId: integer('campaign_id').notNull(),
+    email: text('email'),
+    herkunft: text('herkunft', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+    benutzer: text('benutzer'),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [index('leadgen_uebernahmen_lead_idx').on(t.leadId), index('leadgen_uebernahmen_company_idx').on(t.companyId)],
+);
 
 export type RawDocumentRow = typeof rawDocuments.$inferSelect;
 export type AttributeObservation = typeof attributeObservations.$inferSelect;

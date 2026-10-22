@@ -4,6 +4,7 @@ import { extrahiereEmails } from '../extract/deterministic';
 import { ALLGEMEINE_GENERISCHE, GENERISCHE_FUER_ROLLE, KONTAKT_SCHWELLEN, STANDARD_SUCHVORLAGEN, type RollenDefinition, type Suchvorlage } from '../config';
 import type { LeadgenDeps } from '../deps';
 import { ordnePersonAufFirma } from '../resolve/resolve';
+import { istPersonBeiFirmaGesperrt } from '../sperre';
 import { normalisiereRolle } from '../normalize/person';
 import { fuehreTrefferZusammen, SucheFinder, waehlePerson, WebsiteFinder, type FirmaKontext, type GewaehltePerson, type PersonenFinder, type PersonTreffer } from './finder';
 import { bildeKandidaten, istGenerischesPostfach, musterKonfidenzen, zaehleBelege, zerlegeAdresse, type AdressKandidat, type MusterKonfidenz } from './muster';
@@ -80,7 +81,9 @@ export const personFinden: ContactStep = {
     ctx.protokoll.push(`A: ${ctx.treffer.length} Treffer aus ${finder.length} Findern`);
     // Nur Rollen, die zur Zielrolle oder deren Fallback passen, kommen in Frage (Register-Treffer enthalten z. B. auch Prokuristen)
     const relevant = ctx.treffer.filter((t) => ctx.deps.rollen.vergleiche(ctx.rolleKey, t.rolle).treffer !== 'keiner');
-    ctx.person = waehlePerson(fuehreTrefferZusammen(relevant), ctx.rolleKey, ctx.deps.rollen);
+    // Gelöschte (gesperrte) Personen nie als Ansprechpartner vorschlagen
+    const erlaubt = fuehreTrefferZusammen(relevant).filter((c) => !istPersonBeiFirmaGesperrt(ctx.db, c, ctx.firma.id));
+    ctx.person = waehlePerson(erlaubt, ctx.rolleKey, ctx.deps.rollen);
     if (!ctx.person) {
       ctx.protokoll.push('A: keine Person zur Rolle gefunden');
       return;
@@ -88,7 +91,7 @@ export const personFinden: ContactStep = {
     ctx.protokoll.push(`A: ${ctx.person.vorname ?? ''} ${ctx.person.nachname} (${ctx.person.rolleText}, ${ctx.person.rollenTreffer}, Konfidenz ${ctx.person.personKonfidenz.toFixed(2)})`);
     // Die Person bekommt eine stabile person_id; Fundstellen aus der Suche werden als Beobachtungen gespeichert
     const p = ctx.person;
-    ctx.personId = ordnePersonAufFirma(ctx.db, ctx.firma.id, { vorname: p.vorname, nachname: p.nachname }, 'kontakt-engine', `${ctx.rolleKey}`).personId;
+    ctx.personId = ordnePersonAufFirma(ctx.db, ctx.firma.id, { vorname: p.vorname, nachname: p.nachname }, 'kontakt-engine', `${ctx.rolleKey}`)?.personId ?? null;
     for (const q of p.quellen.filter((x) => x.typ !== 'website' && x.typ !== 'register')) {
       ctx.db
         .insert(schema.attributeObservations)

@@ -112,6 +112,8 @@ export async function extrahiereFirma(companyId: number, deps: Pick<LeadgenDeps,
         continue;
       }
       const z = ordnePersonAufFirma(db, companyId, { vorname: p.vorname?.trim() || null, nachname: p.nachname.trim() }, QUELLE, seite.url);
+      // Gelöschte (gesperrte) Personen werden nicht wieder aufgenommen
+      if (!z) continue;
       obs({
         entityType: 'person',
         entityId: z.personId,

@@ -1,7 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { getDb, schema, type Db } from '@/lib/db';
 import { normalisiereOffeneRegister, OFFENEREGISTER } from './connectors/offeneregister';
+import { registerSchluessel } from './normalize/register';
 import { speichereRohdokument } from './raw-store';
+import { istPersonGesperrt } from './sperre';
 import type { Connector, NeueBeobachtung, NormalisierterSatz, RawDocument } from './types';
 
 // Stufe 1 + 2: Rohdokument speichern, normalisieren und als Beobachtungen ablegen
@@ -58,7 +60,10 @@ export async function ingestQuelle(connector: Connector, db: Db = getDb(), norma
         erg.unbrauchbar++;
         return;
       }
-      for (const b of beobachtungenAus(satz, konfidenz)) {
+      // Gelöschte (gesperrte) Personen werden schon beim Einlesen nicht mehr gespeichert
+      const registerKey = registerSchluessel({ art: satz.registerart, nummer: satz.registernummer, gericht: satz.registergericht });
+      const erlaubt = { ...satz, personen: satz.personen.filter((p) => !registerKey || !istPersonGesperrt(tx as unknown as Db, p, { registerKey })) };
+      for (const b of beobachtungenAus(erlaubt, konfidenz)) {
         tx.insert(schema.attributeObservations)
           .values({ entityType: b.entityType, feld: b.feld, wert: b.wert, quelle: doc.quelle, rawDocumentId: id, konfidenz: b.konfidenz, typ: b.typ ?? 'exakt' })
           .run();
