@@ -514,6 +514,14 @@ export const companies = sqliteTable(
     ort: text('ort'),
     bundesland: text('bundesland'),
     domain: text('domain'),
+    // Golden Record (Phase 5): Mitarbeiterzahl immer mit Typ (exakt, Größenklasse, Schätzung), Branche mit Konfidenz, Herkunft je Feld als JSON
+    mitarbeiterZahl: integer('mitarbeiter_zahl'),
+    mitarbeiterTyp: text('mitarbeiter_typ', { enum: BEOBACHTUNG_TYP }),
+    mitarbeiterKlasse: text('mitarbeiter_klasse'),
+    branche: text('branche'),
+    brancheKonfidenz: real('branche_konfidenz'),
+    herkunft: text('herkunft', { mode: 'json' }).$type<Record<string, unknown>>(),
+    goldenBerechnetAm: ts('golden_berechnet_am'),
     createdAt: ts('created_at').notNull().default(jetzt),
   },
   (t) => [uniqueIndex('companies_register_key_idx').on(t.registerKey), index('companies_plz_idx').on(t.plz)],
@@ -530,6 +538,10 @@ export const persons = sqliteTable(
     vorname: text('vorname'),
     nachname: text('nachname').notNull(),
     nameKey: text('name_key').notNull(),
+    // Golden Record: beste Rolle (Schlüssel der Rollen-Taxonomie oder Registerrolle) und Rollenbezeichnung wie in der Quelle, Herkunft als JSON
+    rolle: text('rolle'),
+    rolleText: text('rolle_text'),
+    herkunft: text('herkunft', { mode: 'json' }).$type<Record<string, unknown>>(),
     createdAt: ts('created_at').notNull().default(jetzt),
   },
   (t) => [index('persons_company_idx').on(t.companyId)],
@@ -719,6 +731,17 @@ export const kontaktErgebnisse = sqliteTable(
   },
   (t) => [uniqueIndex('kontakt_ergebnisse_eindeutig_idx').on(t.companyId, t.rolleKey), index('kontakt_ergebnisse_faellig_idx').on(t.status, t.naechsteAnreicherungAt)],
 );
+
+/** Scores je Firma (abgeleitet, jederzeit neu berechenbar): Datenqualität und ICP-Fit mit der Standardkonfiguration. */
+export const scores = sqliteTable('scores', {
+  companyId: integer('company_id')
+    .primaryKey()
+    .references(() => companies.id, { onDelete: 'cascade' }),
+  datenScore: integer('daten_score').notNull(),
+  icpScore: integer('icp_score').notNull(),
+  details: text('details', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  berechnetAm: ts('berechnet_am').notNull().default(jetzt),
+});
 
 export type RawDocumentRow = typeof rawDocuments.$inferSelect;
 export type AttributeObservation = typeof attributeObservations.$inferSelect;

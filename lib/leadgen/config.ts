@@ -101,3 +101,95 @@ export const VERIFIZIERUNG_UNBEKANNT_STUNDEN = 24;
 export const VERIFIZIERUNG_ABSTAND_MS = 2000;
 /** Erneute Anreicherung, wenn die Rolle offen blieb (Tage) */
 export const ROLLE_OFFEN_WIEDERHOLUNG_TAGE = 7;
+
+// ---------------------------------------------------------------- Golden Record: Survivorship, Decay
+
+export type FeldArt = 'stammdaten' | 'adresse' | 'person' | 'mitarbeiter' | 'branche' | 'domain';
+
+/**
+ * Quellenrangfolge je Feldart (vorn = gewinnt). Register schlägt Webseite für Geschäftsführer; der alte OffeneRegister-Bestand
+ * (Datenstand ~2019) ist nur Seed: er steht bei Adresse und Person hinter der Webseite und verliert zusätzlich über den Decay.
+ * Unbekannte Quellen stehen ganz hinten; ein Präfix („suche:“) gilt für alle Quellen mit diesem Präfix.
+ */
+export const QUELLEN_RANG: Record<FeldArt, string[]> = {
+  stammdaten: ['handelsregister', 'northdata', 'bundesanzeiger', 'offeneregister', 'web', 'suche:'],
+  adresse: ['handelsregister', 'northdata', 'web', 'offeneregister', 'suche:'],
+  person: ['handelsregister', 'northdata', 'web', 'suche:', 'offeneregister'],
+  mitarbeiter: ['bundesanzeiger', 'northdata', 'handelsregister', 'web', 'suche:', 'offeneregister'],
+  branche: ['web', 'handelsregister', 'northdata', 'offeneregister'],
+  domain: ['suche:', 'web'],
+};
+
+/** Welche Beobachtungsfelder zu welcher Feldart gehören */
+export const FELD_ART: Record<string, FeldArt> = {
+  name: 'stammdaten', rechtsform: 'stammdaten', name_normalized: 'stammdaten', registerart: 'stammdaten', registernummer: 'stammdaten', registergericht: 'stammdaten', sitz: 'stammdaten', status: 'stammdaten',
+  strasse: 'adresse', plz: 'adresse', ort: 'adresse', bundesland: 'adresse',
+  person: 'person',
+  mitarbeiter: 'mitarbeiter',
+  branche_web: 'branche', branche_wz: 'branche',
+  domain: 'domain',
+};
+
+/** Mitarbeiterzahlen: exakt schlägt Größenklasse schlägt Schätzung, unabhängig von der Quelle */
+export const TYP_RANG = { exakt: 0, klasse: 1, schaetzung: 2 } as const;
+
+/** Halbwertszeit der Konfidenz in Tagen: danach zählt eine Beobachtung nur noch halb. */
+export const HALBWERTSZEIT_TAGE: Record<string, number> = {
+  email: 90,
+  email_pruefung: 30,
+  telefon: 540,
+  person: 365,
+  registernummer: 3650,
+  registerart: 3650,
+  registergericht: 3650,
+  name: 1095,
+  rechtsform: 1095,
+  strasse: 730,
+  plz: 730,
+  ort: 730,
+  sitz: 730,
+  bundesland: 1095,
+  mitarbeiter: 730,
+  branche_web: 1095,
+  branche_wz: 1825,
+  domain: 730,
+};
+export const STANDARD_HALBWERTSZEIT_TAGE = 365;
+/** Unter diesen Anteil der ursprünglichen Konfidenz sinkt eine Beobachtung durch den Decay nie (sie bleibt erkennbar, verliert aber den Vorrang) */
+export const DECAY_UNTERGRENZE = 0.2;
+
+// ---------------------------------------------------------------- Scoring
+
+export const DATEN_SCORE_GEWICHTE = { vollstaendigkeit: 0.3, konfidenz: 0.25, email: 0.3, aktualitaet: 0.15 } as const;
+
+/** Beitrag der E-Mail-Verlässlichkeit zum Datenqualitäts-Score */
+export const EMAIL_STATUS_WERT: Record<string, number> = { gueltig: 1, catch_all_best_guess: 0.35, generisch: 0.25, generisch_unverifiziert: 0.12 };
+
+export type IcpKonfig = {
+  /** Gewichte der Dimensionen; werden auf Summe 1 normiert */
+  gewichte: { branche: number; mitarbeiter: number; region: number; rechtsform: number };
+  /** Zielbranchen mit Passung 0 bis 1 (Taxonomie-Schlüssel) */
+  branchen: Record<string, number>;
+  mitarbeiterMin: number;
+  mitarbeiterMax: number;
+  /** Zielregionen: Bundesländer und/oder PLZ-Präfixe; leer = ganz Deutschland */
+  bundeslaender: string[];
+  plzPraefixe: string[];
+  /** Passung je Rechtsform (0 bis 1); nicht aufgeführte Formen: `rechtsformStandard` */
+  rechtsformen: Record<string, number>;
+  rechtsformStandard: number;
+};
+
+export const STANDARD_ICP: IcpKonfig = {
+  gewichte: { branche: 0.4, mitarbeiter: 0.3, region: 0.15, rechtsform: 0.15 },
+  branchen: { werkzeugbau: 1, formenbau: 1, maschinenbau: 0.9, sonstige_fertigung: 0.5, keine_fertigung: 0 },
+  mitarbeiterMin: 100,
+  mitarbeiterMax: 800,
+  bundeslaender: [],
+  plzPraefixe: [],
+  rechtsformen: { GmbH: 1, 'GmbH & Co. KG': 1, AG: 0.9, KG: 0.8, 'GmbH & Co. KGaA': 0.8, KGaA: 0.8, SE: 0.8, 'UG (haftungsbeschränkt)': 0.4, OHG: 0.6, GbR: 0.3, 'e.K.': 0.3, gGmbH: 0.2, 'e.V.': 0, eG: 0.3 },
+  rechtsformStandard: 0.5,
+};
+
+/** Unbekannte Angaben zählen bei der ICP-Passung neutral-niedrig, damit unvollständige Leads nicht vorn stehen */
+export const ICP_UNBEKANNT = 0.3;

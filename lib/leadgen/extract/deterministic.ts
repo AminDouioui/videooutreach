@@ -61,3 +61,15 @@ export function extrahiereRegister(text: string): Registerangabe | null {
   const gericht = parseRegister(naeheDavor).gericht ?? parseRegister(flach).gericht;
   return { art: nr[1].toUpperCase().replace('GNR', 'GnR'), nummer: nr[2], gericht };
 }
+
+/**
+ * Mitarbeiterzahl, wie die Firma sie selbst nennt („Über 250 Mitarbeitende“, „ca. 1.200 Beschäftigte“). Nur eine Selbstauskunft der
+ * Webseite und damit höchstens eine Schätzung; die Zahl muss im Text stehen. Unplausible Werte (unter 5, über 200.000) werden verworfen.
+ */
+export function extrahiereMitarbeiter(text: string): { zahl: number; ungefaehr: boolean } | null {
+  const m = /(ca\.?|circa|rund|über|mehr als|knapp)?\s*(\d{1,3}(?:[. ]\d{3})+|\d{1,6})\s*\+?\s*(?:fest angestellte[n]?\s+)?(?:Mitarbeiter(?:innen)?|Mitarbeitende[n]?|Beschäftigte[n]?|Angestellte[n]?|Kolleginnen und Kollegen)\b/i.exec(text);
+  if (!m) return null;
+  const zahl = Number(m[2].replace(/[. ]/g, ''));
+  if (!Number.isFinite(zahl) || zahl < 5 || zahl > 200_000) return null;
+  return { zahl, ungefaehr: !!m[1] || /\+/.test(m[0]) };
+}

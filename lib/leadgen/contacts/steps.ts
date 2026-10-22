@@ -70,7 +70,7 @@ export const personFinden: ContactStep = {
   name: 'A:person-finden',
   async run(ctx) {
     const finder = ctx.deps.finder ?? [new WebsiteFinder(), new SucheFinder(ctx.deps.suchvorlagen ?? STANDARD_SUCHVORLAGEN)];
-    const fk = { firma: ctx.firma, rolleKey: ctx.rolleKey, rollen: ctx.deps.rollen, deps: ctx.deps, db: ctx.db };
+    const fk = { firma: ctx.firma, rolleKey: ctx.rolleKey, rollen: ctx.deps.rollen, deps: ctx.deps, db: ctx.db, jetzt: jetztMs(ctx) };
     // Alle Finder parallel; ein ausgefallener Finder verhindert die anderen nicht
     const ergebnisse = await Promise.allSettled(finder.map((f) => f.finde(fk)));
     ergebnisse.forEach((r, i) => {

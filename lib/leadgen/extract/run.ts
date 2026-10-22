@@ -6,7 +6,7 @@ import { normalisiereRolle } from '../normalize/person';
 import { normalisiereTelefon } from '../normalize/telefon';
 import { ordnePersonAufFirma } from '../resolve/resolve';
 import { wzZuBranche } from './branche';
-import { extrahiereEmails, extrahiereRegister, extrahiereTelefone, extrahiereUstId } from './deterministic';
+import { extrahiereEmails, extrahiereMitarbeiter, extrahiereRegister, extrahiereTelefone, extrahiereUstId } from './deterministic';
 import { emailImText, groundingKontext, nameImText, rolleImText, telefonImText, zitatImText } from './grounding';
 import { ExtraktionFehler } from './provider';
 import { BRANCHEN_SCHEMA, PERSONEN_SCHEMA } from './schemas';
@@ -34,10 +34,11 @@ export async function extrahiereFirma(companyId: number, deps: Pick<LeadgenDeps,
 
   const run = db.insert(schema.extractionRuns).values({ companyId, provider: deps.extraktion.name, modell: deps.extraktion.modell, seiten: seiten.length }).returning({ id: schema.extractionRuns.id }).get();
   const erg: ExtraktionsErgebnis = { runId: run.id, seiten: seiten.length, personen: 0, emails: 0, telefone: 0, verworfen: 0, branche: null };
-  const obs = (b: { entityType: 'company' | 'person'; entityId: number; feld: string; wert: unknown; konfidenz: number; rawDocumentId: number }) =>
+  const obs = (b: { entityType: 'company' | 'person'; entityId: number; feld: string; wert: unknown; konfidenz: number; rawDocumentId: number; typ?: 'exakt' | 'klasse' | 'schaetzung' }) =>
     db.insert(schema.attributeObservations).values({ ...b, quelle: QUELLE, extraktionRunId: run.id }).run();
   const bereitsEmail = new Set<string>();
   const bereitsTelefon = new Set<string>();
+  let mitarbeiterGefunden = false;
 
   let startText = '';
   for (const seite of seiten) {
@@ -62,6 +63,14 @@ export async function extrahiereFirma(companyId: number, deps: Pick<LeadgenDeps,
       bereitsTelefon.add(t.e164);
       obs({ entityType: 'company', entityId: companyId, feld: 'telefon', wert: { e164: t.e164, national: t.national, typ: t.typ, art: t.art, url: seite.url }, konfidenz: KONFIDENZ.deterministisch, rawDocumentId: rawId });
       erg.telefone++;
+    }
+    if (!mitarbeiterGefunden) {
+      const ma = extrahiereMitarbeiter(text);
+      if (ma) {
+        // Selbstauskunft der Webseite: nie exakt, höchstens eine Schätzung
+        obs({ entityType: 'company', entityId: companyId, feld: 'mitarbeiter', wert: { zahl: ma.zahl, ungefaehr: ma.ungefaehr, url: seite.url }, konfidenz: 0.5, rawDocumentId: rawId, typ: 'schaetzung' });
+        mitarbeiterGefunden = true;
+      }
     }
     if (seite.art === 'impressum' || seite.art === 'kontakt') {
       const ust = extrahiereUstId(text);

@@ -5,6 +5,7 @@ import type { Suchvorlage } from '../config';
 import type { LeadgenDeps } from '../deps';
 import { groundingKontext, nameImText, rolleImText } from '../extract/grounding';
 import { PERSONEN_ROLLE_SCHEMA } from '../extract/schemas';
+import { mitDecay } from '../golden/survivorship';
 import { normalisiereText, vergleichePersonen } from '../resolve/match';
 import type { Rollenverzeichnis, RollenTreffer } from './rollen';
 import { ROLLEN_FAKTOR } from './rollen';
@@ -30,6 +31,8 @@ export type FinderKontext = {
   rollen: Rollenverzeichnis;
   deps: Pick<LeadgenDeps, 'suche' | 'fetcher' | 'extraktion'>;
   db: Db;
+  /** Zeitpunkt der Auswertung (Decay alter Beobachtungen); Standard: jetzt */
+  jetzt?: number;
 };
 
 export interface PersonenFinder {
@@ -52,7 +55,8 @@ export class WebsiteFinder implements PersonenFinder {
       const rolle = w.rolleOriginal || w.rolle;
       if (!rolle) return [];
       const quelleTyp: QuelleTyp = o.quelle === 'web' ? 'website' : o.quelle.startsWith('suche') ? 'suche' : 'register';
-      return [{ vorname: p.vorname, nachname: p.nachname, rolle, quelleTyp, url: w.url ?? null, konfidenz: o.konfidenz }];
+      // Alte Beobachtungen (z. B. der Registerseed von 2019) verlieren über den Decay an Konfidenz
+      return [{ vorname: p.vorname, nachname: p.nachname, rolle, quelleTyp, url: w.url ?? null, konfidenz: mitDecay(o.konfidenz, 'person', o.beobachtetAm.getTime(), ctx.jetzt ?? Date.now()) }];
     });
   }
 }
