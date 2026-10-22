@@ -11,9 +11,10 @@ import type { Connector, NormalisierterSatz, RawDocument } from '../types';
 // dienen nur als Seed und werden von jüngeren Quellen überstimmt (siehe Survivorship in Phase 5), nie als Wahrheit behandelt.
 //
 // Eingabe: JSON Lines (eine Firma je Zeile), auch .gz. Der Dump ist als .bz2 verteilt: vorher mit `bunzip2` entpacken.
-// ANNAHME zum Feldformat (aus dem OCData-Schema der Dumps, hier ohne Zugriff auf einen echten Dump nachgebaut, bitte am echten Dump
-// prüfen): name, company_number, current_status, registered_address, all_attributes{native_company_number, _registered_office,
-// federal_state, registered_address}, officers[{name, position, type, other_attributes}]. Fehlende Felder werden toleriert.
+// Feldformat laut veröffentlichten Beispielsätzen (CedarDB-Doku zum Dump): company_number („K1101R_HRB150148“), name, current_status,
+// jurisdiction_code, registered_address, retrieved_at, all_attributes{native_company_number („Hamburg HRB 150148“), registrar,
+// registered_office, federal_state, _registerArt, _registerNummer, additional_data}, officers[{name, position, type, start_date, city}].
+// Nicht an einem vollständigen Dump geprüft (hier kein Zugriff); fehlende oder abweichende Felder werden toleriert, nie geraten.
 
 export const OFFENEREGISTER = 'offeneregister';
 
@@ -68,7 +69,9 @@ export function normalisiereOffeneRegister(doc: RawDocument): NormalisierterSatz
   if (!name) return null;
   const attr = istObjekt(satz.all_attributes) ? satz.all_attributes : {};
   const firma = trenneFirma(name);
-  const reg = parseRegister(text(attr.native_company_number) ?? text(satz.company_number));
+  // „native_company_number“ hat die Form „Hamburg HRB 150148“; _registerArt/_registerNummer/registrar sind getrennte Felder derselben Angabe
+  const regText = parseRegister(text(attr.native_company_number) ?? text(satz.company_number));
+  const reg = { art: regText.art ?? text(attr._registerArt), nummer: regText.nummer ?? text(attr._registerNummer), gericht: regText.gericht ?? text(attr.registrar) };
   const adresse = parseAdresse(text(satz.registered_address) ?? text(attr.registered_address), text(attr.federal_state));
   const personen = (Array.isArray(satz.officers) ? satz.officers : [])
     .filter(istObjekt)

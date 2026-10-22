@@ -62,7 +62,7 @@ describe('OffeneRegister-Ingestion (Beispieldatei mit 20 Firmen und einer defekt
     const treffer: string[] = [];
     const c = new m.oreg.OffeneRegisterConnector({ datei: FIXTURE, filter: (s) => /Formenbau/.test(String(s.name)) });
     for await (const d of c.fetch()) treffer.push(d.referenz);
-    expect(treffer).toEqual(['FIX002']);
+    expect(treffer).toEqual(['K1102R_HRA200002']);
     const begrenzt: string[] = [];
     for await (const d of new m.oreg.OffeneRegisterConnector({ datei: FIXTURE, limit: 3 }).fetch()) begrenzt.push(d.referenz);
     expect(begrenzt).toHaveLength(3);
@@ -88,19 +88,19 @@ describe('OffeneRegister-Ingestion (Beispieldatei mit 20 Firmen und einer defekt
     for await (const d of new m.oreg.OffeneRegisterConnector({ datei: FIXTURE }).fetch()) docs.push(d);
     const satz = (ref: string) => m.oreg.normalisiereOffeneRegister(docs.find((d) => d.referenz === ref)!)!;
 
-    expect(satz('FIX002')).toMatchObject({ name: 'Muster Formenbau', rechtsform: 'GmbH & Co. KG', registerart: 'HRA', registernummer: '200002', registergericht: 'Schwäbisch Gmünd' });
-    expect(satz('FIX002').personen.map((p) => [p.nachname, p.rolle])).toEqual([['Schmidt-Meier', 'geschaeftsfuehrer'], ['Weiß', 'prokurist']]);
-    expect(satz('FIX001').adresse).toMatchObject({ plz: '70469', ort: 'Stuttgart', bundeslandHerkunft: 'quelle' });
+    expect(satz('K1102R_HRA200002')).toMatchObject({ name: 'Muster Formenbau', rechtsform: 'GmbH & Co. KG', registerart: 'HRA', registernummer: '200002', registergericht: 'Schwäbisch Gmünd' });
+    expect(satz('K1102R_HRA200002').personen.map((p) => [p.nachname, p.rolle])).toEqual([['Schmidt-Meier', 'geschaeftsfuehrer'], ['Weiß', 'prokurist']]);
+    expect(satz('K1101R_HRB100001').adresse).toMatchObject({ plz: '70469', ort: 'Stuttgart', bundeslandHerkunft: 'quelle' });
     // Kein Bundesland in der Quelle: aus der PLZ abgeleitet und als solches gekennzeichnet
-    expect(satz('FIX004').adresse).toMatchObject({ bundesland: 'Sachsen', bundeslandHerkunft: 'plz' });
+    expect(satz('K1104R_HRB400004').adresse).toMatchObject({ bundesland: 'Sachsen', bundeslandHerkunft: 'plz' });
     // Komplementär-GmbH ist kein Ansprechpartner
-    expect(satz('FIX008').personen.map((p) => p.nachname)).toEqual(['Hahn']);
+    expect(satz('K1108R_HRB800008').personen.map((p) => p.nachname)).toEqual(['Hahn']);
     // Ehemalige Amtsträger (end_date) zählen nicht
-    expect(satz('FIX011').personen.map((p) => p.nachname)).toEqual(['Neumann']);
+    expect(satz('K1111R_HRB120011').personen.map((p) => p.nachname)).toEqual(['Neumann']);
   });
 
   it('liefert die Kennzahl: Firmen, mit Geschäftsführer, mit verifizierter E-Mail', () => {
-    // 20 Firmen, davon eine (FIX016) ohne Amtsträger; E-Mails gibt es erst ab Phase 4
+    // 20 Firmen, davon eine (K1116R_HRB170016) ohne Amtsträger; E-Mails gibt es erst ab Phase 4
     expect(m.ingest.ladeKennzahlen()).toEqual({ firmen: 20, mitGeschaeftsfuehrer: 19, mitVerifizierterEmail: 0 });
   });
 

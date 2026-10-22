@@ -492,6 +492,90 @@ export const leadgenKosten = sqliteTable(
   (t) => [index('leadgen_kosten_run_idx').on(t.runId)],
 );
 
+export const ENTITY_MAP_STATUS = ['neu', 'sicher', 'unsicher', 'manuell'] as const;
+export const MATCH_REVIEW_STATUS = ['offen', 'zusammengefuehrt', 'getrennt'] as const;
+
+/**
+ * Golden Record der Firmen (abgeleitete Sicht, Phase 5 berechnet sie aus den Beobachtungen neu). Die Entity Resolution legt nur die stabile
+ * `id` fest und füllt die Felder zunächst aus dem ersten Quellsatz. `registerKey` ('gericht|art|nummer') ist der harte Match und eindeutig.
+ */
+export const companies = sqliteTable(
+  'companies',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    rechtsform: text('rechtsform'),
+    nameNormalized: text('name_normalized').notNull(),
+    registerKey: text('register_key'),
+    strasse: text('strasse'),
+    plz: text('plz'),
+    ort: text('ort'),
+    bundesland: text('bundesland'),
+    domain: text('domain'),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [uniqueIndex('companies_register_key_idx').on(t.registerKey), index('companies_plz_idx').on(t.plz)],
+);
+
+/** Personen je Firma (stabile `id`); `nameKey` = normalisierter „nachname|vorname“ für den Vergleich. */
+export const persons = sqliteTable(
+  'persons',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    companyId: integer('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    vorname: text('vorname'),
+    nachname: text('nachname').notNull(),
+    nameKey: text('name_key').notNull(),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [index('persons_company_idx').on(t.companyId)],
+);
+
+/** Blocking-Schlüssel je Firma („plz|token“, „reg|…“, „dom|…“): nur Firmen mit gemeinsamem Schlüssel werden paarweise verglichen. */
+export const companyBlocks = sqliteTable(
+  'company_blocks',
+  {
+    companyId: integer('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    schluessel: text('schluessel').notNull(),
+  },
+  (t) => [uniqueIndex('company_blocks_eindeutig_idx').on(t.companyId, t.schluessel), index('company_blocks_schluessel_idx').on(t.schluessel)],
+);
+
+/** Zuordnung Quelle → Entität. Firmen: (quelle, referenz); Personen: referenz = „<referenz>#<nameKey>“. */
+export const entityMap = sqliteTable(
+  'entity_map',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    quelle: text('quelle').notNull(),
+    referenz: text('referenz').notNull(),
+    entityType: text('entity_type', { enum: ['company', 'person'] }).notNull(),
+    entityId: integer('entity_id').notNull(),
+    matchScore: real('match_score').notNull().default(1),
+    status: text('status', { enum: ENTITY_MAP_STATUS }).notNull().default('neu'),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [uniqueIndex('entity_map_quelle_idx').on(t.quelle, t.referenz, t.entityType), index('entity_map_entity_idx').on(t.entityType, t.entityId)],
+);
+
+/** Unsichere Paare zur manuellen Prüfung: `companyId` (neu angelegt) könnte dieselbe Firma sein wie `kandidatId`. */
+export const matchReview = sqliteTable(
+  'match_review',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    companyId: integer('company_id').notNull(),
+    kandidatId: integer('kandidat_id').notNull(),
+    score: real('score').notNull(),
+    details: text('details', { mode: 'json' }).$type<Record<string, number | null>>().notNull(),
+    status: text('status', { enum: MATCH_REVIEW_STATUS }).notNull().default('offen'),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [uniqueIndex('match_review_paar_idx').on(t.companyId, t.kandidatId), index('match_review_status_idx').on(t.status)],
+);
+
 export type RawDocumentRow = typeof rawDocuments.$inferSelect;
 export type AttributeObservation = typeof attributeObservations.$inferSelect;
 
