@@ -106,44 +106,60 @@ function setzeEntityId(tx: Tx, rawDocumentId: number, companyId: number): void {
     .run();
 }
 
-/** Ordnet die Personen des Quellsatzes Personen der Firma zu (Personen-Matching innerhalb der Firma). */
+/**
+ * Ordnet eine Person einer Person der Firma zu oder legt sie neu an (Personen-Matching innerhalb der Firma). Die Zuordnung wird
+ * unter (quelle, referenz) in entity_map gemerkt; derselbe Aufruf liefert danach immer dieselbe person_id (idempotent).
+ */
+export function ordnePersonAufFirma(
+  tx: Db,
+  companyId: number,
+  p: { vorname: string | null; nachname: string },
+  quelle: string,
+  referenz: string,
+): { personId: number; status: 'neu' | 'sicher' | 'unsicher'; vorhanden: boolean; score: number } {
+  const key = personenSchluessel(p);
+  const mapRef = `${referenz}#${key}`;
+  const bekannt = tx.select().from(schema.entityMap).where(and(eq(schema.entityMap.quelle, quelle), eq(schema.entityMap.referenz, mapRef), eq(schema.entityMap.entityType, 'person'))).get();
+  if (bekannt) return { personId: bekannt.entityId, status: bekannt.status === 'unsicher' ? 'unsicher' : 'sicher', vorhanden: true, score: bekannt.matchScore };
+  let bester: { id: number; ergebnis: MatchErgebnis } | null = null;
+  for (const kandidat of tx.select().from(schema.persons).where(eq(schema.persons.companyId, companyId)).all()) {
+    const ergebnis = vergleichePersonen(p, kandidat);
+    if (ergebnis.entscheidung !== 'getrennt' && (!bester || ergebnis.score > bester.ergebnis.score)) bester = { id: kandidat.id, ergebnis };
+  }
+  let personId: number;
+  let status: 'neu' | 'sicher' | 'unsicher' = 'neu';
+  let score = 1;
+  if (bester?.ergebnis.entscheidung === 'sicher') {
+    personId = bester.id;
+    status = 'sicher';
+    score = bester.ergebnis.score;
+  } else {
+    personId = tx.insert(schema.persons).values({ companyId, vorname: p.vorname, nachname: p.nachname, nameKey: key }).returning({ id: schema.persons.id }).get().id;
+    if (bester) {
+      // Ähnliche Person gefunden, aber nicht sicher genug: eigene Person, im Status markiert
+      status = 'unsicher';
+      score = bester.ergebnis.score;
+    }
+  }
+  tx.insert(schema.entityMap).values({ quelle, referenz: mapRef, entityType: 'person', entityId: personId, matchScore: score, status }).run();
+  return { personId, status, vorhanden: false, score };
+}
+
+/** Ordnet die Personen des Quellsatzes Personen der Firma zu und trägt die entity_id der Personenbeobachtungen nach. */
 function loesePersonenAuf(tx: Tx, satz: Quellsatz, companyId: number, erg: ResolveErgebnis): void {
-  const bestand = () => tx.select().from(schema.persons).where(eq(schema.persons.companyId, companyId)).all();
   for (const p of satz.personen) {
-    const key = personenSchluessel(p);
-    const mapRef = `${satz.referenz}#${key}`;
-    const vorhanden = tx.select().from(schema.entityMap).where(and(eq(schema.entityMap.quelle, satz.quelle), eq(schema.entityMap.referenz, mapRef), eq(schema.entityMap.entityType, 'person'))).get();
-    let personId: number;
-    if (vorhanden) {
-      personId = vorhanden.entityId;
-    } else {
-      let bester: { id: number; ergebnis: MatchErgebnis } | null = null;
-      for (const kandidat of bestand()) {
-        const ergebnis = vergleichePersonen(p, kandidat);
-        if (ergebnis.entscheidung !== 'getrennt' && (!bester || ergebnis.score > bester.ergebnis.score)) bester = { id: kandidat.id, ergebnis };
-      }
-      let status: 'neu' | 'sicher' | 'unsicher' = 'neu';
-      let score = 1;
-      if (bester?.ergebnis.entscheidung === 'sicher') {
-        personId = bester.id;
-        status = 'sicher';
-        score = bester.ergebnis.score;
-        erg.personenZusammengefuehrt++;
-      } else {
-        personId = tx.insert(schema.persons).values({ companyId, vorname: p.vorname, nachname: p.nachname, nameKey: key }).returning({ id: schema.persons.id }).get().id;
+    const r = ordnePersonAufFirma(tx, companyId, p, satz.quelle, satz.referenz);
+    if (!r.vorhanden) {
+      if (r.status === 'neu') erg.neuePersonen++;
+      else if (r.status === 'sicher') erg.personenZusammengefuehrt++;
+      else {
         erg.neuePersonen++;
-        if (bester) {
-          // Ähnliche Person gefunden, aber nicht sicher genug: eigene Person, im Status markiert (Prüfliste über entity_map.status)
-          status = 'unsicher';
-          score = bester.ergebnis.score;
-          erg.personenZurPruefung++;
-        }
+        erg.personenZurPruefung++;
       }
-      tx.insert(schema.entityMap).values({ quelle: satz.quelle, referenz: mapRef, entityType: 'person', entityId: personId, matchScore: score, status }).run();
     }
     // Beobachtung dieser Person (gleicher Name im selben Rohdokument) der Person zuordnen
     tx.run(
-      sql`update attribute_observations set entity_id = ${personId} where raw_document_id = ${satz.rawDocumentId} and entity_type = 'person' and feld = 'person' and entity_id is null and lower(json_extract(wert, '$.nachname')) = ${p.nachname.toLowerCase()} and coalesce(lower(json_extract(wert, '$.vorname')), '') = ${(p.vorname ?? '').toLowerCase()}`,
+      sql`update attribute_observations set entity_id = ${r.personId} where raw_document_id = ${satz.rawDocumentId} and entity_type = 'person' and feld = 'person' and entity_id is null and lower(json_extract(wert, '$.nachname')) = ${p.nachname.toLowerCase()} and coalesce(lower(json_extract(wert, '$.vorname')), '') = ${(p.vorname ?? '').toLowerCase()}`,
     );
   }
 }
@@ -229,6 +245,10 @@ export function bestaetigeMatch(reviewId: number, db: Db = getDb()): void {
     t.update(schema.entityMap).set({ entityId: gewinner, status: 'manuell' }).where(and(eq(schema.entityMap.entityType, 'company'), eq(schema.entityMap.entityId, verlierer))).run();
     t.update(schema.attributeObservations).set({ entityId: gewinner }).where(and(eq(schema.attributeObservations.entityType, 'company'), eq(schema.attributeObservations.entityId, verlierer))).run();
     t.update(schema.persons).set({ companyId: gewinner }).where(eq(schema.persons.companyId, verlierer)).run();
+    // Ermittelte Domain, gecrawlte Seiten und Extraktionsläufe der Verliererin wandern mit (Konflikte mit schon vorhandenen Einträgen bleiben bei der Gewinnerin)
+    t.run(sql`update or ignore domains set company_id = ${gewinner} where company_id = ${verlierer}`);
+    t.run(sql`update or ignore crawl_pages set company_id = ${gewinner} where company_id = ${verlierer}`);
+    t.run(sql`update extraction_runs set company_id = ${gewinner} where company_id = ${verlierer}`);
     for (const b of t.select().from(schema.companyBlocks).where(eq(schema.companyBlocks.companyId, verlierer)).all()) {
       t.insert(schema.companyBlocks).values({ companyId: gewinner, schluessel: b.schluessel }).onConflictDoNothing().run();
     }

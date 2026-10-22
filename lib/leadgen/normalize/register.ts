@@ -13,7 +13,7 @@ export function parseRegister(roh: string | null | undefined): Registerangabe {
   if (!roh) return { art: null, nummer: null, gericht: null };
   const text = roh.replace(/\s+/g, ' ').trim();
   const nr = new RegExp(`\\b(${ARTEN})\\s*(\\d{1,7})(?:\\s?[A-Z])?\\b`, 'i').exec(text);
-  const gericht = /(?:Amtsgericht|AG)\s+([A-ZÄÖÜ][\wäöüÄÖÜß.\- ]*?)(?=\s+(?:HR[AB]|GnR|PR|VR)\b|,|$)/.exec(text)?.[1]?.trim() ?? gerichtVorNummer(text, nr?.index);
+  const gericht = /(?:Amtsgericht|AG)\s+([A-ZÄÖÜ][\wäöüÄÖÜß.-]*(?: (?!Handelsregister|Registernummer|Registergericht|HR[AB]\b|GnR\b|PR\b|VR\b)[A-ZÄÖÜ][\wäöüÄÖÜß.-]*){0,2})/.exec(text)?.[1]?.trim() ?? gerichtVorNummer(text, nr?.index);
   return { art: nr ? nr[1].toUpperCase().replace('GNR', 'GnR') : null, nummer: nr ? nr[2] : null, gericht: gericht ?? null };
 }
 

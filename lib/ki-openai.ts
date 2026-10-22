@@ -39,8 +39,8 @@ async function httpFehler(res: Response): Promise<KiFehler> {
   return new KiFehler(`OpenAI hat die Anfrage abgelehnt (${s}).`, 'anfrage');
 }
 
-/** Client über die Responses API. `f` ist injizierbar (Tests). Das Modell kommt aus der Einstellung (sonst OPENAI_MODEL). */
-export function openaiClient(f: typeof fetch = fetch): KiClient {
+/** Client über die Responses API. `f` ist injizierbar (Tests). Das Modell kommt aus `modell`, sonst aus der Einstellung (sonst OPENAI_MODEL). */
+export function openaiClient(f: typeof fetch = fetch, modell?: string): KiClient {
   return async (a) => {
     const env = getEnv();
     const key = kiSchluessel('openai');
@@ -51,7 +51,7 @@ export function openaiClient(f: typeof fetch = fetch): KiClient {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: kiModell('openai'),
+          model: modell ?? kiModell('openai'),
           instructions: a.system,
           input: a.nutzer,
           // Großzügig, weil Denk-Tokens mitzählen

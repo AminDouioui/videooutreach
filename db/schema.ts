@@ -443,6 +443,8 @@ export const attributeObservations = sqliteTable(
     // Art des Werts, vor allem für die Mitarbeiterzahl: exakt, Größenklasse oder Schätzung
     typ: text('typ', { enum: BEOBACHTUNG_TYP }).notNull().default('exakt'),
     beobachtetAm: ts('beobachtet_am').notNull().default(jetzt),
+    // Lauf der Extraktion, aus dem die Beobachtung stammt (Re-Extraktion ohne Neu-Crawl: neuester Lauf je Quelldokument zählt); null = direkt aus einer Quelle
+    extraktionRunId: integer('extraktion_run_id'),
   },
   (t) => [index('attribute_observations_entity_idx').on(t.entityType, t.entityId, t.feld), index('attribute_observations_raw_idx').on(t.rawDocumentId)],
 );
@@ -574,6 +576,60 @@ export const matchReview = sqliteTable(
     createdAt: ts('created_at').notNull().default(jetzt),
   },
   (t) => [uniqueIndex('match_review_paar_idx').on(t.companyId, t.kandidatId), index('match_review_status_idx').on(t.status)],
+);
+
+/** Ermittelte Firmen-Domain. `verifiziert` = Impressum nennt Firmenname oder Registernummer; `beleg` sagt, woran das erkannt wurde. */
+export const domains = sqliteTable(
+  'domains',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    companyId: integer('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    domain: text('domain').notNull(),
+    // Adresse der Startseite, unter der die Domain erreichbar war (mit oder ohne „www.“)
+    startUrl: text('start_url'),
+    verifiziert: integer('verifiziert', { mode: 'boolean' }).notNull().default(false),
+    beleg: text('beleg'),
+    methode: text('methode').notNull().default('suche'),
+    konfidenz: real('konfidenz').notNull().default(0),
+    geprueftAm: ts('geprueft_am').notNull().default(jetzt),
+  },
+  (t) => [uniqueIndex('domains_company_domain_idx').on(t.companyId, t.domain), index('domains_domain_idx').on(t.domain)],
+);
+
+/** Metadaten der gecrawlten Seiten (der Inhalt selbst liegt unverändert in raw_documents, Quelle 'web'). */
+export const crawlPages = sqliteTable(
+  'crawl_pages',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    companyId: integer('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    url: text('url').notNull(),
+    art: text('art', { enum: ['start', 'impressum', 'kontakt', 'team', 'sonstige'] }).notNull(),
+    rawDocumentId: integer('raw_document_id').references(() => rawDocuments.id, { onDelete: 'set null' }),
+    status: text('status', { enum: ['ok', 'robots', 'fehler'] }).notNull(),
+    fehler: text('fehler'),
+    abgerufenAm: ts('abgerufen_am').notNull().default(jetzt),
+  },
+  (t) => [uniqueIndex('crawl_pages_company_url_idx').on(t.companyId, t.url)],
+);
+
+export const extractionRuns = sqliteTable(
+  'extraction_runs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    companyId: integer('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    modell: text('modell'),
+    seiten: integer('seiten').notNull().default(0),
+    verworfen: integer('verworfen').notNull().default(0),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [index('extraction_runs_company_idx').on(t.companyId)],
 );
 
 export type RawDocumentRow = typeof rawDocuments.$inferSelect;

@@ -23,6 +23,7 @@
     "@remotion/media-utils": "4.0.534",
     "@remotion/renderer": "4.0.534",
     "better-sqlite3": "^13.0.3",
+    "cheerio": "^1.2.0",
     "drizzle-orm": "^0.45.4",
     "exceljs": "^4.4.0",
     "googleapis": "^185.0.0",
@@ -34,6 +35,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "remotion": "4.0.534",
+    "robots-parser": "^3.0.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {

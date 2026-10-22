@@ -38,7 +38,10 @@ export type SettingKey =
   | 'schreibregeln_aktiv'
   // Brain-Anbindung (Lead-Kontext): URL im Klartext, Token AES-GCM verschlüsselt (lib/brain.ts)
   | 'brain_url'
-  | 'brain_token';
+  | 'brain_token'
+  // Lead-Generierung: Brave-Search-Schlüssel (AES-GCM verschlüsselt), Modell der Extraktion (Klartext, leer = LEADGEN_EXTRAKTION_MODELL bzw. KI-Standardmodell)
+  | 'brave_api_key'
+  | 'extraktion_modell';
 
 export function getSetting(key: SettingKey): string | null {
   const row = getDb().select().from(schema.settings).where(eq(schema.settings.key, key)).get();

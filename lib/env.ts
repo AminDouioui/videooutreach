@@ -48,6 +48,15 @@ const envSchema = z.object({
   // Optional: Brain (Second Brain von Prozessia) als Kontextquelle für Antwort-Entwürfe; die Einstellung in der App hat Vorrang
   BRAIN_URL: opt(z.string()),
   BRAIN_API_TOKEN: opt(z.string()),
+  // Optional: Lead-Generierung (lib/leadgen). Search-API (Brave), SMTP-Prüfdienst (Reacher), Crawler und Extraktionsmodell.
+  BRAVE_SEARCH_API_KEY: opt(z.string()),
+  REACHER_URL: opt(z.string().url()),
+  LEADGEN_HR_LIVE: opt(z.string()),
+  LEADGEN_CRAWL_UA: opt(z.string()),
+  LEADGEN_EXTRAKTION_MODELL: opt(z.string()),
+  // Preise für die Kostenschätzung der Extraktion in Cent je 1 Mio. Token (leer = 0, also keine Kostenschätzung, nur Token-Zähler)
+  LEADGEN_LLM_PREIS_EIN: opt(z.coerce.number().min(0)),
+  LEADGEN_LLM_PREIS_AUS: opt(z.coerce.number().min(0)),
 });
 
 export type Env = z.infer<typeof envSchema>;
