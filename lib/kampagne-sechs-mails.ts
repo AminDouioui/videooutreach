@@ -41,7 +41,7 @@ Wenn das für {{firma}} ein Thema ist, lassen Sie uns einen Termin vereinbaren, 
     betreff: 'Wie ein Einkaufsteam Angebotsvergleiche beschleunigt hat',
     body: `{{begruessung}},
 
-ein Einkaufsteam aus [BRANCHE EINTRAGEN] kam zu uns, weil Anfragen und Angebotsvergleiche zu viel Zeit gebunden haben.
+statt noch einer allgemeinen Mail zeige ich Ihnen ein konkretes Ergebnis: Ein Einkaufsteam aus [BRANCHE EINTRAGEN] kam zu uns, weil Anfragen und Angebotsvergleiche zu viel Zeit gebunden haben.
 
 Wir haben den Ablauf automatisiert. Das Ergebnis:
 
@@ -86,7 +86,7 @@ Lassen Sie uns einen Termin vereinbaren, um zu besprechen, wie der Beschaffungsa
     betreff: 'Mehr Zeit für Verhandlungen statt Routine',
     body: `{{begruessung}},
 
-zum Abschluss noch einmal kurz, was Einkaufsabteilungen von uns haben:
+bei so vielen Mails im Postfach fasse ich zum Abschluss kurz zusammen, was Einkaufsabteilungen von uns haben:
 
 • Weniger manueller Aufwand bei Anfragen, Angebotsvergleichen und Nachfassen
 • Preise und Lieferzeiten schneller vergleichbar
