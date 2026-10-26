@@ -12,7 +12,8 @@
     "db:generate": "drizzle-kit generate",
     "worker": "tsx --env-file-if-exists=.env worker/index.ts",
     "remotion:studio": "remotion studio remotion/index.ts",
-    "fixtures": "tsx scripts/make-fixtures.ts"
+    "fixtures": "tsx scripts/make-fixtures.ts",
+    "kampagne:sechs-mails": "tsx --env-file-if-exists=.env scripts/kampagne-sechs-mails.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
