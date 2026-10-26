@@ -13,7 +13,7 @@ export const SECHS_MAILS_ERSTMAIL = {
   betreff: 'Weniger Aufwand im operativen Einkauf bei {{firma}}',
   text: `{{begruessung}},
 
-wir helfen Einkaufsabteilungen wie der von {{firma}}, Routine aus dem Tagesgeschäft zu nehmen:
+Sie bekommen sicher viele solcher Mails, deshalb zeige ich Ihnen direkt die Ergebnisse, die wir Einkaufsabteilungen wie der von {{firma}} liefern:
 
 • Anfragen, Angebotsvergleiche und Nachfassen laufen automatisch statt per Hand
 • Preise und Lieferzeiten sind je Artikel auf einen Blick vergleichbar
