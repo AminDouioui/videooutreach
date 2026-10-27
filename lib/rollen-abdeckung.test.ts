@@ -79,6 +79,7 @@ const ERWARTET: Record<string, string> = {
   'POST leads/[id]/mail-preview': 'lesen',
   'POST leads/[id]/render': 'mitglied',
   'PATCH leads/[id]': 'mitglied',
+  'PATCH vertretung/[id]': 'mitglied',
   'DELETE leads/[id]': 'mitglied',
   'POST leads/[id]/send': 'mitglied',
   'GET leads/[id]/thread': 'lesen',

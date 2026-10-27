@@ -439,6 +439,28 @@ export type Benutzer = typeof benutzer.$inferSelect;
 export type Einladung = typeof einladungen.$inferSelect;
 export type BenutzerRolle = (typeof BENUTZER_ROLLEN)[number];
 
+/** Entwürfe für die Vertretung (Abwesenheit des Inhabers): Weiterleitung einer Lead-Antwort an die zuständigen Personen. Nichts wird automatisch gesendet. */
+export const vertretungsEntwuerfe = sqliteTable(
+  'vertretungs_entwuerfe',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    leadId: integer('lead_id')
+      .notNull()
+      .unique()
+      .references(() => leads.id, { onDelete: 'cascade' }),
+    // technik = technischer Support, firma = Firmenangelegenheit
+    kategorie: text('kategorie', { enum: ['technik', 'firma'] }).notNull(),
+    // Empfänger, durch Komma getrennt
+    an: text('an').notNull(),
+    betreff: text('betreff').notNull(),
+    text: text('text').notNull(),
+    erledigtAt: ts('erledigt_at'),
+    createdAt: ts('created_at').notNull().default(jetzt),
+  },
+  (t) => [index('vertretung_erledigt_idx').on(t.erledigtAt)],
+);
+
+export type VertretungsEntwurf = typeof vertretungsEntwuerfe.$inferSelect;
 export type Absender = typeof absender.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type Variante = typeof varianten.$inferSelect;

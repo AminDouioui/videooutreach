@@ -17,6 +17,7 @@ import { STANDARD_VARIABLEN, verwendeteVariablen } from './vorlage';
 import { isSuppressed } from './suppression';
 import { startOfDayBerlinMs, todayBerlin } from './time';
 import { kampagneMitVariante, waehleVarianteFuerKampagne } from './varianten-db';
+import { erstelleVertretungsEntwurf } from './vertretung';
 import { webhookAusloesen } from './webhooks';
 import { staerkeresErgebnis } from './followup-varianten';
 import { threadsDesLeads, waehleFollowupVariante } from './followup-varianten-db';
@@ -397,6 +398,7 @@ export async function pruefeAntwort(
     getDb().update(schema.leads).set({ antwortAt: jetzt, antwortGelesen: false, antwortThreadId: antwortThread !== lead.gmailThreadId ? antwortThread : null }).where(eq(schema.leads.id, lead.id)).run();
     stoppeFirma(lead.id, jetzt);
     webhookAusloesen('antwort', { leadId: lead.id }, jetzt);
+    await erstelleVertretungsEntwurf(lead.id, jetzt);
   }
   else if (ergebnis === 'bounce') {
     stoppeFlow(lead.id, 'bounce', jetzt);

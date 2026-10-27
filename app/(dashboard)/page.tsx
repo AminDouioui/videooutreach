@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { desc } from 'drizzle-orm';
+import { desc, isNull } from 'drizzle-orm';
 import { ladeAbsender } from '@/lib/absender';
 import { istBounceFehler } from '@/lib/bounce-schutz';
 import { Kachel, TagesDiagramm } from '@/components/AnalyseDiagramme';
@@ -49,8 +49,19 @@ export default async function KampagnenUebersicht() {
   const pausiert = kampagnen.filter((k) => k.status === 'pausiert' && k.pausiertGrund);
   const bouncePostfaecher = ladeAbsender().filter((a) => !a.aktiv && istBounceFehler(a.fehler));
 
+  // Offene Weiterleitungs-Entwürfe der Vertretung (Abwesenheit)
+  const offeneEntwuerfe = getDb().select({ id: schema.vertretungsEntwuerfe.id, leadId: schema.vertretungsEntwuerfe.leadId }).from(schema.vertretungsEntwuerfe).where(isNull(schema.vertretungsEntwuerfe.erledigtAt)).all();
+
   return (
     <div>
+      {offeneEntwuerfe.length > 0 && (
+        <div role="status" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <strong>Vertretung:</strong> {offeneEntwuerfe.length} Weiterleitungs-Entwurf{offeneEntwuerfe.length === 1 ? '' : 'e'} zu Antworten warte{offeneEntwuerfe.length === 1 ? 't' : 'n'} auf Versand.{' '}
+          <Link href={`/antworten?gelesen=alle&lead=${offeneEntwuerfe[0].leadId}`} className="underline">
+            Ansehen
+          </Link>
+        </div>
+      )}
       {(pausiert.length > 0 || bouncePostfaecher.length > 0) && (
         <div role="alert" className="mb-4 space-y-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
           {pausiert.map((k) => (

@@ -38,7 +38,13 @@ export type SettingKey =
   | 'schreibregeln_aktiv'
   // Brain-Anbindung (Lead-Kontext): URL im Klartext, Token AES-GCM verschlüsselt (lib/brain.ts)
   | 'brain_url'
-  | 'brain_token';
+  | 'brain_token'
+  // Vertretung bei Abwesenheit: '0' = aus; Zeitraum 'YYYY-MM-DD'; Empfänger je Kategorie (Komma-getrennt), leer = Standard aus lib/vertretung.ts
+  | 'vertretung_aktiv'
+  | 'vertretung_von'
+  | 'vertretung_bis'
+  | 'vertretung_technik'
+  | 'vertretung_firma';
 
 export function getSetting(key: SettingKey): string | null {
   const row = getDb().select().from(schema.settings).where(eq(schema.settings.key, key)).get();

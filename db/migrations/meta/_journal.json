@@ -134,6 +134,13 @@
       "when": 1791990000000,
       "tag": "0018_absender_bounce_zaehlen_ab",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1792080000000,
+      "tag": "0019_vertretungs_entwuerfe",
+      "breakpoints": true
     }
   ]
 }

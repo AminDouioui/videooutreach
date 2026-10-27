@@ -5,6 +5,8 @@ import { AutoGelesen, GelesenButton, LeadStatusSelect } from '@/components/LeadS
 import { BrainKontext } from '@/components/BrainKontext';
 import { KiEinordnung } from '@/components/KiKomponenten';
 import { ThreadAnsicht } from '@/components/ThreadAnsicht';
+import { VertretungsEntwurf } from '@/components/VertretungsEntwurf';
+import { KATEGORIE_LABEL, mailtoLink, type VertretungKategorie } from '@/lib/vertretung';
 import { leadThreads } from '@/lib/antworten';
 import { getDb, schema } from '@/lib/db';
 import { brainVerbunden } from '@/lib/brain';
@@ -42,6 +44,9 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
   const auswahl = Number.isInteger(leadParam) && leadParam > 0 ? getDb().select({ lead: schema.leads, kampagne: schema.campaigns.name }).from(schema.leads).innerJoin(schema.campaigns, eq(schema.campaigns.id, schema.leads.campaignId)).where(eq(schema.leads.id, leadParam)).get() : undefined;
   const chip = (aktiv: boolean) => `rounded-full px-3 py-1 text-xs font-medium ${aktiv ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50'}`;
   const ki = klassifizierungVerfuegbar();
+  // Weiterleitungs-Entwürfe der Vertretung (nach lead.id), offene zuerst gezählt
+  const entwuerfe = new Map(getDb().select().from(schema.vertretungsEntwuerfe).all().map((e) => [e.leadId, e]));
+  const offeneEntwuerfe = [...entwuerfe.values()].filter((e) => !e.erledigtAt).length;
   const name = (l: { anrede: string | null; vorname: string | null; nachname: string | null }) => [l.anrede, l.vorname, l.nachname].filter(Boolean).join(' ');
 
   return (
@@ -51,6 +56,12 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
         Erkannte Antworten aus allen Kampagnen, neueste zuerst. Mit Lesezugriff auf das Postfach (Einstellungen → Postfächer) erscheint der Verlauf direkt hier und
         Antworten lassen sich in der App senden; sonst steht der Inhalt nur in Gmail.
       </p>
+
+      {offeneEntwuerfe > 0 && (
+        <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          {offeneEntwuerfe} offene{offeneEntwuerfe === 1 ? 'r' : ''} Weiterleitungs-Entwurf{offeneEntwuerfe === 1 ? '' : 'e'} der Vertretung (Badge „Vertretung“ in der Liste). Gesendet wird nichts automatisch.
+        </p>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)] lg:items-start">
         {/* Liste (mobil: nur ohne Auswahl) */}
@@ -106,6 +117,11 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
                       <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                         <span className="min-w-0 break-words">{kampagne}</span>· {wann ? zeit.format(wann) : 'Zeitpunkt unbekannt'}
                         <LeadStatusBadge status={lead.leadStatus} />
+                        {entwuerfe.has(lead.id) && (
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${entwuerfe.get(lead.id)?.erledigtAt ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-900'}`} title="Weiterleitungs-Entwurf der Vertretung">
+                            Vertretung
+                          </span>
+                        )}
                         {ki && lead.kiEinordnung && (
                           <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-900" title="KI-Einordnung">
                             KI: {KI_KATEGORIE_LABEL[lead.kiEinordnung.kategorie as KiKategorie] ?? lead.kiEinordnung.kategorie}
@@ -125,7 +141,7 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
           {!auswahl ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">Antwort in der Liste auswählen, um den Verlauf zu sehen.</div>
           ) : (
-            <Detail lead={auswahl.lead} kampagne={auswahl.kampagne} zurueck={href(filter.gelesen, filter.leadStatus)} ki={ki} schreibhilfe={schreibhilfeVerfuegbar()} schreiben={schreiben} brain={brainVerbunden()} regeln={schreibregelnAktiv()} />
+            <Detail lead={auswahl.lead} kampagne={auswahl.kampagne} zurueck={href(filter.gelesen, filter.leadStatus)} ki={ki} schreibhilfe={schreibhilfeVerfuegbar()} schreiben={schreiben} brain={brainVerbunden()} regeln={schreibregelnAktiv()} entwurf={entwuerfe.get(auswahl.lead.id)} />
           )}
         </section>
       </div>
@@ -133,7 +149,7 @@ export default async function Antworten({ searchParams }: { searchParams: SP }) 
   );
 }
 
-function Detail({ lead, kampagne, zurueck, ki, schreibhilfe, schreiben, brain, regeln }: { lead: typeof schema.leads.$inferSelect; kampagne: string; zurueck: string; ki: boolean; schreibhilfe: boolean; schreiben: boolean; brain: boolean; regeln: boolean }) {
+function Detail({ lead, kampagne, zurueck, ki, schreibhilfe, schreiben, brain, regeln, entwurf }: { entwurf?: typeof schema.vertretungsEntwuerfe.$inferSelect; lead: typeof schema.leads.$inferSelect; kampagne: string; zurueck: string; ki: boolean; schreibhilfe: boolean; schreiben: boolean; brain: boolean; regeln: boolean }) {
   const t = leadThreads(lead);
   const gmailUrl = gmailLink(lead.antwortThreadId ?? lead.gmailThreadId, t.postfach?.typ);
   const personName = [lead.anrede, lead.vorname, lead.nachname].filter(Boolean).join(' ');
@@ -172,6 +188,11 @@ function Detail({ lead, kampagne, zurueck, ki, schreibhilfe, schreiben, brain, r
           </a>
         )}
       </div>
+      {entwurf && (
+        <div className="mt-3">
+          <VertretungsEntwurf id={entwurf.id} kategorie={KATEGORIE_LABEL[entwurf.kategorie as VertretungKategorie] ?? entwurf.kategorie} an={entwurf.an} betreff={entwurf.betreff} text={entwurf.text} mailto={mailtoLink(entwurf)} erledigt={!!entwurf.erledigtAt} schreiben={schreiben} />
+        </div>
+      )}
       {ki && (
         <div className="mt-3">
           <Schreibschutz gesperrt={!schreiben}>
